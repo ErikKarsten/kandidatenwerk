@@ -3,7 +3,6 @@ import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Sidebar } from "@/components/layout/sidebar";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -38,11 +37,8 @@ export default function RootLayout({
         "font-sans"
       )}
     >
-      <body className="flex h-full" style={{ backgroundColor: "#f0f4f8" }}>
-        <TooltipProvider>
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto">{children}</main>
-        </TooltipProvider>
+      <body className="h-full" style={{ backgroundColor: "#f0f4f8" }}>
+        <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>
   );
