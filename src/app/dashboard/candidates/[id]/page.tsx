@@ -13,7 +13,7 @@ export default async function CandidateDetailPage({
   const [{ data: candidate }, { data: history }, { data: fileRows }] = await Promise.all([
     supabase
       .from("candidates")
-      .select("*, campaigns(title, meta_field_mapping, clients(name))")
+      .select("*, campaigns(title, meta_field_mapping, clients(id, name))")
       .eq("id", id)
       .single(),
     supabase
@@ -47,7 +47,7 @@ export default async function CandidateDetailPage({
     })
   )
 
-  type CampaignJoin = { title: string; meta_field_mapping: Record<string, string> | null; clients: { name: string } | null } | null
+  type CampaignJoin = { title: string; meta_field_mapping: Record<string, string> | null; clients: { id: string; name: string } | null } | null
   const campaigns = candidate.campaigns as CampaignJoin
 
   const candidateData = {

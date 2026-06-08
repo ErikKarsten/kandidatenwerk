@@ -59,7 +59,7 @@ interface Candidate {
   notes: string | null
   custom_fields: Record<string, string> | null
   campaign_id: string | null
-  campaigns: { title: string; meta_field_mapping?: Record<string, string> | null; clients: { name: string } | null } | null
+  campaigns: { title: string; meta_field_mapping?: Record<string, string> | null; clients: { id: string; name: string } | null } | null
 }
 
 interface CandidateDetailProps {
@@ -153,6 +153,7 @@ export function CandidateDetail({ candidate, history, files, campaignMapping }: 
         {/* Rechte Spalte */}
         <div className="flex flex-col gap-4">
           <ContactChips email={candidate.email} phone={candidate.phone} />
+          <CampaignInfoCard campaignId={candidate.campaign_id} campaigns={candidate.campaigns} />
           <DescriptionSection candidateId={candidate.id} notes={candidate.notes} />
           <NoteSection candidateId={candidate.id} />
           <HistoryList history={history} />
@@ -183,6 +184,50 @@ function TabButton({
     >
       {children}
     </button>
+  )
+}
+
+function CampaignInfoCard({
+  campaignId,
+  campaigns,
+}: {
+  campaignId: string | null
+  campaigns: { title: string; clients: { id: string; name: string } | null } | null
+}) {
+  if (!campaignId || !campaigns) return null
+
+  return (
+    <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Zuordnung</p>
+      <dl className="flex flex-col gap-2">
+        <div className="flex items-start gap-2">
+          <dt className="shrink-0 text-sm text-gray-500" style={{ minWidth: "5rem" }}>Kampagne</dt>
+          <dd className="text-sm">
+            <Link
+              href={`/dashboard/campaigns/${campaignId}`}
+              className="font-medium hover:underline"
+              style={{ color: "#1e56a0" }}
+            >
+              {campaigns.title}
+            </Link>
+          </dd>
+        </div>
+        {campaigns.clients && (
+          <div className="flex items-start gap-2">
+            <dt className="shrink-0 text-sm text-gray-500" style={{ minWidth: "5rem" }}>Kunde</dt>
+            <dd className="text-sm">
+              <Link
+                href={`/dashboard/clients/${campaigns.clients.id}`}
+                className="font-medium hover:underline"
+                style={{ color: "#1e56a0" }}
+              >
+                {campaigns.clients.name}
+              </Link>
+            </dd>
+          </div>
+        )}
+      </dl>
+    </div>
   )
 }
 
@@ -231,10 +276,16 @@ function DescriptionSection({
   const router = useRouter()
   const [value, setValue] = useState(notes ?? "")
   const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
 
   function handleSave() {
+    setError(null)
     startTransition(async () => {
-      await saveDescriptionAction(candidateId, value)
+      const result = await saveDescriptionAction(candidateId, value)
+      if (result?.error) {
+        setError(result.error)
+        return
+      }
       router.refresh()
     })
   }
@@ -250,6 +301,7 @@ function DescriptionSection({
         style={{ borderColor: "#dde3ea" }}
         placeholder="Notizen zum Kandidaten…"
       />
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
       <button
         onClick={handleSave}
         disabled={pending}
@@ -266,11 +318,17 @@ function NoteSection({ candidateId }: { candidateId: string }) {
   const router = useRouter()
   const [value, setValue] = useState("")
   const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
 
   function handleSave() {
     if (!value.trim()) return
+    setError(null)
     startTransition(async () => {
-      await addNoteAction(candidateId, value)
+      const result = await addNoteAction(candidateId, value)
+      if (result?.error) {
+        setError(result.error)
+        return
+      }
       router.refresh()
       setValue("")
     })
@@ -287,6 +345,7 @@ function NoteSection({ candidateId }: { candidateId: string }) {
         style={{ borderColor: "#dde3ea" }}
         placeholder="Notiz eingeben…"
       />
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
       <button
         onClick={handleSave}
         disabled={pending || !value.trim()}

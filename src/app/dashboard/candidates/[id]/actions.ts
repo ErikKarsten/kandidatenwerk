@@ -63,13 +63,12 @@ export async function addNoteAction(
   const supabase = await createSupabaseServerClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Nicht eingeloggt." }
 
   const { error } = await supabase.from("candidate_history").insert({
     candidate_id: candidateId,
     type: "note",
     content,
-    created_by: user.id,
+    ...(user ? { created_by: user.id } : {}),
   })
 
   if (error) return { error: error.message }
