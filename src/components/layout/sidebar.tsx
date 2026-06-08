@@ -16,10 +16,10 @@ import { Badge } from "@/components/ui/badge"
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/kunden", label: "Kunden", icon: Users },
-  { href: "/kampagnen", label: "Kampagnen", icon: Megaphone },
-  { href: "/kandidaten", label: "Alle Kandidaten", icon: UserSearch, badge: "247" },
-  { href: "/pipeline", label: "Pipeline", icon: GitMerge },
+  { href: "/dashboard/clients", label: "Kunden", icon: Users },
+  { href: "/dashboard/campaigns", label: "Kampagnen", icon: Megaphone },
+  { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: "247" },
+  { href: "/dashboard/pipeline", label: "Pipeline", icon: GitMerge },
 ] as const
 
 const SETTINGS_ITEM = { href: "/einstellungen", label: "Einstellungen", icon: Settings }

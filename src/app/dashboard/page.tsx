@@ -1,114 +1,86 @@
 import { Users, Megaphone, UserSearch, TrendingUp } from "lucide-react"
 import { KpiCard } from "@/components/dashboard/kpi-card"
-import { ClientCard, type ClientCardProps } from "@/components/dashboard/client-card"
+import { ClientCard, type PipelineSegment } from "@/components/dashboard/client-card"
+import { createSupabaseServerClient } from "@/lib/supabase-server"
 
-const KPI_DATA = [
-  {
-    icon: Users,
-    label: "Kunden",
-    value: 24,
-    trend: { value: 12 },
-    iconColor: "#1e56a0",
-  },
-  {
-    icon: Megaphone,
-    label: "Kampagnen",
-    value: 38,
-    trend: { value: 8 },
-    iconColor: "#4ba3c3",
-  },
-  {
-    icon: UserSearch,
-    label: "Kandidaten",
-    value: 247,
-    trend: { value: 23 },
-    iconColor: "#8b5cf6",
-  },
-  {
-    icon: TrendingUp,
-    label: "Platzierungen",
-    value: 61,
-    trend: { value: 5 },
-    iconColor: "#1a9a6a",
-  },
-]
+const VALID_STATUSES = new Set(["neu", "pruefung", "interview", "vorgestellt", "platziert", "abgelehnt"])
 
-const CLIENTS: ClientCardProps[] = [
-  {
-    name: "TechCorp GmbH",
-    active: true,
-    tags: ["IT", "Engineering", "Remote"],
-    stats: { kandidaten: 34, kampagnen: 5, platzierungen: 12 },
-    pipeline: [
-      { status: "neu", count: 8 },
-      { status: "pruefung", count: 10 },
-      { status: "interview", count: 7 },
-      { status: "vorgestellt", count: 5 },
-      { status: "platziert", count: 4 },
-    ],
-  },
-  {
-    name: "Bau & Partner AG",
-    active: true,
-    tags: ["Bau", "Handwerk"],
-    stats: { kandidaten: 21, kampagnen: 3, platzierungen: 8 },
-    pipeline: [
-      { status: "neu", count: 4 },
-      { status: "pruefung", count: 6 },
-      { status: "interview", count: 5 },
-      { status: "platziert", count: 6 },
-    ],
-  },
-  {
-    name: "Medizin Zentrum Nord",
-    active: true,
-    tags: ["Medizin", "Pflege", "Teilzeit"],
-    stats: { kandidaten: 45, kampagnen: 7, platzierungen: 18 },
-    pipeline: [
-      { status: "neu", count: 12 },
-      { status: "pruefung", count: 14 },
-      { status: "interview", count: 8 },
-      { status: "vorgestellt", count: 6 },
-      { status: "platziert", count: 5 },
-    ],
-  },
-  {
-    name: "Logistik Express KG",
-    active: false,
-    tags: ["Logistik", "Fahrer"],
-    stats: { kandidaten: 16, kampagnen: 2, platzierungen: 5 },
-    pipeline: [
-      { status: "abgelehnt", count: 6 },
-      { status: "platziert", count: 5 },
-      { status: "neu", count: 5 },
-    ],
-  },
-  {
-    name: "Finance Solutions SE",
-    active: true,
-    tags: ["Finance", "Banking", "Vollzeit"],
-    stats: { kandidaten: 29, kampagnen: 4, platzierungen: 9 },
-    pipeline: [
-      { status: "neu", count: 6 },
-      { status: "pruefung", count: 9 },
-      { status: "vorgestellt", count: 8 },
-      { status: "platziert", count: 6 },
-    ],
-  },
-  {
-    name: "Retail Chain Deutschland",
-    active: true,
-    tags: ["Einzelhandel", "Verkauf"],
-    stats: { kandidaten: 18, kampagnen: 3, platzierungen: 7 },
-    pipeline: [
-      { status: "neu", count: 5 },
-      { status: "interview", count: 6 },
-      { status: "platziert", count: 7 },
-    ],
-  },
-]
+export default async function DashboardPage() {
+  const supabase = await createSupabaseServerClient()
 
-export default function DashboardPage() {
+  const [
+    { data: clients },
+    { data: campaigns },
+    { data: candidates },
+    { count: clientCount },
+    { count: campaignCount },
+    { count: candidateCount },
+    { count: placementCount },
+  ] = await Promise.all([
+    supabase.from("clients").select("id, name, active"),
+    supabase.from("campaigns").select("id, client_id"),
+    supabase.from("candidates").select("campaign_id, status"),
+    supabase.from("clients").select("*", { count: "exact", head: true }),
+    supabase.from("campaigns").select("*", { count: "exact", head: true }),
+    supabase.from("candidates").select("*", { count: "exact", head: true }),
+    supabase.from("candidates").select("*", { count: "exact", head: true }).eq("status", "platziert"),
+  ])
+
+  // campaign_id -> client_id lookup
+  const campaignToClient = new Map<string, string>()
+  for (const c of campaigns ?? []) {
+    campaignToClient.set(c.id, c.client_id)
+  }
+
+  // client_id -> campaign ids
+  const clientCampaigns = new Map<string, Set<string>>()
+  // client_id -> { status -> count }
+  const clientStatusCounts = new Map<string, Record<string, number>>()
+
+  for (const c of clients ?? []) {
+    clientCampaigns.set(c.id, new Set())
+    clientStatusCounts.set(c.id, {})
+  }
+
+  for (const camp of campaigns ?? []) {
+    clientCampaigns.get(camp.client_id)?.add(camp.id)
+  }
+
+  for (const cand of candidates ?? []) {
+    const clientId = cand.campaign_id ? campaignToClient.get(cand.campaign_id) : undefined
+    if (!clientId) continue
+    const statuses = clientStatusCounts.get(clientId)
+    if (!statuses) continue
+    statuses[cand.status] = (statuses[cand.status] ?? 0) + 1
+  }
+
+  const clientCards = (clients ?? []).map((client) => {
+    const statuses = clientStatusCounts.get(client.id) ?? {}
+    const totalCandidates = Object.values(statuses).reduce((s, v) => s + v, 0)
+    const pipeline: PipelineSegment[] = Object.entries(statuses)
+      .filter(([s]) => VALID_STATUSES.has(s))
+      .map(([status, count]) => ({ status: status as PipelineSegment["status"], count }))
+
+    return {
+      name: client.name,
+      active: client.active,
+      tags: [] as string[],
+      stats: {
+        kandidaten: totalCandidates,
+        kampagnen: clientCampaigns.get(client.id)?.size ?? 0,
+        platzierungen: statuses["platziert"] ?? 0,
+      },
+      pipeline,
+    }
+  })
+
+  const kpiData = [
+    { icon: Users, label: "Kunden", value: clientCount ?? 0, iconColor: "#1e56a0" },
+    { icon: Megaphone, label: "Kampagnen", value: campaignCount ?? 0, iconColor: "#4ba3c3" },
+    { icon: UserSearch, label: "Kandidaten", value: candidateCount ?? 0, iconColor: "#8b5cf6" },
+    { icon: TrendingUp, label: "Platzierungen", value: placementCount ?? 0, iconColor: "#1a9a6a" },
+  ]
+
   return (
     <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
@@ -117,7 +89,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {KPI_DATA.map((kpi) => (
+        {kpiData.map((kpi) => (
           <KpiCard key={kpi.label} {...kpi} />
         ))}
       </div>
@@ -125,10 +97,10 @@ export default function DashboardPage() {
       <div>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Kunden</h2>
-          <span className="text-sm text-gray-500">{CLIENTS.length} Einträge</span>
+          <span className="text-sm text-gray-500">{clientCards.length} Einträge</span>
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {CLIENTS.map((client) => (
+          {clientCards.map((client) => (
             <ClientCard key={client.name} {...client} />
           ))}
         </div>
