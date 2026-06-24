@@ -34,7 +34,7 @@ export async function loginAction(_prevState: string | null, formData: FormData)
   } catch (err) {
     // ✅ VALIDIERUNGSFEHLER ABFANGEN
     if (err instanceof z.ZodError) {
-      return err.errors[0].message
+      return err.issues[0].message
     }
     return "Ein Fehler ist aufgetreten"
   }
