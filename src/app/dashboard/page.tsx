@@ -1,6 +1,7 @@
 import { Users, Megaphone, UserSearch, TrendingUp } from "lucide-react"
 import { KpiCard } from "@/components/dashboard/kpi-card"
-import { ClientCard, type PipelineSegment } from "@/components/dashboard/client-card"
+import { ClientGrid } from "@/components/dashboard/client-grid"
+import { type PipelineSegment } from "@/components/dashboard/client-card"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 
 const VALID_STATUSES = new Set(["neu", "pruefung", "interview", "vorgestellt", "platziert", "abgelehnt"])
@@ -62,6 +63,7 @@ export default async function DashboardPage() {
       .map(([status, count]) => ({ status: status as PipelineSegment["status"], count }))
 
     return {
+      id: client.id,
       name: client.name,
       active: client.active,
       tags: [] as string[],
@@ -75,10 +77,10 @@ export default async function DashboardPage() {
   })
 
   const kpiData = [
-    { icon: Users, label: "Kunden", value: clientCount ?? 0, iconColor: "#1e56a0" },
-    { icon: Megaphone, label: "Kampagnen", value: campaignCount ?? 0, iconColor: "#4ba3c3" },
-    { icon: UserSearch, label: "Kandidaten", value: candidateCount ?? 0, iconColor: "#8b5cf6" },
-    { icon: TrendingUp, label: "Platzierungen", value: placementCount ?? 0, iconColor: "#1a9a6a" },
+    { icon: Users, label: "Kunden", value: clientCount ?? 0, iconColor: "#1e56a0", href: "/dashboard/clients" },
+    { icon: Megaphone, label: "Kampagnen", value: campaignCount ?? 0, iconColor: "#4ba3c3", href: "/dashboard/campaigns" },
+    { icon: UserSearch, label: "Kandidaten", value: candidateCount ?? 0, iconColor: "#8b5cf6", href: "/dashboard/candidates" },
+    { icon: TrendingUp, label: "Platzierungen", value: placementCount ?? 0, iconColor: "#1a9a6a", href: "/dashboard/pipeline" },
   ]
 
   return (
@@ -99,11 +101,7 @@ export default async function DashboardPage() {
           <h2 className="text-lg font-semibold text-gray-900">Kunden</h2>
           <span className="text-sm text-gray-500">{clientCards.length} Einträge</span>
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {clientCards.map((client) => (
-            <ClientCard key={client.name} {...client} />
-          ))}
-        </div>
+        <ClientGrid clients={clientCards} />
       </div>
     </div>
   )

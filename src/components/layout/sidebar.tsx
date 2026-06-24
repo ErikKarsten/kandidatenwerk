@@ -83,7 +83,7 @@ export function Sidebar() {
           <NavItem
             key={item.href}
             {...item}
-            active={pathname === item.href || pathname.startsWith(item.href + "/")}
+            active={item.href === "/dashboard" ? pathname === "/dashboard" : pathname === item.href || pathname.startsWith(item.href + "/")}
           />
         ))}
       </nav>

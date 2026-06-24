@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -5,6 +6,7 @@ interface KpiCardProps {
   icon: LucideIcon
   label: string
   value: number | string
+  href?: string
   trend?: {
     value: number
     label?: string
@@ -12,11 +14,11 @@ interface KpiCardProps {
   iconColor?: string
 }
 
-export function KpiCard({ icon: Icon, label, value, trend, iconColor = "#1e56a0" }: KpiCardProps) {
+export function KpiCard({ icon: Icon, label, value, href, trend, iconColor = "#1e56a0" }: KpiCardProps) {
   const trendPositive = trend && trend.value >= 0
 
-  return (
-    <div className="rounded-xl border bg-white p-5 flex items-start gap-4" style={{ borderColor: "#dde3ea" }}>
+  const inner = (
+    <>
       <div
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
         style={{ backgroundColor: `${iconColor}18` }}
@@ -33,6 +35,27 @@ export function KpiCard({ icon: Icon, label, value, trend, iconColor = "#1e56a0"
           </p>
         )}
       </div>
+    </>
+  )
+
+  const cardClass = "rounded-xl border bg-white p-5 flex items-start gap-4"
+  const cardStyle = { borderColor: "#dde3ea" }
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className={cn(cardClass, "transition-shadow hover:shadow-md hover:border-gray-300")}
+        style={cardStyle}
+      >
+        {inner}
+      </Link>
+    )
+  }
+
+  return (
+    <div className={cardClass} style={cardStyle}>
+      {inner}
     </div>
   )
 }

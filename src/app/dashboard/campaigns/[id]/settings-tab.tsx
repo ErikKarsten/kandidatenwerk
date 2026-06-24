@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { updateCampaignSettingsAction } from "./actions"
 
@@ -12,27 +12,40 @@ const CANDIDATE_STATUSES = [
   { value: "abgelehnt", label: "Abgelehnt", bg: "#9ca3af18", dot: "#9ca3af", text: "#6b7280" },
 ]
 
-const DEFAULT_ROWS = [
-  { meta_field: "full_name", internal: "first_name" },
-  { meta_field: "phone_number", internal: "phone" },
-  { meta_field: "email", internal: "email" },
-  { meta_field: "welche_ausbildung_hast_du_absolviert", internal: "ausbildung" },
-  { meta_field: "wann_können_wir_dich_erreichen", internal: "erreichbarkeit" },
-]
+const TEMPLATES: Record<string, { label: string; fields: string[] }> = {
+  steuerfachangestellte: {
+    label: "Steuerfachangestellte (Standard)",
+    fields: [
+      "full_name",
+      "email",
+      "phone_number",
+      "welche_ausbildung_hast_du_absolviert",
+      "wann_können_wir_dich_erreichen",
+      "Startdatum",
+      "Wechselgrund",
+      "Was erwartest du vom neuen AG",
+      "Welchen Bereich machst du am liebsten",
+      "Wie viele AG in den letzten 5 Jahren",
+      "Aktuell in Steuerkanzlei",
+      "Wie groß ist diese",
+      "Welche Branchen werden dort betreut",
+      "Erfahrung mit DATEV",
+      "Alter & Wohnort",
+    ],
+  },
+}
 
-type MappingRow = { meta_field: string; internal: string }
+const DEFAULT_FIELDS = TEMPLATES.steuerfachangestellte.fields
 
-function buildInitialMapping(saved: Record<string, string> | null): MappingRow[] {
-  if (saved && Object.keys(saved).length > 0) {
-    return Object.entries(saved).map(([meta_field, internal]) => ({ meta_field, internal }))
-  }
-  return DEFAULT_ROWS.map((r) => ({ ...r }))
+function buildInitialFields(saved: string[] | null): string[] {
+  if (Array.isArray(saved) && saved.length > 0) return saved
+  return [...DEFAULT_FIELDS]
 }
 
 interface SettingsTabProps {
   campaignId: string
   metaFormId: string | null
-  metaFieldMapping: Record<string, string> | null
+  metaFieldMapping: string[] | null
 }
 
 export function SettingsTab({ campaignId, metaFormId, metaFieldMapping }: SettingsTabProps) {
@@ -41,31 +54,43 @@ export function SettingsTab({ campaignId, metaFormId, metaFieldMapping }: Settin
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [localFormId, setLocalFormId] = useState(metaFormId ?? "")
-  const [mapping, setMapping] = useState<MappingRow[]>(() => buildInitialMapping(metaFieldMapping))
+  const [fields, setFields] = useState<string[]>(() => buildInitialFields(metaFieldMapping))
+  const [newField, setNewField] = useState("")
 
-  function updateRow(index: number, field: "meta_field" | "internal", value: string) {
-    setMapping((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)))
+  // Auto-save default template on first load when no mapping is set yet
+  useEffect(() => {
+    const isEmpty = !Array.isArray(metaFieldMapping) || metaFieldMapping.length === 0
+    if (!isEmpty) return
+    const fd = new FormData()
+    fd.append("meta_form_id", metaFormId ?? "")
+    fd.append("meta_field_mapping_json", JSON.stringify(DEFAULT_FIELDS))
+    startTransition(async () => {
+      await updateCampaignSettingsAction(campaignId, fd)
+      router.refresh()
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function updateField(index: number, value: string) {
+    setFields((prev) => prev.map((f, i) => (i === index ? value : f)))
   }
 
-  function removeRow(index: number) {
-    setMapping((prev) => prev.filter((_, i) => i !== index))
+  function removeField(index: number) {
+    setFields((prev) => prev.filter((_, i) => i !== index))
   }
 
-  function addRow() {
-    setMapping((prev) => [...prev, { meta_field: "", internal: "" }])
+  function addField() {
+    const key = newField.trim()
+    if (!key) return
+    setFields((prev) => [...prev, key])
+    setNewField("")
   }
 
   function handleSave() {
     setError(null)
     setSaved(false)
-    const mappingObj: Record<string, string> = {}
-    for (const row of mapping) {
-      const key = row.meta_field.trim()
-      if (key) mappingObj[key] = row.internal.trim()
-    }
     const fd = new FormData()
     fd.append("meta_form_id", localFormId)
-    fd.append("meta_field_mapping_json", JSON.stringify(mappingObj))
+    fd.append("meta_field_mapping_json", JSON.stringify(fields.filter(Boolean)))
     startTransition(async () => {
       const result = await updateCampaignSettingsAction(campaignId, fd)
       if (result?.error) {
@@ -120,52 +145,59 @@ export function SettingsTab({ campaignId, metaFormId, metaFieldMapping }: Settin
 
       {/* Field Mapping */}
       <section>
-        <h3 className="mb-1 text-sm font-semibold text-gray-700">Field Mapping</h3>
+        <h3 className="mb-1 text-sm font-semibold text-gray-700">Felder</h3>
         <p className="mb-3 text-xs text-gray-400">
-          Meta-Feld → Internes Feld. Beim Lead-Import werden diese Felder automatisch in{" "}
-          <span className="font-mono">custom_fields</span> des Kandidaten gemappt.
+          Feldnamen aus dem Meta-Formular. Diese werden 1:1 als Keys in{" "}
+          <span className="font-mono">custom_fields</span> des Kandidaten gespeichert.
         </p>
+
+        <div className="mb-3 flex items-center gap-2">
+          <label className="text-xs font-medium text-gray-500 shrink-0">Vorlage laden</label>
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              const tpl = TEMPLATES[e.target.value]
+              if (tpl) setFields([...tpl.fields])
+              e.target.value = ""
+            }}
+            className="rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
+            style={{ borderColor: "#dde3ea" }}
+          >
+            <option value="" disabled>Vorlage auswählen…</option>
+            {Object.entries(TEMPLATES).map(([key, tpl]) => (
+              <option key={key} value={key}>{tpl.label}</option>
+            ))}
+          </select>
+        </div>
 
         <div className="overflow-hidden rounded-xl border" style={{ borderColor: "#dde3ea" }}>
           <table className="w-full text-sm">
             <thead>
               <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #dde3ea" }}>
-                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500">Meta-Feld</th>
-                <th className="w-8 px-2 py-2.5 text-center text-xs text-gray-400">→</th>
-                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500">Internes Feld</th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500">Feldname</th>
                 <th className="w-10 px-2 py-2.5" />
               </tr>
             </thead>
             <tbody>
-              {mapping.map((row, i) => (
+              {fields.map((field, i) => (
                 <tr
                   key={i}
-                  style={{ borderBottom: i < mapping.length - 1 ? "1px solid #dde3ea" : undefined }}
+                  style={{ borderBottom: i < fields.length - 1 ? "1px solid #dde3ea" : undefined }}
                 >
                   <td className="px-4 py-2">
                     <input
-                      value={row.meta_field}
-                      onChange={(e) => updateRow(i, "meta_field", e.target.value)}
-                      placeholder="meta_feld_name"
-                      className="w-full rounded border px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1"
-                      style={{ borderColor: "#dde3ea" }}
-                    />
-                  </td>
-                  <td className="px-2 py-2 text-center text-xs text-gray-400">→</td>
-                  <td className="px-4 py-2">
-                    <input
-                      value={row.internal}
-                      onChange={(e) => updateRow(i, "internal", e.target.value)}
-                      placeholder="internes_feld"
+                      value={field}
+                      onChange={(e) => updateField(i, e.target.value)}
+                      placeholder="feldname"
                       className="w-full rounded border px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1"
                       style={{ borderColor: "#dde3ea" }}
                     />
                   </td>
                   <td className="px-2 py-2 text-center">
                     <button
-                      onClick={() => removeRow(i)}
+                      onClick={() => removeField(i)}
                       className="rounded px-1.5 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                      title="Zeile entfernen"
+                      title="Feld entfernen"
                     >
                       ✕
                     </button>
@@ -175,13 +207,21 @@ export function SettingsTab({ campaignId, metaFormId, metaFieldMapping }: Settin
             </tbody>
           </table>
 
-          <div className="border-t px-4 py-2.5" style={{ borderColor: "#dde3ea" }}>
+          <div className="border-t px-4 py-2.5 flex items-center gap-2" style={{ borderColor: "#dde3ea" }}>
+            <input
+              value={newField}
+              onChange={(e) => setNewField(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addField() } }}
+              placeholder="Neues Feld…"
+              className="flex-1 rounded border px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1"
+              style={{ borderColor: "#dde3ea" }}
+            />
             <button
-              onClick={addRow}
-              className="text-xs font-medium transition-colors hover:opacity-80"
-              style={{ color: "#1e56a0" }}
+              onClick={addField}
+              className="shrink-0 rounded px-2 py-1.5 text-xs font-medium text-white"
+              style={{ backgroundColor: "#4ba3c3" }}
             >
-              + Feld hinzufügen
+              + Hinzufügen
             </button>
           </div>
         </div>

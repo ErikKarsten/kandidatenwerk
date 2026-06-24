@@ -115,6 +115,43 @@ export async function uploadFileAction(
   return null
 }
 
+export async function archiveCandidateAction(
+  candidateId: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const { error } = await supabase
+    .from("candidates")
+    .update({ status: "Archiviert" })
+    .eq("id", candidateId)
+  if (error) return { error: error.message }
+  revalidatePath("/dashboard/candidates")
+  return null
+}
+
+export async function deleteCandidateAction(
+  candidateId: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+
+  // Delete storage files first (DB rows CASCADE on candidate delete)
+  const { data: files } = await supabase
+    .from("candidate_files")
+    .select("file_path")
+    .eq("candidate_id", candidateId)
+
+  if (files && files.length > 0) {
+    await supabase.storage
+      .from("candidate-files")
+      .remove(files.map((f) => f.file_path))
+  }
+
+  const { error } = await supabase.from("candidates").delete().eq("id", candidateId)
+  if (error) return { error: error.message }
+
+  revalidatePath("/dashboard/candidates")
+  return null
+}
+
 export async function deleteFileAction(
   fileId: string,
   storagePath: string,

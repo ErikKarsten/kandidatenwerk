@@ -1,108 +1,86 @@
 import Link from "next/link"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { ClientsList } from "./clients-list"
 
-export default async function ClientsPage() {
+const ARCHIVED_STATUS = "Archiviert"
+
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ show_archived?: string }>
+}) {
+  const { show_archived } = await searchParams
+  const showArchived = show_archived === "1"
+
   const supabase = await createSupabaseServerClient()
 
-  const { data: clients } = await supabase
+  let query = supabase
     .from("clients")
-    .select("id, name, contact_name, contact_email, phone, active, created_at")
+    .select("id, name, contact_name, contact_email, active, status, logo_url, campaigns(count)")
     .order("created_at", { ascending: false })
+
+  query = showArchived
+    ? query.eq("status", ARCHIVED_STATUS)
+    : query.neq("status", ARCHIVED_STATUS)
+
+  const { data: clients } = await query
+
+  const clientList = (clients ?? []).map((c) => {
+    const countRow = Array.isArray(c.campaigns) ? c.campaigns[0] : null
+    const campaign_count = countRow ? Number((countRow as { count: number | string }).count) : 0
+    return { ...c, campaign_count }
+  })
 
   return (
     <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Kunden</h1>
-          <p className="mt-1 text-sm text-gray-500">{clients?.length ?? 0} Einträge</p>
+          <p className="mt-1 text-sm text-gray-500">{clientList.length} Einträge</p>
         </div>
-        <Button asChild style={{ backgroundColor: "#1e56a0" }}>
-          <Link href="/dashboard/clients/new">
-            <Plus size={16} />
-            Neuer Kunde
+        <div className="flex items-center gap-3">
+          <Link
+            href={showArchived ? "/dashboard/clients" : "/dashboard/clients?show_archived=1"}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-gray-50"
+            style={{
+              borderColor: showArchived ? "#1e56a0" : "#dde3ea",
+              color: showArchived ? "#1e56a0" : "#6b7280",
+              backgroundColor: showArchived ? "#1e56a018" : undefined,
+            }}
+          >
+            <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: showArchived ? "#1e56a0" : "#d1d5db" }} />
+            Archivierte anzeigen
           </Link>
-        </Button>
+          <Button asChild style={{ backgroundColor: "#1e56a0" }}>
+            <Link href="/dashboard/clients/new">
+              <Plus size={16} />
+              Neuer Kunde
+            </Link>
+          </Button>
+        </div>
       </div>
 
-      <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#dde3ea" }}>
-        <Table>
-          <TableHeader>
-            <TableRow style={{ borderColor: "#dde3ea" }}>
-              <TableHead className="text-gray-600">Unternehmen</TableHead>
-              <TableHead className="text-gray-600">Kontaktperson</TableHead>
-              <TableHead className="text-gray-600">E-Mail</TableHead>
-              <TableHead className="text-gray-600">Telefon</TableHead>
-              <TableHead className="text-gray-600">Status</TableHead>
-              <TableHead className="text-gray-600">Erstellt</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {clients && clients.length > 0 ? (
-              clients.map((client) => (
-                <TableRow key={client.id} style={{ borderColor: "#dde3ea" }}>
-                  <TableCell className="font-medium text-gray-900">{client.name}</TableCell>
-                  <TableCell className="text-gray-600">{client.contact_name ?? "—"}</TableCell>
-                  <TableCell className="text-gray-600">
-                    {client.contact_email ? (
-                      <a
-                        href={`mailto:${client.contact_email}`}
-                        className="hover:underline"
-                        style={{ color: "#1e56a0" }}
-                      >
-                        {client.contact_email}
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-gray-600">{client.phone ?? "—"}</TableCell>
-                  <TableCell>
-                    <span
-                      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-                      style={{
-                        backgroundColor: client.active ? "#1a9a6a18" : "#9ca3af18",
-                        color: client.active ? "#1a9a6a" : "#6b7280",
-                      }}
-                    >
-                      <span
-                        className="h-1.5 w-1.5 rounded-full"
-                        style={{ backgroundColor: client.active ? "#1a9a6a" : "#9ca3af" }}
-                      />
-                      {client.active ? "Aktiv" : "Inaktiv"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-gray-500 text-sm">
-                    {new Date(client.created_at).toLocaleDateString("de-DE", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                    })}
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={6} className="py-12 text-center text-gray-400">
-                  Noch keine Kunden angelegt.{" "}
-                  <Link href="/dashboard/clients/new" style={{ color: "#1e56a0" }} className="hover:underline">
-                    Ersten Kunden anlegen
-                  </Link>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {clientList.length === 0 ? (
+        <div
+          className="rounded-xl border bg-white py-16 text-center text-sm text-gray-400"
+          style={{ borderColor: "#dde3ea" }}
+        >
+          {showArchived ? (
+            "Keine archivierten Kunden vorhanden."
+          ) : (
+            <>
+              Noch keine Kunden angelegt.{" "}
+              <Link href="/dashboard/clients/new" style={{ color: "#1e56a0" }} className="hover:underline">
+                Ersten Kunden anlegen
+              </Link>
+            </>
+          )}
+        </div>
+      ) : (
+        <ClientsList clients={clientList} />
+      )}
     </div>
   )
 }

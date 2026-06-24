@@ -1,7 +1,82 @@
 "use server"
 
+import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+
+export async function getCampaignCandidatesForExport(campaignId: string): Promise<
+  { error: string } | { candidates: Array<{ first_name: string; last_name: string; email: string | null; phone: string | null; status: string; custom_fields: Record<string, string> | null }> }
+> {
+  const supabase = await createSupabaseServerClient()
+  const { data, error } = await supabase
+    .from("candidates")
+    .select("first_name, last_name, email, phone, status, custom_fields")
+    .eq("campaign_id", campaignId)
+    .order("created_at", { ascending: true })
+  if (error) return { error: error.message }
+  return {
+    candidates: (data ?? []).map((c) => ({
+      first_name: c.first_name,
+      last_name: c.last_name,
+      email: c.email,
+      phone: c.phone,
+      status: c.status,
+      custom_fields: c.custom_fields && typeof c.custom_fields === "object" && !Array.isArray(c.custom_fields)
+        ? (c.custom_fields as Record<string, string>)
+        : null,
+    })),
+  }
+}
+
+export async function deleteCampaignWithCandidatesAction(campaignId: string): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const { error: candidateErr } = await supabase.from("candidates").delete().eq("campaign_id", campaignId)
+  if (candidateErr) return { error: candidateErr.message }
+  const { error } = await supabase.from("campaigns").delete().eq("id", campaignId)
+  if (error) return { error: error.message }
+  revalidatePath("/dashboard/campaigns")
+  redirect("/dashboard/campaigns")
+}
+
+export async function archiveCampaignAction(campaignId: string): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const { error } = await supabase
+    .from("campaigns")
+    .update({ status: "Archiviert" })
+    .eq("id", campaignId)
+  if (error) return { error: error.message }
+  revalidatePath("/dashboard/campaigns")
+  redirect("/dashboard/campaigns")
+}
+
+export async function deleteCampaignAction(campaignId: string): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  // ON DELETE SET NULL handles candidates automatically
+  const { error } = await supabase.from("campaigns").delete().eq("id", campaignId)
+  if (error) return { error: error.message }
+  revalidatePath("/dashboard/campaigns")
+  redirect("/dashboard/campaigns")
+}
+
+export async function updateCampaignTitleAction(
+  campaignId: string,
+  title: string
+): Promise<{ error: string } | null> {
+  const trimmed = title.trim()
+  if (!trimmed) return { error: "Titel darf nicht leer sein." }
+
+  const supabase = await createSupabaseServerClient()
+  const { error } = await supabase
+    .from("campaigns")
+    .update({ title: trimmed })
+    .eq("id", campaignId)
+
+  if (error) return { error: error.message }
+
+  revalidatePath(`/dashboard/campaigns/${campaignId}`)
+  revalidatePath("/dashboard/campaigns")
+  return null
+}
 
 export async function updateCampaignSettingsAction(
   campaignId: string,
@@ -15,11 +90,12 @@ export async function updateCampaignSettingsAction(
   const meta_form_id = formData.get("meta_form_id") as string
   const meta_field_mapping_json = formData.get("meta_field_mapping_json") as string
 
-  let meta_field_mapping: Record<string, string> = {}
+  let meta_field_mapping: string[] = []
   try {
-    meta_field_mapping = JSON.parse(meta_field_mapping_json || "{}")
+    const parsed = JSON.parse(meta_field_mapping_json || "[]")
+    meta_field_mapping = Array.isArray(parsed) ? parsed : []
   } catch {
-    meta_field_mapping = {}
+    meta_field_mapping = []
   }
 
   const { error } = await supabase

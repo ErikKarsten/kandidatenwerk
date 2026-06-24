@@ -4,18 +4,8 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { updateCandidateProfileAction } from "./actions"
 
-const STANDARD_FIELDS = new Set(["first_name", "last_name", "phone", "email"])
-
 function formatLabel(key: string): string {
   return key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())
-}
-
-// Fields from campaign mapping that go into custom_fields (non-standard, non-empty)
-function getMappingFields(mapping: Record<string, string> | null): string[] {
-  if (!mapping) return []
-  return [...new Set(
-    Object.values(mapping).filter((internal) => internal && !STANDARD_FIELDS.has(internal))
-  )]
 }
 
 interface ProfileTabProps {
@@ -25,7 +15,7 @@ interface ProfileTabProps {
   email: string | null
   phone: string | null
   customFields: Record<string, string> | null
-  campaignMapping: Record<string, string> | null
+  campaignMapping: string[] | null
 }
 
 export function ProfileTab({
@@ -50,11 +40,10 @@ export function ProfileTab({
   const [newKey, setNewKey] = useState("")
   const [newValue, setNewValue] = useState("")
 
-  // Fields defined by the campaign mapping (stored in custom_fields)
-  const mappingFields = getMappingFields(campaignMapping)
+  // Fields defined by the campaign mapping — always shown even if value is empty
+  const mappingFields: string[] = Array.isArray(campaignMapping) ? campaignMapping : []
   const mappingFieldSet = new Set(mappingFields)
-
-  // Extra fields: in custom_fields but not from campaign mapping
+  // Extra keys: in custom_fields but not in the mapping
   const extraKeys = Object.keys(localCustom).filter((k) => !mappingFieldSet.has(k))
 
   function handleCancel() {
@@ -136,23 +125,17 @@ export function ProfileTab({
           </dl>
         </fieldset>
 
-        {/* Zusatzfelder aus Kampagnen-Mapping */}
+        {/* Zusatzfelder */}
         <fieldset className="rounded-xl border p-4" style={{ borderColor: "#dde3ea" }}>
-          <legend className="px-1 text-xs font-semibold text-gray-400">
-            {campaignMapping ? "Zusatzfelder" : "Zusatzfelder (kein Kampagnen-Mapping)"}
-          </legend>
+          <legend className="px-1 text-xs font-semibold text-gray-400">Zusatzfelder</legend>
           <dl className="mt-1 flex flex-col gap-3">
-            {mappingFields.length === 0 && extraKeys.length === 0 && (
-              <p className="text-sm text-gray-400">
-                {campaignMapping
-                  ? "Keine Zusatzfelder im Kampagnen-Mapping definiert."
-                  : "Kein Kampagnen-Mapping vorhanden."}
-              </p>
+            {mappingFields.length === 0 && extraKeys.length === 0 && !editMode && (
+              <p className="text-sm text-gray-400">Keine Zusatzfelder vorhanden.</p>
             )}
 
-            {/* Felder aus Kampagnen-Mapping */}
+            {/* Felder aus Kampagnen-Mapping — immer anzeigen */}
             {mappingFields.map((key) => (
-              <FieldRow key={key} label={formatLabel(key)} editMode={editMode}>
+              <FieldRow key={key} label={formatLabel(key)} editMode={editMode} stacked>
                 {editMode ? (
                   <input
                     className={inputClass}
@@ -164,9 +147,9 @@ export function ProfileTab({
               </FieldRow>
             ))}
 
-            {/* Manuell hinzugefügte Felder (nicht im Kampagnen-Mapping) */}
+            {/* Extra Keys: in custom_fields, aber nicht im Mapping */}
             {extraKeys.map((key) => (
-              <FieldRow key={key} label={formatLabel(key)} editMode={editMode}>
+              <FieldRow key={key} label={formatLabel(key)} editMode={editMode} stacked>
                 {editMode ? (
                   <input
                     className={inputClass}
@@ -236,21 +219,24 @@ export function ProfileTab({
 function FieldRow({
   label,
   editMode,
+  stacked = false,
   children,
 }: {
   label: string
   editMode: boolean
+  stacked?: boolean
   children: React.ReactNode
 }) {
+  const useStack = stacked || editMode
   return (
-    <div className={`flex ${editMode ? "flex-col gap-1" : "items-start gap-2"}`}>
+    <div className={`flex ${useStack ? "flex-col gap-1" : "items-start gap-2"}`}>
       <dt
-        className="shrink-0 text-sm text-gray-500"
-        style={{ minWidth: editMode ? undefined : "9rem" }}
+        className={useStack ? "text-xs font-medium text-gray-400" : "shrink-0 text-sm text-gray-500"}
+        style={{ minWidth: useStack ? undefined : "9rem" }}
       >
         {label}
       </dt>
-      <dd className={`text-sm text-gray-900 ${editMode ? "w-full" : ""}`}>{children}</dd>
+      <dd className={`text-sm text-gray-900 ${useStack ? "w-full" : ""}`}>{children}</dd>
     </div>
   )
 }

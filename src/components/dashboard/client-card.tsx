@@ -17,6 +17,7 @@ export interface PipelineSegment {
 }
 
 export interface ClientCardProps {
+  id: string
   name: string
   active: boolean
   tags: string[]

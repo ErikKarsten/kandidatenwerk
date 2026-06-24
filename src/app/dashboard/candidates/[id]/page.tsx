@@ -47,7 +47,7 @@ export default async function CandidateDetailPage({
     })
   )
 
-  type CampaignJoin = { title: string; meta_field_mapping: Record<string, string> | null; clients: { id: string; name: string } | null } | null
+  type CampaignJoin = { title: string; meta_field_mapping: string[] | null; clients: { id: string; name: string } | null } | null
   const campaigns = candidate.campaigns as CampaignJoin
 
   const candidateData = {

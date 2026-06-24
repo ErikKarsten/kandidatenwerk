@@ -10,7 +10,7 @@ export default async function CampaignDetailPage({
   const { id } = await params
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: campaign }, { data: candidates }] = await Promise.all([
+  const [{ data: campaign }, { data: candidates }, { data: automations }] = await Promise.all([
     supabase
       .from("campaigns")
       .select("*, clients(name)")
@@ -21,6 +21,11 @@ export default async function CampaignDetailPage({
       .select("id, first_name, last_name, email, phone, status, created_at")
       .eq("campaign_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("campaign_automations")
+      .select("*")
+      .eq("campaign_id", id)
+      .order("created_at", { ascending: true }),
   ])
 
   if (!campaign) notFound()
@@ -38,10 +43,12 @@ export default async function CampaignDetailPage({
         status: campaign.status,
         meta_campaign_id: campaign.meta_campaign_id,
         meta_form_id: campaign.meta_form_id ?? null,
-        meta_field_mapping: (campaign.meta_field_mapping as Record<string, string> | null) ?? null,
+        meta_field_mapping: (campaign.meta_field_mapping as string[] | null) ?? null,
         client,
       }}
       candidates={candidates ?? []}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      automations={(automations ?? []) as any}
     />
   )
 }

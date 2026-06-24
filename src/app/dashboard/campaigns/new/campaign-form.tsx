@@ -25,7 +25,7 @@ interface Client {
   name: string
 }
 
-export function CampaignForm({ clients }: { clients: Client[] }) {
+export function CampaignForm({ clients, defaultClientId }: { clients: Client[]; defaultClientId?: string | null }) {
   const [state, formAction] = useActionState<CreateCampaignState, FormData>(
     createCampaignAction,
     null
@@ -38,7 +38,7 @@ export function CampaignForm({ clients }: { clients: Client[] }) {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { status: "active" },
+    defaultValues: { status: "active", client_id: defaultClientId ?? "" },
   })
 
   function onSubmit(values: FormValues) {

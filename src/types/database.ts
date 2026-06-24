@@ -12,10 +12,104 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      campaign_automations: {
+        Row: {
+          id: string
+          campaign_id: string
+          name: string
+          trigger: string
+          trigger_status: string | null
+          delay_seconds: number
+          active: boolean
+          recipient: string
+          sender_email: string
+          sender_name: string
+          subject: string
+          body_html: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id: string
+          name: string
+          trigger?: string
+          trigger_status?: string | null
+          delay_seconds?: number
+          active?: boolean
+          recipient?: string
+          sender_email?: string
+          sender_name?: string
+          subject?: string
+          body_html?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string
+          name?: string
+          trigger?: string
+          trigger_status?: string | null
+          delay_seconds?: number
+          active?: boolean
+          recipient?: string
+          sender_email?: string
+          sender_name?: string
+          subject?: string
+          body_html?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_automations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      client_contacts: {
+        Row: {
+          id: string
+          client_id: string | null
+          name: string
+          email: string | null
+          phone: string | null
+          role: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_id?: string | null
+          name: string
+          email?: string | null
+          phone?: string | null
+          role?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string | null
+          name?: string
+          email?: string | null
+          phone?: string | null
+          role?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_contacts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       clients: {
         Row: {
           id: string
-          agency_id: string
+          agency_id: string | null
           name: string
           contact_email: string | null
           active: boolean
@@ -23,6 +117,8 @@ export type Database = {
           tags: string[] | null
           contact_name: string | null
           phone: string | null
+          logo_url: string | null
+          status: string
         }
         Insert: {
           id?: string
@@ -34,6 +130,8 @@ export type Database = {
           tags?: string[] | null
           contact_name?: string | null
           phone?: string | null
+          logo_url?: string | null
+          status?: string
         }
         Update: {
           id?: string
@@ -45,6 +143,8 @@ export type Database = {
           tags?: string[] | null
           contact_name?: string | null
           phone?: string | null
+          logo_url?: string | null
+          status?: string
         }
         Relationships: [
           {
@@ -118,7 +218,7 @@ export type Database = {
       candidates: {
         Row: {
           id: string
-          campaign_id: string | null
+          campaign_id: string
           first_name: string
           last_name: string
           email: string | null
@@ -128,11 +228,12 @@ export type Database = {
           notes: string | null
           created_at: string
           client_id: string | null
-          custom_fields: Record<string, string> | null
+          custom_fields: Json | null
+          description: string | null
         }
         Insert: {
           id?: string
-          campaign_id?: string | null
+          campaign_id: string
           first_name: string
           last_name: string
           email?: string | null
@@ -142,11 +243,12 @@ export type Database = {
           notes?: string | null
           created_at?: string
           client_id?: string | null
-          custom_fields?: Record<string, string> | null
+          custom_fields?: Json | null
+          description?: string | null
         }
         Update: {
           id?: string
-          campaign_id?: string | null
+          campaign_id?: string
           first_name?: string
           last_name?: string
           email?: string | null
@@ -156,7 +258,8 @@ export type Database = {
           notes?: string | null
           created_at?: string
           client_id?: string | null
-          custom_fields?: Record<string, string> | null
+          custom_fields?: Json | null
+          description?: string | null
         }
         Relationships: [
           {
@@ -175,44 +278,6 @@ export type Database = {
           }
         ]
       }
-      candidate_files: {
-        Row: {
-          id: string
-          candidate_id: string
-          file_name: string
-          file_path: string
-          file_size: number | null
-          mime_type: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          candidate_id: string
-          file_name: string
-          file_path: string
-          file_size?: number | null
-          mime_type?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          candidate_id?: string
-          file_name?: string
-          file_path?: string
-          file_size?: number | null
-          mime_type?: string | null
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "candidate_files_candidate_id_fkey"
-            columns: ["candidate_id"]
-            isOneToOne: false
-            referencedRelation: "candidates"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       campaigns: {
         Row: {
           id: string
@@ -221,9 +286,9 @@ export type Database = {
           description: string | null
           status: string
           meta_campaign_id: string | null
-          meta_field_mapping: Record<string, string> | null
-          meta_form_id: string | null
           created_at: string
+          meta_field_mapping: Json | null
+          meta_form_id: string | null
         }
         Insert: {
           id?: string
@@ -232,9 +297,9 @@ export type Database = {
           description?: string | null
           status?: string
           meta_campaign_id?: string | null
-          meta_field_mapping?: Record<string, string> | null
-          meta_form_id?: string | null
           created_at?: string
+          meta_field_mapping?: Json | null
+          meta_form_id?: string | null
         }
         Update: {
           id?: string
@@ -243,9 +308,9 @@ export type Database = {
           description?: string | null
           status?: string
           meta_campaign_id?: string | null
-          meta_field_mapping?: Record<string, string> | null
-          meta_form_id?: string | null
           created_at?: string
+          meta_field_mapping?: Json | null
+          meta_form_id?: string | null
         }
         Relationships: [
           {
@@ -285,6 +350,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "candidate_history_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      candidate_files: {
+        Row: {
+          id: string
+          candidate_id: string | null
+          file_name: string
+          file_path: string
+          file_size: number | null
+          mime_type: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          candidate_id?: string | null
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          mime_type?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          candidate_id?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          mime_type?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_files_candidate_id_fkey"
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"

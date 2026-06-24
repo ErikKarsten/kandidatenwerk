@@ -36,7 +36,7 @@ export async function createCandidateAction(
     status,
     source,
     notes: notes || null,
-    campaign_id: campaign_id || null,
+    campaign_id: campaign_id,
   })
 
   if (error) return { error: error.message }
