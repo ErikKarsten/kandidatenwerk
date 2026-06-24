@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { notFound } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CampaignDetail } from "./campaign-detail"

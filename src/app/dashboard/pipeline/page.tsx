@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { KanbanBoard } from "./kanban-board"
 
