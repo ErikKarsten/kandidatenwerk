@@ -12,62 +12,6 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      campaign_automations: {
-        Row: {
-          id: string
-          campaign_id: string
-          name: string
-          trigger: string
-          trigger_status: string | null
-          delay_seconds: number
-          active: boolean
-          recipient: string
-          sender_email: string
-          sender_name: string
-          subject: string
-          body_html: string
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          campaign_id: string
-          name: string
-          trigger?: string
-          trigger_status?: string | null
-          delay_seconds?: number
-          active?: boolean
-          recipient?: string
-          sender_email?: string
-          sender_name?: string
-          subject?: string
-          body_html?: string
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          campaign_id?: string
-          name?: string
-          trigger?: string
-          trigger_status?: string | null
-          delay_seconds?: number
-          active?: boolean
-          recipient?: string
-          sender_email?: string
-          sender_name?: string
-          subject?: string
-          body_html?: string
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "campaign_automations_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "campaigns"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       client_contacts: {
         Row: {
           id: string
@@ -230,6 +174,10 @@ export type Database = {
           client_id: string | null
           custom_fields: Json | null
           description: string | null
+          berufsbild: string | null
+          plz: string | null
+          lat: number | null
+          lng: number | null
         }
         Insert: {
           id?: string
@@ -245,6 +193,10 @@ export type Database = {
           client_id?: string | null
           custom_fields?: Json | null
           description?: string | null
+          berufsbild?: string | null
+          plz?: string | null
+          lat?: number | null
+          lng?: number | null
         }
         Update: {
           id?: string
@@ -260,6 +212,10 @@ export type Database = {
           client_id?: string | null
           custom_fields?: Json | null
           description?: string | null
+          berufsbild?: string | null
+          plz?: string | null
+          lat?: number | null
+          lng?: number | null
         }
         Relationships: [
           {
@@ -289,6 +245,11 @@ export type Database = {
           created_at: string
           meta_field_mapping: Json | null
           meta_form_id: string | null
+          berufsbild: string | null
+          plz: string | null
+          lat: number | null
+          lng: number | null
+          radius_km: number
         }
         Insert: {
           id?: string
@@ -300,6 +261,11 @@ export type Database = {
           created_at?: string
           meta_field_mapping?: Json | null
           meta_form_id?: string | null
+          berufsbild?: string | null
+          plz?: string | null
+          lat?: number | null
+          lng?: number | null
+          radius_km?: number
         }
         Update: {
           id?: string
@@ -311,6 +277,11 @@ export type Database = {
           created_at?: string
           meta_field_mapping?: Json | null
           meta_form_id?: string | null
+          berufsbild?: string | null
+          plz?: string | null
+          lat?: number | null
+          lng?: number | null
+          radius_km?: number
         }
         Relationships: [
           {
@@ -318,6 +289,62 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      campaign_automations: {
+        Row: {
+          id: string
+          campaign_id: string
+          name: string
+          trigger: string
+          trigger_status: string | null
+          delay_seconds: number
+          active: boolean
+          recipient: string
+          sender_email: string
+          sender_name: string
+          subject: string
+          body_html: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id: string
+          name: string
+          trigger?: string
+          trigger_status?: string | null
+          delay_seconds?: number
+          active?: boolean
+          recipient?: string
+          sender_email?: string
+          sender_name?: string
+          subject?: string
+          body_html?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string
+          name?: string
+          trigger?: string
+          trigger_status?: string | null
+          delay_seconds?: number
+          active?: boolean
+          recipient?: string
+          sender_email?: string
+          sender_name?: string
+          subject?: string
+          body_html?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_automations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
             referencedColumns: ["id"]
           }
         ]
