@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { geocodePlz } from "@/lib/geocode-plz"
 
 export type CreateCandidateState = { error: string } | null
 
@@ -30,6 +31,8 @@ export async function createCandidateAction(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
 
+  const coords = plz ? geocodePlz(plz) : null
+
   const { error } = await supabase.from("candidates").insert({
     first_name,
     last_name,
@@ -41,6 +44,8 @@ export async function createCandidateAction(
     campaign_id: campaign_id,
     berufsbild: berufsbild || null,
     plz: plz || null,
+    lat: coords?.lat ?? null,
+    lng: coords?.lng ?? null,
   })
 
   if (error) return { error: error.message }

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { geocodePlz } from "@/lib/geocode-plz"
 import type { TablesUpdate } from "@/types/database"
 
 export async function getCampaignCandidatesForExport(campaignId: string): Promise<
@@ -108,7 +109,11 @@ export async function updateCampaignSettingsAction(
     update.berufsbild = (formData.get("berufsbild") as string) || null
   }
   if (formData.has("plz")) {
-    update.plz = (formData.get("plz") as string) || null
+    const plz = (formData.get("plz") as string) || ""
+    const coords = plz ? geocodePlz(plz) : null
+    update.plz = plz || null
+    update.lat = coords?.lat ?? null
+    update.lng = coords?.lng ?? null
   }
   if (formData.has("radius_km")) {
     const radiusRaw = formData.get("radius_km") as string

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { geocodePlz } from "@/lib/geocode-plz"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -27,6 +28,8 @@ export async function updateCandidateProfileAction(
     custom_fields = {}
   }
 
+  const coords = plz ? geocodePlz(plz) : null
+
   const { error } = await supabase
     .from("candidates")
     .update({
@@ -36,6 +39,8 @@ export async function updateCandidateProfileAction(
       phone: phone || null,
       berufsbild: berufsbild || null,
       plz: plz || null,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
       custom_fields,
     })
     .eq("id", candidateId)

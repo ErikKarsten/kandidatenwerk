@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { geocodePlz } from "@/lib/geocode-plz"
 
 export type CreateCampaignState = { error: string } | null
 
@@ -26,6 +27,8 @@ export async function createCampaignAction(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
 
+  const coords = plz ? geocodePlz(plz) : null
+
   const { data: campaign, error } = await supabase
     .from("campaigns")
     .insert({
@@ -36,6 +39,8 @@ export async function createCampaignAction(
       meta_campaign_id: meta_campaign_id || null,
       berufsbild: berufsbild || null,
       plz: plz || null,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
       ...(radius_km_raw ? { radius_km: parseInt(radius_km_raw, 10) } : {}),
     })
     .select("id")
