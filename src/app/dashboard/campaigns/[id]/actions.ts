@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { geocodePlz } from "@/lib/geocode-plz"
+import { matchCampaignToCandidates } from "@/lib/matching"
 import type { TablesUpdate } from "@/types/database"
 
 export async function getCampaignCandidatesForExport(campaignId: string): Promise<
@@ -100,13 +101,22 @@ export async function updateCampaignSettingsAction(
     meta_field_mapping = []
   }
 
+  const { data: before } = await supabase
+    .from("campaigns")
+    .select("berufsbild, plz, radius_km")
+    .eq("id", campaignId)
+    .single()
+
   const update: TablesUpdate<"campaigns"> = {
     meta_form_id: meta_form_id || null,
     meta_field_mapping,
   }
 
+  let matchingRelevantChanged = false
+
   if (formData.has("berufsbild")) {
     update.berufsbild = (formData.get("berufsbild") as string) || null
+    if (update.berufsbild !== (before?.berufsbild ?? null)) matchingRelevantChanged = true
   }
   if (formData.has("plz")) {
     const plz = (formData.get("plz") as string) || ""
@@ -114,10 +124,12 @@ export async function updateCampaignSettingsAction(
     update.plz = plz || null
     update.lat = coords?.lat ?? null
     update.lng = coords?.lng ?? null
+    if (update.plz !== (before?.plz ?? null)) matchingRelevantChanged = true
   }
   if (formData.has("radius_km")) {
     const radiusRaw = formData.get("radius_km") as string
     update.radius_km = radiusRaw ? parseInt(radiusRaw, 10) : 25
+    if (update.radius_km !== (before?.radius_km ?? 25)) matchingRelevantChanged = true
   }
 
   const { error } = await supabase
@@ -126,6 +138,14 @@ export async function updateCampaignSettingsAction(
     .eq("id", campaignId)
 
   if (error) return { error: error.message }
+
+  if (matchingRelevantChanged) {
+    try {
+      await matchCampaignToCandidates(supabase, campaignId)
+    } catch (matchError) {
+      console.error("Matching fehlgeschlagen für Kampagne", campaignId, matchError)
+    }
+  }
 
   revalidatePath(`/dashboard/campaigns/${campaignId}`)
   return null

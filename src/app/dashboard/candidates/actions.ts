@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { geocodePlz } from "@/lib/geocode-plz"
+import { matchCandidateToCampaigns } from "@/lib/matching"
 
 export type CreateCandidateState = { error: string } | null
 
@@ -33,22 +34,32 @@ export async function createCandidateAction(
 
   const coords = plz ? geocodePlz(plz) : null
 
-  const { error } = await supabase.from("candidates").insert({
-    first_name,
-    last_name,
-    email: email || null,
-    phone: phone || null,
-    status,
-    source,
-    notes: notes || null,
-    campaign_id: campaign_id,
-    berufsbild: berufsbild || null,
-    plz: plz || null,
-    lat: coords?.lat ?? null,
-    lng: coords?.lng ?? null,
-  })
+  const { data: candidate, error } = await supabase
+    .from("candidates")
+    .insert({
+      first_name,
+      last_name,
+      email: email || null,
+      phone: phone || null,
+      status,
+      source,
+      notes: notes || null,
+      campaign_id: campaign_id,
+      berufsbild: berufsbild || null,
+      plz: plz || null,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
+    })
+    .select("id")
+    .single()
 
   if (error) return { error: error.message }
+
+  try {
+    await matchCandidateToCampaigns(supabase, candidate.id)
+  } catch (matchError) {
+    console.error("Matching fehlgeschlagen für Kandidat", candidate.id, matchError)
+  }
 
   redirect(redirect_to)
 }

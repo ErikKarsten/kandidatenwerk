@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { geocodePlz } from "@/lib/geocode-plz"
+import { matchCampaignToCandidates } from "@/lib/matching"
 
 export type CreateCampaignState = { error: string } | null
 
@@ -106,6 +107,12 @@ export async function createCampaignAction(
         "Hallo #Kandidatenname,\n\nvielen Dank für deine Bewerbung bei #Kundenname.\n\nNach sorgfältiger Prüfung müssen wir dir leider mitteilen, dass wir uns für andere Kandidaten entschieden haben.\n\nWir wünschen dir für deinen weiteren Weg alles Gute.\n\nHerzliche Grüße\n#Kundenname",
     },
   ])
+
+  try {
+    await matchCampaignToCandidates(supabase, campaign.id)
+  } catch (matchError) {
+    console.error("Matching fehlgeschlagen für Kampagne", campaign.id, matchError)
+  }
 
   redirect("/dashboard/campaigns")
 }

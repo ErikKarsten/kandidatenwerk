@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { geocodePlz } from "@/lib/geocode-plz"
+import { matchCandidateToCampaigns } from "@/lib/matching"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -28,6 +29,12 @@ export async function updateCandidateProfileAction(
     custom_fields = {}
   }
 
+  const { data: before } = await supabase
+    .from("candidates")
+    .select("berufsbild, plz")
+    .eq("id", candidateId)
+    .single()
+
   const coords = plz ? geocodePlz(plz) : null
 
   const { error } = await supabase
@@ -46,6 +53,16 @@ export async function updateCandidateProfileAction(
     .eq("id", candidateId)
 
   if (error) return { error: error.message }
+
+  const berufsbildChanged = (before?.berufsbild ?? null) !== (berufsbild || null)
+  const plzChanged = (before?.plz ?? null) !== (plz || null)
+  if (berufsbildChanged || plzChanged) {
+    try {
+      await matchCandidateToCampaigns(supabase, candidateId)
+    } catch (matchError) {
+      console.error("Matching fehlgeschlagen für Kandidat", candidateId, matchError)
+    }
+  }
 
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   return null
