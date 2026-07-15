@@ -18,6 +18,8 @@ export async function createCandidateAction(
   const source = "manual"
   const notes = formData.get("notes") as string
   const campaign_id = formData.get("campaign_id") as string
+  const berufsbild = formData.get("berufsbild") as string
+  const plz = formData.get("plz") as string
   const redirect_to = (formData.get("redirect_to") as string) || "/dashboard/candidates"
 
   if (!first_name) return { error: "Vorname ist ein Pflichtfeld." }
@@ -37,6 +39,8 @@ export async function createCandidateAction(
     source,
     notes: notes || null,
     campaign_id: campaign_id,
+    berufsbild: berufsbild || null,
+    plz: plz || null,
   })
 
   if (error) return { error: error.message }

@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { updateCampaignSettingsAction } from "./actions"
 
 const CANDIDATE_STATUSES = [
@@ -46,9 +47,12 @@ interface SettingsTabProps {
   campaignId: string
   metaFormId: string | null
   metaFieldMapping: string[] | null
+  berufsbild: string | null
+  plz: string | null
+  radiusKm: number | null
 }
 
-export function SettingsTab({ campaignId, metaFormId, metaFieldMapping }: SettingsTabProps) {
+export function SettingsTab({ campaignId, metaFormId, metaFieldMapping, berufsbild, plz, radiusKm }: SettingsTabProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -56,6 +60,9 @@ export function SettingsTab({ campaignId, metaFormId, metaFieldMapping }: Settin
   const [localFormId, setLocalFormId] = useState(metaFormId ?? "")
   const [fields, setFields] = useState<string[]>(() => buildInitialFields(metaFieldMapping))
   const [newField, setNewField] = useState("")
+  const [localBerufsbild, setLocalBerufsbild] = useState(berufsbild ?? "")
+  const [localPlz, setLocalPlz] = useState(plz ?? "")
+  const [localRadiusKm, setLocalRadiusKm] = useState(String(radiusKm ?? 25))
 
   // Auto-save default template on first load when no mapping is set yet
   useEffect(() => {
@@ -64,6 +71,9 @@ export function SettingsTab({ campaignId, metaFormId, metaFieldMapping }: Settin
     const fd = new FormData()
     fd.append("meta_form_id", metaFormId ?? "")
     fd.append("meta_field_mapping_json", JSON.stringify(DEFAULT_FIELDS))
+    fd.append("berufsbild", berufsbild ?? "")
+    fd.append("plz", plz ?? "")
+    fd.append("radius_km", String(radiusKm ?? 25))
     startTransition(async () => {
       await updateCampaignSettingsAction(campaignId, fd)
       router.refresh()
@@ -91,6 +101,9 @@ export function SettingsTab({ campaignId, metaFormId, metaFieldMapping }: Settin
     const fd = new FormData()
     fd.append("meta_form_id", localFormId)
     fd.append("meta_field_mapping_json", JSON.stringify(fields.filter(Boolean)))
+    fd.append("berufsbild", localBerufsbild)
+    fd.append("plz", localPlz)
+    fd.append("radius_km", localRadiusKm)
     startTransition(async () => {
       const result = await updateCampaignSettingsAction(campaignId, fd)
       if (result?.error) {
@@ -120,6 +133,55 @@ export function SettingsTab({ campaignId, metaFormId, metaFieldMapping }: Settin
               {s.label}
             </span>
           ))}
+        </div>
+      </section>
+
+      <div className="h-px" style={{ backgroundColor: "#dde3ea" }} />
+
+      {/* Matching */}
+      <section>
+        <h3 className="mb-1 text-sm font-semibold text-gray-700">Matching</h3>
+        <p className="mb-3 text-xs text-gray-400">Beruf und Standort für automatisches Matching mit Kandidaten</p>
+        <div className="flex max-w-sm flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-500">Berufsbild</label>
+            <select
+              value={localBerufsbild}
+              onChange={(e) => setLocalBerufsbild(e.target.value)}
+              className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+              style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
+            >
+              <option value="">Kein Berufsbild</option>
+              {BERUFSBILD_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500">PLZ</label>
+              <input
+                value={localPlz}
+                onChange={(e) => setLocalPlz(e.target.value)}
+                placeholder="10115"
+                maxLength={5}
+                inputMode="numeric"
+                className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+                style={{ borderColor: "#dde3ea" }}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500">Umkreis (km)</label>
+              <input
+                type="number"
+                value={localRadiusKm}
+                onChange={(e) => setLocalRadiusKm(e.target.value)}
+                placeholder="25"
+                className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+                style={{ borderColor: "#dde3ea" }}
+              />
+            </div>
+          </div>
         </div>
       </section>
 

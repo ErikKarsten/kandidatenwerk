@@ -57,6 +57,8 @@ interface Candidate {
   phone: string | null
   status: string
   notes: string | null
+  berufsbild: string | null
+  plz: string | null
   custom_fields: Record<string, string> | null
   campaign_id: string | null
   campaigns: { title: string; meta_field_mapping?: string[] | null; clients: { id: string; name: string } | null } | null
@@ -235,6 +237,8 @@ export function CandidateDetail({ candidate, history, files, campaignMapping }: 
                 lastName={candidate.last_name}
                 email={candidate.email}
                 phone={candidate.phone}
+                berufsbild={candidate.berufsbild}
+                plz={candidate.plz}
                 customFields={candidate.custom_fields}
                 campaignMapping={campaignMapping}
               />

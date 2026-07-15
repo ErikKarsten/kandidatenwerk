@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { updateCandidateProfileAction } from "./actions"
 
 function formatLabel(key: string): string {
@@ -14,6 +15,8 @@ interface ProfileTabProps {
   lastName: string
   email: string | null
   phone: string | null
+  berufsbild: string | null
+  plz: string | null
   customFields: Record<string, string> | null
   campaignMapping: string[] | null
 }
@@ -24,6 +27,8 @@ export function ProfileTab({
   lastName,
   email,
   phone,
+  berufsbild,
+  plz,
   customFields,
   campaignMapping,
 }: ProfileTabProps) {
@@ -35,6 +40,8 @@ export function ProfileTab({
   const [localLast, setLocalLast] = useState(lastName)
   const [localEmail, setLocalEmail] = useState(email ?? "")
   const [localPhone, setLocalPhone] = useState(phone ?? "")
+  const [localBerufsbild, setLocalBerufsbild] = useState(berufsbild ?? "")
+  const [localPlz, setLocalPlz] = useState(plz ?? "")
   const [localCustom, setLocalCustom] = useState<Record<string, string>>(customFields ?? {})
 
   const [newKey, setNewKey] = useState("")
@@ -51,6 +58,8 @@ export function ProfileTab({
     setLocalLast(lastName)
     setLocalEmail(email ?? "")
     setLocalPhone(phone ?? "")
+    setLocalBerufsbild(berufsbild ?? "")
+    setLocalPlz(plz ?? "")
     setLocalCustom(customFields ?? {})
     setNewKey("")
     setNewValue("")
@@ -72,6 +81,8 @@ export function ProfileTab({
       fd.append("last_name", localLast)
       fd.append("email", localEmail)
       fd.append("phone", localPhone)
+      fd.append("berufsbild", localBerufsbild)
+      fd.append("plz", localPlz)
       fd.append("custom_fields_json", JSON.stringify(localCustom))
       await updateCandidateProfileAction(candidateId, fd)
       router.refresh()
@@ -121,6 +132,26 @@ export function ProfileTab({
               {editMode ? (
                 <input className={inputClass} style={inputStyle} type="tel" value={localPhone} onChange={(e) => setLocalPhone(e.target.value)} />
               ) : (localPhone || "—")}
+            </FieldRow>
+            <FieldRow label="Berufsbild" editMode={editMode}>
+              {editMode ? (
+                <select
+                  className={inputClass}
+                  style={inputStyle}
+                  value={localBerufsbild}
+                  onChange={(e) => setLocalBerufsbild(e.target.value)}
+                >
+                  <option value="">Kein Berufsbild</option>
+                  {BERUFSBILD_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              ) : (BERUFSBILD_OPTIONS.find((o) => o.value === localBerufsbild)?.label || "—")}
+            </FieldRow>
+            <FieldRow label="PLZ" editMode={editMode}>
+              {editMode ? (
+                <input className={inputClass} style={inputStyle} value={localPlz} onChange={(e) => setLocalPlz(e.target.value)} maxLength={5} inputMode="numeric" />
+              ) : (localPlz || "—")}
             </FieldRow>
           </dl>
         </fieldset>

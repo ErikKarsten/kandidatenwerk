@@ -14,6 +14,9 @@ export async function createCampaignAction(
   const description = formData.get("description") as string
   const status = (formData.get("status") as string) || "active"
   const meta_campaign_id = formData.get("meta_campaign_id") as string
+  const berufsbild = formData.get("berufsbild") as string
+  const plz = formData.get("plz") as string
+  const radius_km_raw = formData.get("radius_km") as string
 
   if (!title) return { error: "Titel ist ein Pflichtfeld." }
   if (!client_id) return { error: "Bitte einen Kunden auswählen." }
@@ -31,6 +34,9 @@ export async function createCampaignAction(
       description: description || null,
       status,
       meta_campaign_id: meta_campaign_id || null,
+      berufsbild: berufsbild || null,
+      plz: plz || null,
+      ...(radius_km_raw ? { radius_km: parseInt(radius_km_raw, 10) } : {}),
     })
     .select("id")
     .single()

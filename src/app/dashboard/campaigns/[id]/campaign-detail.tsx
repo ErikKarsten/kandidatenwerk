@@ -79,6 +79,9 @@ interface Campaign {
   meta_campaign_id: string | null
   meta_form_id: string | null
   meta_field_mapping: string[] | null
+  berufsbild: string | null
+  plz: string | null
+  radius_km: number | null
   client: { name: string } | null
 }
 
@@ -551,6 +554,9 @@ export function CampaignDetail({ campaign, candidates, automations }: CampaignDe
             campaignId={campaign.id}
             metaFormId={campaign.meta_form_id}
             metaFieldMapping={campaign.meta_field_mapping}
+            berufsbild={campaign.berufsbild}
+            plz={campaign.plz}
+            radiusKm={campaign.radius_km}
           />
         </div>
       )}

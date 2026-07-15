@@ -8,6 +8,7 @@ import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { createCandidateAction, type CreateCandidateState } from "../actions"
 
 const schema = z.object({
@@ -18,6 +19,8 @@ const schema = z.object({
   status: z.enum(["neu", "interview", "vorgestellt", "platziert", "abgelehnt"]),
   notes: z.string().optional(),
   campaign_id: z.string().optional(),
+  berufsbild: z.string().optional(),
+  plz: z.string().regex(/^\d{5}$/, "PLZ muss 5-stellig sein").optional().or(z.literal("")),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -66,6 +69,8 @@ export function CandidateForm({
     if (values.phone) fd.append("phone", values.phone)
     if (values.notes) fd.append("notes", values.notes)
     if (values.campaign_id) fd.append("campaign_id", values.campaign_id)
+    if (values.berufsbild) fd.append("berufsbild", values.berufsbild)
+    if (values.plz) fd.append("plz", values.plz)
     fd.append(
       "redirect_to",
       values.campaign_id
@@ -125,6 +130,32 @@ export function CandidateForm({
           <option value="abgelehnt">Abgelehnt</option>
         </select>
       </Field>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Berufsbild" error={errors.berufsbild?.message}>
+          <select
+            id="berufsbild"
+            {...register("berufsbild")}
+            className="flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
+            defaultValue=""
+          >
+            <option value="">Kein Berufsbild</option>
+            {BERUFSBILD_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="PLZ" error={errors.plz?.message}>
+          <Input
+            id="plz"
+            {...register("plz")}
+            placeholder="10115"
+            maxLength={5}
+            inputMode="numeric"
+          />
+        </Field>
+      </div>
 
       <Field label="Notizen" error={errors.notes?.message}>
         <textarea

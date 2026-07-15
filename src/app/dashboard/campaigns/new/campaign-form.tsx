@@ -8,6 +8,7 @@ import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { createCampaignAction, type CreateCampaignState } from "../actions"
 
 const schema = z.object({
@@ -16,6 +17,9 @@ const schema = z.object({
   description: z.string().optional(),
   status: z.enum(["active", "paused", "completed"]),
   meta_campaign_id: z.string().optional(),
+  berufsbild: z.string().optional(),
+  plz: z.string().regex(/^\d{5}$/, "PLZ muss 5-stellig sein").optional().or(z.literal("")),
+  radius_km: z.string().optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -38,7 +42,7 @@ export function CampaignForm({ clients, defaultClientId }: { clients: Client[]; 
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { status: "active", client_id: defaultClientId ?? "" },
+    defaultValues: { status: "active", client_id: defaultClientId ?? "", radius_km: "25" },
   })
 
   function onSubmit(values: FormValues) {
@@ -48,6 +52,9 @@ export function CampaignForm({ clients, defaultClientId }: { clients: Client[]; 
     fd.append("status", values.status)
     if (values.description) fd.append("description", values.description)
     if (values.meta_campaign_id) fd.append("meta_campaign_id", values.meta_campaign_id)
+    if (values.berufsbild) fd.append("berufsbild", values.berufsbild)
+    if (values.plz) fd.append("plz", values.plz)
+    if (values.radius_km) fd.append("radius_km", values.radius_km)
     startTransition(() => formAction(fd))
   }
 
@@ -110,6 +117,41 @@ export function CampaignForm({ clients, defaultClientId }: { clients: Client[]; 
           className="font-mono"
         />
       </Field>
+
+      <Field label="Berufsbild" error={errors.berufsbild?.message}>
+        <select
+          id="berufsbild"
+          {...register("berufsbild")}
+          className="flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
+          defaultValue=""
+        >
+          <option value="">Kein Berufsbild</option>
+          {BERUFSBILD_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </Field>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="PLZ" error={errors.plz?.message}>
+          <Input
+            id="plz"
+            {...register("plz")}
+            placeholder="10115"
+            maxLength={5}
+            inputMode="numeric"
+          />
+        </Field>
+        <Field label="Umkreis (km)" error={errors.radius_km?.message}>
+          <Input
+            id="radius_km"
+            type="number"
+            {...register("radius_km")}
+            placeholder="25"
+          />
+        </Field>
+      </div>
 
       {state?.error && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{state.error}</p>

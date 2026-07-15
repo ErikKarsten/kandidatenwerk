@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import type { TablesUpdate } from "@/types/database"
 
 export async function getCampaignCandidatesForExport(campaignId: string): Promise<
   { error: string } | { candidates: Array<{ first_name: string; last_name: string; email: string | null; phone: string | null; status: string; custom_fields: Record<string, string> | null }> }
@@ -98,12 +99,25 @@ export async function updateCampaignSettingsAction(
     meta_field_mapping = []
   }
 
+  const update: TablesUpdate<"campaigns"> = {
+    meta_form_id: meta_form_id || null,
+    meta_field_mapping,
+  }
+
+  if (formData.has("berufsbild")) {
+    update.berufsbild = (formData.get("berufsbild") as string) || null
+  }
+  if (formData.has("plz")) {
+    update.plz = (formData.get("plz") as string) || null
+  }
+  if (formData.has("radius_km")) {
+    const radiusRaw = formData.get("radius_km") as string
+    update.radius_km = radiusRaw ? parseInt(radiusRaw, 10) : 25
+  }
+
   const { error } = await supabase
     .from("campaigns")
-    .update({
-      meta_form_id: meta_form_id || null,
-      meta_field_mapping,
-    })
+    .update(update)
     .eq("id", campaignId)
 
   if (error) return { error: error.message }

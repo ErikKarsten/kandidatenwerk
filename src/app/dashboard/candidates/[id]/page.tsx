@@ -60,6 +60,8 @@ export default async function CandidateDetailPage({
     phone: candidate.phone,
     status: candidate.status,
     notes: candidate.notes,
+    berufsbild: candidate.berufsbild ?? null,
+    plz: candidate.plz ?? null,
     custom_fields: (candidate.custom_fields as Record<string, string> | null) ?? null,
     campaign_id: candidate.campaign_id,
     campaigns: campaigns,

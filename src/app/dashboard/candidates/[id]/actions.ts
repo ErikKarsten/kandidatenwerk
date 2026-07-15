@@ -16,6 +16,8 @@ export async function updateCandidateProfileAction(
   const last_name = formData.get("last_name") as string
   const email = formData.get("email") as string
   const phone = formData.get("phone") as string
+  const berufsbild = formData.get("berufsbild") as string
+  const plz = formData.get("plz") as string
   const custom_fields_json = formData.get("custom_fields_json") as string
 
   let custom_fields: Record<string, string> = {}
@@ -27,7 +29,15 @@ export async function updateCandidateProfileAction(
 
   const { error } = await supabase
     .from("candidates")
-    .update({ first_name, last_name, email: email || null, phone: phone || null, custom_fields })
+    .update({
+      first_name,
+      last_name,
+      email: email || null,
+      phone: phone || null,
+      berufsbild: berufsbild || null,
+      plz: plz || null,
+      custom_fields,
+    })
     .eq("id", candidateId)
 
   if (error) return { error: error.message }

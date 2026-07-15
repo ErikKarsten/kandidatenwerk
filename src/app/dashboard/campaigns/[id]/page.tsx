@@ -46,6 +46,9 @@ export default async function CampaignDetailPage({
         meta_campaign_id: campaign.meta_campaign_id,
         meta_form_id: campaign.meta_form_id ?? null,
         meta_field_mapping: (campaign.meta_field_mapping as string[] | null) ?? null,
+        berufsbild: campaign.berufsbild ?? null,
+        plz: campaign.plz ?? null,
+        radius_km: campaign.radius_km ?? null,
         client,
       }}
       candidates={candidates ?? []}
