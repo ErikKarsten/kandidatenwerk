@@ -10,7 +10,7 @@ CREATE TABLE candidate_campaign_matches (
   UNIQUE (candidate_id, campaign_id)
 );
 CREATE INDEX idx_candidate_campaign_matches_candidate_id ON candidate_campaign_matches (candidate_id);
-CREATE INDEX idx_candidate_campaign_mes_campaign_id ON candidate_campaign_matches (campaign_id);
+CREATE INDEX idx_candidate_campaign_matches_campaign_id ON candidate_campaign_matches (campaign_id);
 ALTER TABLE candidate_campaign_matches ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Matches der eigenen Agentur"
 ON candidate_campaign_matches FOR ALL TO public
