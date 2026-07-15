@@ -23,6 +23,7 @@ import {
 import { CandidateStatusSelect } from "./candidate-status-select"
 import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
+import { MatchesTab } from "./matches-tab"
 import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
 
 const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
@@ -85,10 +86,21 @@ interface Campaign {
   client: { name: string } | null
 }
 
+interface CandidateMatch {
+  id: string
+  candidateId: string
+  firstName: string
+  lastName: string
+  distanceKm: number | null
+  status: string
+  matchedAt: string
+}
+
 interface CampaignDetailProps {
   campaign: Campaign
   candidates: Candidate[]
   automations: Automation[]
+  matches: CandidateMatch[]
 }
 
 type ModalStep = null | "choice" | "delete_options"
@@ -118,8 +130,8 @@ function triggerCSVDownload(csv: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function CampaignDetail({ campaign, candidates, automations }: CampaignDetailProps) {
-  const [tab, setTab] = useState<"kandidaten" | "einrichtung" | "automatisierungen">("kandidaten")
+export function CampaignDetail({ campaign, candidates, automations, matches }: CampaignDetailProps) {
+  const [tab, setTab] = useState<"kandidaten" | "matches" | "einrichtung" | "automatisierungen">("kandidaten")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [selectedOption, setSelectedOption] = useState<CandidateOption | null>(null)
   const [modalError, setModalError] = useState<string | null>(null)
@@ -381,6 +393,12 @@ export function CampaignDetail({ campaign, candidates, automations }: CampaignDe
             ({candidates.length})
           </span>
         </TabButton>
+        <TabButton active={tab === "matches"} onClick={() => setTab("matches")}>
+          Passende Kandidaten{" "}
+          <span className="ml-1 text-xs font-normal" style={{ opacity: 0.7 }}>
+            ({matches.length})
+          </span>
+        </TabButton>
         <TabButton active={tab === "einrichtung"} onClick={() => setTab("einrichtung")}>
           Einrichtung
         </TabButton>
@@ -541,6 +559,9 @@ export function CampaignDetail({ campaign, candidates, automations }: CampaignDe
           )}
         </div>
       )}
+
+      {/* Matches-Tab */}
+      {tab === "matches" && <MatchesTab matches={matches} />}
 
       {/* Automatisierungen-Tab */}
       {tab === "automatisierungen" && (

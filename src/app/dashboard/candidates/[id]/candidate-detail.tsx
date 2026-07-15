@@ -7,6 +7,7 @@ import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import { saveDescriptionAction, addNoteAction, archiveCandidateAction, deleteCandidateAction } from "./actions"
 import { ProfileTab } from "./profile-tab"
 import { FilesTab } from "./files-tab"
+import { MatchesSection } from "./matches-section"
 
 const STATUS_OPTIONS = [
   { value: "neu", label: "Neu" },
@@ -49,6 +50,16 @@ interface FileItem {
   signedUrl: string | null
 }
 
+interface CampaignMatch {
+  id: string
+  campaignId: string
+  campaignTitle: string
+  clientName: string | null
+  distanceKm: number | null
+  status: string
+  matchedAt: string
+}
+
 interface Candidate {
   id: string
   first_name: string
@@ -69,11 +80,12 @@ interface CandidateDetailProps {
   history: HistoryEntry[]
   files: FileItem[]
   campaignMapping: string[] | null
+  matches: CampaignMatch[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, campaignMapping }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, campaignMapping, matches }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien">("profil")
@@ -253,6 +265,7 @@ export function CandidateDetail({ candidate, history, files, campaignMapping }: 
         <div className="flex flex-col gap-4">
           <ContactChips email={candidate.email} phone={candidate.phone} />
           <CampaignInfoCard campaignId={candidate.campaign_id} campaigns={candidate.campaigns} />
+          <MatchesSection matches={matches} />
           <DescriptionSection candidateId={candidate.id} notes={candidate.notes} />
           <NoteSection candidateId={candidate.id} />
           <HistoryList history={history} />

@@ -12,7 +12,7 @@ export default async function CampaignDetailPage({
   const { id } = await params
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: campaign }, { data: candidates }, { data: automations }] = await Promise.all([
+  const [{ data: campaign }, { data: candidates }, { data: automations }, { data: matchRows }] = await Promise.all([
     supabase
       .from("campaigns")
       .select("*, clients(name)")
@@ -28,6 +28,11 @@ export default async function CampaignDetailPage({
       .select("*")
       .eq("campaign_id", id)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("candidate_campaign_matches")
+      .select("id, distance_km, status, matched_at, candidates(id, first_name, last_name)")
+      .eq("campaign_id", id)
+      .order("matched_at", { ascending: false }),
   ])
 
   if (!campaign) notFound()
@@ -35,6 +40,20 @@ export default async function CampaignDetailPage({
   const client = Array.isArray(campaign.clients)
     ? campaign.clients[0] ?? null
     : (campaign.clients as { name: string } | null)
+
+  type MatchCandidateJoin = { id: string; first_name: string; last_name: string } | null
+  const matches = (matchRows ?? []).map((m) => {
+    const matchCandidate = m.candidates as MatchCandidateJoin
+    return {
+      id: m.id,
+      candidateId: matchCandidate?.id ?? "",
+      firstName: matchCandidate?.first_name ?? "Unbekannt",
+      lastName: matchCandidate?.last_name ?? "",
+      distanceKm: m.distance_km,
+      status: m.status,
+      matchedAt: m.matched_at,
+    }
+  })
 
   return (
     <CampaignDetail
@@ -54,6 +73,7 @@ export default async function CampaignDetailPage({
       candidates={candidates ?? []}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       automations={(automations ?? []) as any}
+      matches={matches}
     />
   )
 }
