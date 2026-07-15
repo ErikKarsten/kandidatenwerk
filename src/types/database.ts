@@ -384,6 +384,51 @@ export type Database = {
           }
         ]
       }
+      candidate_campaign_matches: {
+        Row: {
+          id: string
+          candidate_id: string
+          campaign_id: string
+          distance_km: number | null
+          status: string
+          matched_automatically: boolean
+          matched_at: string
+        }
+        Insert: {
+          id?: string
+          candidate_id: string
+          campaign_id: string
+          distance_km?: number | null
+          status?: string
+          matched_automatically?: boolean
+          matched_at?: string
+        }
+        Update: {
+          id?: string
+          candidate_id?: string
+          campaign_id?: string
+          distance_km?: number | null
+          status?: string
+          matched_automatically?: boolean
+          matched_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_campaign_matches_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_campaign_matches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       candidate_files: {
         Row: {
           id: string
