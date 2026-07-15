@@ -162,7 +162,7 @@ export type Database = {
       candidates: {
         Row: {
           id: string
-          campaign_id: string
+          campaign_id: string | null
           first_name: string
           last_name: string
           email: string | null
@@ -181,7 +181,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          campaign_id: string
+          campaign_id?: string | null
           first_name: string
           last_name: string
           email?: string | null
@@ -200,7 +200,7 @@ export type Database = {
         }
         Update: {
           id?: string
-          campaign_id?: string
+          campaign_id?: string | null
           first_name?: string
           last_name?: string
           email?: string | null
