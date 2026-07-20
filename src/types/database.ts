@@ -63,6 +63,7 @@ export type Database = {
           phone: string | null
           logo_url: string | null
           status: string
+          kanzleistelle_company_id: string | null
         }
         Insert: {
           id?: string
@@ -76,6 +77,7 @@ export type Database = {
           phone?: string | null
           logo_url?: string | null
           status?: string
+          kanzleistelle_company_id?: string | null
         }
         Update: {
           id?: string
@@ -89,6 +91,7 @@ export type Database = {
           phone?: string | null
           logo_url?: string | null
           status?: string
+          kanzleistelle_company_id?: string | null
         }
         Relationships: [
           {
@@ -178,6 +181,7 @@ export type Database = {
           plz: string | null
           lat: number | null
           lng: number | null
+          kanzleistelle_application_id: string | null
         }
         Insert: {
           id?: string
@@ -197,6 +201,7 @@ export type Database = {
           plz?: string | null
           lat?: number | null
           lng?: number | null
+          kanzleistelle_application_id?: string | null
         }
         Update: {
           id?: string
@@ -216,6 +221,7 @@ export type Database = {
           plz?: string | null
           lat?: number | null
           lng?: number | null
+          kanzleistelle_application_id?: string | null
         }
         Relationships: [
           {
@@ -250,6 +256,7 @@ export type Database = {
           lat: number | null
           lng: number | null
           radius_km: number
+          kanzleistelle_job_id: string | null
         }
         Insert: {
           id?: string
@@ -266,6 +273,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           radius_km?: number
+          kanzleistelle_job_id?: string | null
         }
         Update: {
           id?: string
@@ -282,6 +290,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           radius_km?: number
+          kanzleistelle_job_id?: string | null
         }
         Relationships: [
           {
