@@ -1,0 +1,15 @@
+name: Kanzleistelle24-Sync
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Sync-Endpoint
+        run: |
+          curl --fail-with-body -sS -X POST "${{ vars.PRODUCTION_URL }}/api/cron/sync-kanzleistelle" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
