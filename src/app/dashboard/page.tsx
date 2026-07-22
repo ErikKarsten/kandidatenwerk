@@ -1,5 +1,3 @@
-export const runtime = 'edge';
-
 import { Users, Megaphone, UserSearch, TrendingUp } from "lucide-react"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { ClientGrid } from "@/components/dashboard/client-grid"

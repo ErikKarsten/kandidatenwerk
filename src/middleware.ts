@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 
-export async function proxy(request: NextRequest) {
+export const runtime = "experimental-edge"
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   let response = NextResponse.next({
