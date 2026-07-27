@@ -17,20 +17,9 @@ export async function loginAction(_prevState: string | null, formData: FormData)
   }
 
   // ✅ INPUT VALIDATION MIT ZOD
+  let validated
   try {
-    const validated = candidateLoginSchema.parse({ email, password })
-    
-    const supabase = await createSupabaseServerClient()
-    const { error } = await supabase.auth.signInWithPassword({ 
-      email: validated.email, 
-      password: validated.password 
-    })
-
-    if (error) {
-      return error.message
-    }
-
-    redirect("/dashboard")
+    validated = candidateLoginSchema.parse({ email, password })
   } catch (err) {
     // ✅ VALIDIERUNGSFEHLER ABFANGEN
     if (err instanceof z.ZodError) {
@@ -38,4 +27,18 @@ export async function loginAction(_prevState: string | null, formData: FormData)
     }
     return "Ein Fehler ist aufgetreten"
   }
+
+  const supabase = await createSupabaseServerClient()
+  const { error } = await supabase.auth.signInWithPassword({
+    email: validated.email,
+    password: validated.password,
+  })
+
+  if (error) {
+    return error.message
+  }
+
+  // redirect() wirft intern einen NEXT_REDIRECT-Fehler und muss daher außerhalb
+  // jedes try/catch aufgerufen werden, sonst wird der Redirect fälschlich abgefangen.
+  redirect("/dashboard")
 }
