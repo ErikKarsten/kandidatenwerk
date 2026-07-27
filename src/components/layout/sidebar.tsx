@@ -7,6 +7,7 @@ import {
   Users,
   Megaphone,
   UserSearch,
+  GitCompare,
   GitMerge,
   Settings,
   Briefcase,
@@ -14,13 +15,16 @@ import {
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/clients", label: "Kunden", icon: Users },
-  { href: "/dashboard/campaigns", label: "Kampagnen", icon: Megaphone },
-  { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: "247" },
-  { href: "/dashboard/pipeline", label: "Pipeline", icon: GitMerge },
-] as const
+function buildNavItems(matchesCount: number) {
+  return [
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/dashboard/clients", label: "Kunden", icon: Users },
+    { href: "/dashboard/campaigns", label: "Kampagnen", icon: Megaphone },
+    { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: "247" },
+    { href: "/dashboard/matches", label: "Matching", icon: GitCompare, badge: String(matchesCount) },
+    { href: "/dashboard/pipeline", label: "Pipeline", icon: GitMerge },
+  ] as const
+}
 
 const SETTINGS_ITEM = { href: "/einstellungen", label: "Einstellungen", icon: Settings }
 
@@ -58,8 +62,9 @@ function NavItem({ href, label, icon: Icon, badge, active }: NavItemProps) {
   )
 }
 
-export function Sidebar() {
+export function Sidebar({ matchesCount = 0 }: { matchesCount?: number }) {
   const pathname = usePathname()
+  const navItems = buildNavItems(matchesCount)
 
   return (
     <aside
@@ -79,7 +84,7 @@ export function Sidebar() {
       <div className="mx-3 mb-4 h-px" style={{ backgroundColor: "rgba(255,255,255,0.08)" }} />
 
       <nav className="flex flex-1 flex-col gap-1 px-3">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <NavItem
             key={item.href}
             {...item}
