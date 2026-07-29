@@ -15,12 +15,12 @@ import {
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 
-function buildNavItems(matchesCount: number) {
+function buildNavItems(matchesCount: number, candidatesCount: number) {
   return [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/dashboard/clients", label: "Kunden", icon: Users },
     { href: "/dashboard/campaigns", label: "Kampagnen", icon: Megaphone },
-    { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: "247" },
+    { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: String(candidatesCount) },
     { href: "/dashboard/matches", label: "Matching", icon: GitCompare, badge: String(matchesCount) },
     { href: "/dashboard/pipeline", label: "Pipeline", icon: GitMerge },
   ] as const
@@ -62,9 +62,15 @@ function NavItem({ href, label, icon: Icon, badge, active }: NavItemProps) {
   )
 }
 
-export function Sidebar({ matchesCount = 0 }: { matchesCount?: number }) {
+export function Sidebar({
+  matchesCount = 0,
+  candidatesCount = 0,
+}: {
+  matchesCount?: number
+  candidatesCount?: number
+}) {
   const pathname = usePathname()
-  const navItems = buildNavItems(matchesCount)
+  const navItems = buildNavItems(matchesCount, candidatesCount)
 
   return (
     <aside
