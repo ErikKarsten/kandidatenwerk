@@ -66,6 +66,13 @@ export function mapKanzleistelleBerufsbild(text: string): Berufsbild | null {
   if (normalized.includes("bilanzbuchhalter")) return "bilanzbuchhalter"
   if (normalized.includes("steuerberater")) return "steuerberater"
 
+  // Fallback: gängige Kürzel, wie sie in Leadtable-Kampagnennamen auftauchen
+  // (z.B. "Aachen - SFA", "Schwarz Partners - SFW", "... - BB").
+  if (/\bsfa\b/.test(normalized)) return "steuerfachangestellte"
+  if (/\bsfw\b/.test(normalized)) return "steuerfachwirt"
+  if (/\bstb\b/.test(normalized)) return "steuerberater"
+  if (/\bbb\b/.test(normalized)) return "bilanzbuchhalter"
+
   return null
 }
 
