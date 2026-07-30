@@ -64,6 +64,7 @@ export type Database = {
           logo_url: string | null
           status: string
           kanzleistelle_company_id: string | null
+          leadtable_customer_id: string | null
         }
         Insert: {
           id?: string
@@ -78,6 +79,7 @@ export type Database = {
           logo_url?: string | null
           status?: string
           kanzleistelle_company_id?: string | null
+          leadtable_customer_id?: string | null
         }
         Update: {
           id?: string
@@ -92,6 +94,7 @@ export type Database = {
           logo_url?: string | null
           status?: string
           kanzleistelle_company_id?: string | null
+          leadtable_customer_id?: string | null
         }
         Relationships: [
           {
@@ -257,6 +260,7 @@ export type Database = {
           lng: number | null
           radius_km: number
           kanzleistelle_job_id: string | null
+          leadtable_campaign_id: string | null
         }
         Insert: {
           id?: string
@@ -274,6 +278,7 @@ export type Database = {
           lng?: number | null
           radius_km?: number
           kanzleistelle_job_id?: string | null
+          leadtable_campaign_id?: string | null
         }
         Update: {
           id?: string
@@ -291,6 +296,7 @@ export type Database = {
           lng?: number | null
           radius_km?: number
           kanzleistelle_job_id?: string | null
+          leadtable_campaign_id?: string | null
         }
         Relationships: [
           {
