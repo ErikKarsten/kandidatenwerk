@@ -153,7 +153,8 @@ export type ImportLeadtableCampaignResult = {
 export async function importLeadtableCampaign(
   customerId: string,
   campaignId: string,
-  campaignName: string
+  campaignName: string,
+  campaignRecordId?: string
 ): Promise<ImportLeadtableCampaignResult> {
   void customerId // aktuell ohne Kandidatenwerk-Client-Zuordnung, für spätere Erweiterung vorgesehen
 
@@ -161,6 +162,18 @@ export async function importLeadtableCampaign(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SECRET_KEY!
   )
+
+  let clientRecordId: string | null = null
+  if (campaignRecordId) {
+    const { data: campaignRecord, error: campaignRecordError } = await kandidatenwerk
+      .from("campaigns")
+      .select("client_id")
+      .eq("id", campaignRecordId)
+      .single()
+
+    if (campaignRecordError) throw new Error(campaignRecordError.message)
+    clientRecordId = campaignRecord.client_id
+  }
 
   const leads = await fetchAllLeads(campaignId)
   const berufsbild = mapKanzleistelleBerufsbild(campaignName)
@@ -212,6 +225,8 @@ export async function importLeadtableCampaign(
         plz: null,
         status: mappedStatus,
         source: "leadtable",
+        campaign_id: campaignRecordId ?? null,
+        client_id: clientRecordId,
         notes: `${notePrefix}Import aus Leadtable, Kampagne "${campaignName}", ursprünglicher Status: "${lead.status}"`,
       })
 
