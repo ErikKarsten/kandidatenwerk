@@ -9,10 +9,21 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { count: candidatesCount } = await supabase
     .from("candidates")
     .select("id", { count: "exact", head: true })
+  const { count: clientsCount } = await supabase
+    .from("clients")
+    .select("id", { count: "exact", head: true })
+  const { count: campaignsCount } = await supabase
+    .from("campaigns")
+    .select("id", { count: "exact", head: true })
 
   return (
     <div className="flex h-full">
-      <Sidebar matchesCount={matchesCount ?? 0} candidatesCount={candidatesCount ?? 0} />
+      <Sidebar
+        matchesCount={matchesCount ?? 0}
+        candidatesCount={candidatesCount ?? 0}
+        clientsCount={clientsCount ?? 0}
+        campaignsCount={campaignsCount ?? 0}
+      />
       <main className="flex-1 overflow-y-auto">{children}</main>
     </div>
   )

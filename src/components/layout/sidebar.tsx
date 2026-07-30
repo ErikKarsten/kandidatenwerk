@@ -15,11 +15,16 @@ import {
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 
-function buildNavItems(matchesCount: number, candidatesCount: number) {
+function buildNavItems(
+  matchesCount: number,
+  candidatesCount: number,
+  clientsCount: number,
+  campaignsCount: number
+) {
   return [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/dashboard/clients", label: "Kunden", icon: Users },
-    { href: "/dashboard/campaigns", label: "Kampagnen", icon: Megaphone },
+    { href: "/dashboard/clients", label: "Kunden", icon: Users, badge: String(clientsCount) },
+    { href: "/dashboard/campaigns", label: "Kampagnen", icon: Megaphone, badge: String(campaignsCount) },
     { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: String(candidatesCount) },
     { href: "/dashboard/matches", label: "Matching", icon: GitCompare, badge: String(matchesCount) },
     { href: "/dashboard/pipeline", label: "Pipeline", icon: GitMerge },
@@ -65,12 +70,16 @@ function NavItem({ href, label, icon: Icon, badge, active }: NavItemProps) {
 export function Sidebar({
   matchesCount = 0,
   candidatesCount = 0,
+  clientsCount = 0,
+  campaignsCount = 0,
 }: {
   matchesCount?: number
   candidatesCount?: number
+  clientsCount?: number
+  campaignsCount?: number
 }) {
   const pathname = usePathname()
-  const navItems = buildNavItems(matchesCount, candidatesCount)
+  const navItems = buildNavItems(matchesCount, candidatesCount, clientsCount, campaignsCount)
 
   return (
     <aside
