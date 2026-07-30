@@ -65,6 +65,9 @@ export type Database = {
           status: string
           kanzleistelle_company_id: string | null
           leadtable_customer_id: string | null
+          plz: string | null
+          lat: number | null
+          lng: number | null
         }
         Insert: {
           id?: string
@@ -80,6 +83,9 @@ export type Database = {
           status?: string
           kanzleistelle_company_id?: string | null
           leadtable_customer_id?: string | null
+          plz?: string | null
+          lat?: number | null
+          lng?: number | null
         }
         Update: {
           id?: string
@@ -95,6 +101,9 @@ export type Database = {
           status?: string
           kanzleistelle_company_id?: string | null
           leadtable_customer_id?: string | null
+          plz?: string | null
+          lat?: number | null
+          lng?: number | null
         }
         Relationships: [
           {
