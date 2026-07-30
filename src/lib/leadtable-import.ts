@@ -31,11 +31,92 @@ const STATUS_MAP: Record<string, string> = {
 }
 const FALLBACK_STATUS = "neu"
 
-function splitName(name: string): { first_name: string; last_name: string } {
-  const trimmed = name.trim()
-  const spaceIndex = trimmed.indexOf(" ")
-  if (spaceIndex === -1) return { first_name: trimmed, last_name: "" }
-  return { first_name: trimmed.slice(0, spaceIndex), last_name: trimmed.slice(spaceIndex + 1) }
+// Ab wie vielen Wörtern ein Leadtable-"name" als verkettet gilt statt als echter,
+// sauberer Name (Leadtable mappt bei manchen Kunden Meta-Anzeigen-/Kampagnennamen
+// versehentlich mit auf dasselbe Namensfeld, siehe z.B. "Wolfgang Schnitter BB - A
+// Wolfgang Schnitter - BB Wolfgang Schnitter Marc Büttner").
+const LONG_NAME_WORD_THRESHOLD = 4
+
+// Begriffe, die typischerweise aus Firmen-/Kampagnennamen stammen, nicht aus echten
+// Vornamen — verhindert, dass z.B. "Partner" oder "SFA" fälschlich als Vorname gilt.
+const CAMPAIGN_TERM_EXCLUSIONS = new Set([
+  "partner",
+  "partnerschaft",
+  "partg",
+  "mbb",
+  "gmbh",
+  "sfa",
+  "sfw",
+  "stb",
+  "bb",
+  "steuerberatung",
+  "steuerberater",
+  "kanzlei",
+  "kollegen",
+  "und",
+  "co",
+  "ag",
+])
+
+function looksLikeCampaignTerm(word: string): boolean {
+  const normalized = word.toLowerCase().replace(/[.,;:]/g, "")
+  return CAMPAIGN_TERM_EXCLUSIONS.has(normalized)
+}
+
+// Erkennt Fälle wie "Viktoria Rosengrün Viktoria Rosengrün", bei denen der Name
+// versehentlich zweimal hintereinander im Namensfeld gelandet ist (z.B. weil zwei
+// Formularfragen auf dasselbe Feld gemappt wurden).
+function isFullRepetition(words: string[]): boolean {
+  if (words.length < 2 || words.length % 2 !== 0) return false
+  const half = words.length / 2
+  const firstHalf = words.slice(0, half)
+  const secondHalf = words.slice(half)
+  return firstHalf.every((word, i) => word.toLowerCase() === secondHalf[i].toLowerCase())
+}
+
+export function extractCleanName(rawName: string): {
+  firstName: string
+  lastName: string
+  usedLongNameHeuristic: boolean
+} {
+  const trimmed = rawName.trim()
+  const words = trimmed.split(/\s+/).filter(Boolean)
+
+  if (words.length === 0) {
+    return { firstName: "", lastName: "", usedLongNameHeuristic: false }
+  }
+
+  if (isFullRepetition(words)) {
+    const firstHalf = words.slice(0, words.length / 2)
+    return {
+      firstName: firstHalf[0],
+      lastName: firstHalf.slice(1).join(" "),
+      usedLongNameHeuristic: true,
+    }
+  }
+
+  if (words.length <= LONG_NAME_WORD_THRESHOLD) {
+    const spaceIndex = trimmed.indexOf(" ")
+    if (spaceIndex === -1) return { firstName: trimmed, lastName: "", usedLongNameHeuristic: false }
+    return {
+      firstName: trimmed.slice(0, spaceIndex),
+      lastName: trimmed.slice(spaceIndex + 1),
+      usedLongNameHeuristic: false,
+    }
+  }
+
+  // Langer Name → vermutlich verkettet. Nimm die letzten 2 Wörter als Vor-/Nachname,
+  // außer das drittletzte Wort sieht selbst wie ein Vorname aus (Großbuchstabe, kein
+  // erkennbarer Firmen-/Kampagnenbegriff) — dann gehört es vermutlich noch zum Namen dazu.
+  const thirdLastWord = words[words.length - 3]
+  const thirdLastLooksLikeGivenName = /^[A-ZÄÖÜ]/.test(thirdLastWord) && !looksLikeCampaignTerm(thirdLastWord)
+
+  const nameWords = thirdLastLooksLikeGivenName ? words.slice(-3) : words.slice(-2)
+  return {
+    firstName: nameWords[0],
+    lastName: nameWords.slice(1).join(" "),
+    usedLongNameHeuristic: true,
+  }
 }
 
 async function fetchAllLeads(campaignId: string): Promise<LeadtableLead[]> {
@@ -117,19 +198,21 @@ export async function importLeadtableCampaign(
         continue
       }
 
-      const { first_name, last_name } = splitName(lead.name ?? "")
+      const { firstName, lastName, usedLongNameHeuristic } = extractCleanName(lead.name ?? "")
       const mappedStatus = STATUS_MAP[lead.status ?? ""] ?? FALLBACK_STATUS
 
+      const notePrefix = usedLongNameHeuristic ? "[Automatisch bereinigter Name, bitte prüfen] " : ""
+
       const { error: insertError } = await kandidatenwerk.from("candidates").insert({
-        first_name,
-        last_name,
+        first_name: firstName,
+        last_name: lastName,
         email: lead.email,
         phone: lead.phone ?? null,
         berufsbild,
         plz: null,
         status: mappedStatus,
         source: "leadtable",
-        notes: `Import aus Leadtable, Kampagne "${campaignName}", ursprünglicher Status: "${lead.status}"`,
+        notes: `${notePrefix}Import aus Leadtable, Kampagne "${campaignName}", ursprünglicher Status: "${lead.status}"`,
       })
 
       if (insertError) throw new Error(insertError.message)
