@@ -25,6 +25,7 @@ import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
 import { MatchesTab } from "./matches-tab"
 import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
+import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 
 const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
   active: "Aktiv",
@@ -69,7 +70,14 @@ interface Candidate {
   email: string | null
   phone: string | null
   status: string
+  berufsbild: string | null
+  plz: string | null
   created_at: string
+}
+
+function berufsbildLabel(value: string | null): string {
+  if (!value) return "—"
+  return BERUFSBILD_OPTIONS.find((o) => o.value === value)?.label ?? value
 }
 
 interface Campaign {
@@ -468,6 +476,8 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
                       <TableRow style={{ borderColor: "#dde3ea" }}>
                         <TableHead className="text-gray-600">Name</TableHead>
                         <TableHead className="text-gray-600">Status</TableHead>
+                        <TableHead className="text-gray-600">Berufsbild</TableHead>
+                        <TableHead className="text-gray-600">PLZ</TableHead>
                         <TableHead className="text-gray-600">E-Mail</TableHead>
                         <TableHead className="text-gray-600">Telefon</TableHead>
                         <TableHead className="text-gray-600">Erstellt am</TableHead>
@@ -484,6 +494,8 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
                           <TableCell>
                             <CandidateStatusSelect candidateId={c.id} campaignId={campaign.id} currentStatus={c.status} />
                           </TableCell>
+                          <TableCell className="text-gray-600">{berufsbildLabel(c.berufsbild)}</TableCell>
+                          <TableCell className="text-gray-600">{c.plz ?? "—"}</TableCell>
                           <TableCell className="text-gray-600">
                             {c.email ? <a href={`mailto:${c.email}`} className="hover:underline" style={{ color: "#1e56a0" }}>{c.email}</a> : "—"}
                           </TableCell>
@@ -527,6 +539,13 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
                             {CANDIDATE_STATUS_LABEL[c.status] ?? c.status}
                           </span>
                         </div>
+                        {(c.berufsbild || c.plz) && (
+                          <p className="text-xs text-gray-500">
+                            {[berufsbildLabel(c.berufsbild) !== "—" ? berufsbildLabel(c.berufsbild) : null, c.plz]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
                         <div className="flex flex-col gap-1 text-xs text-gray-500">
                           {c.email ? (
                             <a href={`mailto:${c.email}`} className="truncate hover:underline" style={{ color: "#1e56a0" }}>{c.email}</a>

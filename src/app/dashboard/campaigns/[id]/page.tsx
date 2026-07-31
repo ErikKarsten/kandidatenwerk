@@ -18,7 +18,7 @@ export default async function CampaignDetailPage({
       .single(),
     supabase
       .from("candidates")
-      .select("id, first_name, last_name, email, phone, status, created_at")
+      .select("id, first_name, last_name, email, phone, status, berufsbild, plz, created_at")
       .eq("campaign_id", id)
       .order("created_at", { ascending: false }),
     supabase
