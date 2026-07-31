@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useTransition, useRef, useEffect } from "react"
+import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronLeft, Plus, Pencil, LayoutGrid, List } from "lucide-react"
+import { ChevronLeft, Plus, Pencil, LayoutGrid, List, Search } from "lucide-react"
 import {
   updateCampaignTitleAction,
   archiveCampaignAction,
@@ -158,10 +158,43 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
     window.localStorage.setItem(VIEW_STORAGE_KEY, v)
   }
 
+  const [searchQuery, setSearchQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState("alle")
+  const [berufsbildFilter, setBerufsbildFilter] = useState("alle")
+
+  const filteredCandidates = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return candidates.filter((c) => {
+      if (statusFilter !== "alle" && c.status !== statusFilter) return false
+      if (berufsbildFilter !== "alle" && c.berufsbild !== berufsbildFilter) return false
+      if (query) {
+        const name = `${c.first_name} ${c.last_name}`.toLowerCase()
+        const email = (c.email ?? "").toLowerCase()
+        if (!name.includes(query) && !email.includes(query)) return false
+      }
+      return true
+    })
+  }, [candidates, searchQuery, statusFilter, berufsbildFilter])
+
   const { visible, page, totalPages, pageSize, setPage, handlePageSize } = usePaginatedList(
-    candidates,
+    filteredCandidates,
     "campaigns_candidates_page_size"
   )
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value)
+    setPage(1)
+  }
+
+  function handleStatusFilterChange(value: string) {
+    setStatusFilter(value)
+    setPage(1)
+  }
+
+  function handleBerufsbildFilterChange(value: string) {
+    setBerufsbildFilter(value)
+    setPage(1)
+  }
 
   function openModal() {
     setModalStep("choice")
@@ -426,7 +459,9 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
           {/* Tab-header: count + view toggle */}
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-500">
-              {candidates.length} Kandidat{candidates.length !== 1 ? "en" : ""}
+              {candidates.length === 0
+                ? "0 Kandidaten"
+                : `${filteredCandidates.length} von ${candidates.length} Kandidat${candidates.length !== 1 ? "en" : ""}`}
             </span>
             <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: "#dde3ea" }}>
               <button
@@ -456,6 +491,51 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
             </div>
           </div>
 
+          {candidates.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search
+                  size={14}
+                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="Name oder E-Mail suchen…"
+                  className="rounded-md border py-1.5 pl-8 pr-3 text-sm focus:outline-none"
+                  style={{ borderColor: "#dde3ea", minWidth: "220px" }}
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => handleStatusFilterChange(e.target.value)}
+                className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
+                style={{ borderColor: "#dde3ea" }}
+              >
+                <option value="alle">Alle Status</option>
+                {Object.entries(CANDIDATE_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={berufsbildFilter}
+                onChange={(e) => handleBerufsbildFilterChange(e.target.value)}
+                className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
+                style={{ borderColor: "#dde3ea" }}
+              >
+                <option value="alle">Alle Berufsbilder</option>
+                {BERUFSBILD_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {candidates.length === 0 ? (
             <div
               className="rounded-xl border bg-white py-12 text-center text-sm text-gray-400"
@@ -465,6 +545,13 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
               <Link href={`/dashboard/candidates/new?campaign_id=${campaign.id}`} style={{ color: "#1e56a0" }} className="hover:underline">
                 Ersten Kandidaten anlegen
               </Link>
+            </div>
+          ) : filteredCandidates.length === 0 ? (
+            <div
+              className="rounded-xl border bg-white py-12 text-center text-sm text-gray-400"
+              style={{ borderColor: "#dde3ea" }}
+            >
+              Keine Kandidaten entsprechen den aktuellen Filtern.
             </div>
           ) : (
             <>
