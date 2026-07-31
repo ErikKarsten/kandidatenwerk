@@ -76,20 +76,19 @@ interface Candidate {
   plz: string | null
   custom_fields: Record<string, string> | null
   campaign_id: string | null
-  campaigns: { title: string; meta_field_mapping?: string[] | null; clients: { id: string; name: string } | null } | null
+  campaigns: { title: string; clients: { id: string; name: string } | null } | null
 }
 
 interface CandidateDetailProps {
   candidate: Candidate
   history: HistoryEntry[]
   files: FileItem[]
-  campaignMapping: string[] | null
   matches: CampaignMatch[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, campaignMapping, matches }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, matches }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien" | "verlauf">("profil")
@@ -262,7 +261,6 @@ export function CandidateDetail({ candidate, history, files, campaignMapping, ma
                 berufsbild={candidate.berufsbild}
                 plz={candidate.plz}
                 customFields={candidate.custom_fields}
-                campaignMapping={campaignMapping}
               />
             )}
             {tab === "dateien" && (

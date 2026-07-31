@@ -13,7 +13,7 @@ export default async function CandidateDetailPage({
   const [{ data: candidate }, { data: history }, { data: fileRows }, { data: matchRows }] = await Promise.all([
     supabase
       .from("candidates")
-      .select("*, campaigns(title, meta_field_mapping, clients(id, name))")
+      .select("*, campaigns(title, clients(id, name))")
       .eq("id", id)
       .single(),
     supabase
@@ -67,7 +67,7 @@ export default async function CandidateDetailPage({
     })
   )
 
-  type CampaignJoin = { title: string; meta_field_mapping: string[] | null; clients: { id: string; name: string } | null } | null
+  type CampaignJoin = { title: string; clients: { id: string; name: string } | null } | null
   const campaigns = candidate.campaigns as CampaignJoin
 
   type MatchCampaignJoin = { id: string; title: string; clients: { name: string } | null } | null
@@ -104,7 +104,6 @@ export default async function CandidateDetailPage({
       candidate={candidateData}
       history={historyWithCreatorNames}
       files={files}
-      campaignMapping={campaigns?.meta_field_mapping ?? null}
       matches={matches}
     />
   )

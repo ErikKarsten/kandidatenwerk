@@ -1,13 +1,33 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
-import { updateCandidateProfileAction } from "./actions"
+import { updateCandidateProfileAction, updateCandidateCustomFieldAction } from "./actions"
 
 function formatLabel(key: string): string {
   return key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())
 }
+
+// Fester Satz an Zusatzfeldern, immer in dieser Reihenfolge angezeigt — befüllt wo
+// Daten da sind, sonst leer und direkt editierbar. "verfuegbar_ab" behält bewusst
+// diesen Key (nicht "startdatum"), da der Leadtable-Backfill vom 2026-07-30 bereits
+// 178 Kandidaten unter diesem Key befüllt hat; nur das UI-Label wurde geändert.
+const FIXED_CUSTOM_FIELDS: { key: string; label: string }[] = [
+  { key: "ausbildung", label: "Ausbildung" },
+  { key: "erreichbarkeit", label: "Erreichbarkeit" },
+  { key: "verfuegbar_ab", label: "Startdatum" },
+  { key: "wechselgrund", label: "Wechselgrund" },
+  { key: "erwartungen_neuer_ag", label: "Erwartungen neuer AG" },
+  { key: "bevorzugter_bereich", label: "Welchen Bereich machst du am liebsten" },
+  { key: "anzahl_ag_5_jahre", label: "Wie viele AG in den letzten 5 Jahren" },
+  { key: "aktuelle_steuerkanzlei", label: "Aktuell Steuerkanzlei" },
+  { key: "kanzleigroesse", label: "Wie groß ist diese" },
+  { key: "betreute_branchen", label: "Welche Branchen werden betreut" },
+  { key: "datev_erfahrung", label: "Erfahrung mit DATEV (offen dafür)" },
+  { key: "alter", label: "Alter" },
+]
+const FIXED_CUSTOM_FIELD_KEYS = new Set(FIXED_CUSTOM_FIELDS.map((f) => f.key))
 
 interface ProfileTabProps {
   candidateId: string
@@ -18,7 +38,6 @@ interface ProfileTabProps {
   berufsbild: string | null
   plz: string | null
   customFields: Record<string, string> | null
-  campaignMapping: string[] | null
 }
 
 export function ProfileTab({
@@ -30,7 +49,6 @@ export function ProfileTab({
   berufsbild,
   plz,
   customFields,
-  campaignMapping,
 }: ProfileTabProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -47,11 +65,18 @@ export function ProfileTab({
   const [newKey, setNewKey] = useState("")
   const [newValue, setNewValue] = useState("")
 
-  // Fields defined by the campaign mapping — always shown even if value is empty
-  const mappingFields: string[] = Array.isArray(campaignMapping) ? campaignMapping : []
-  const mappingFieldSet = new Set(mappingFields)
-  // Extra keys: in custom_fields but not in the mapping
-  const extraKeys = Object.keys(localCustom).filter((k) => !mappingFieldSet.has(k))
+  // Keys in custom_fields, die nicht zum festen 12-Felder-Satz gehören (z.B. aus
+  // älteren Imports) — werden weiterhin angezeigt und nicht stillschweigend gelöscht.
+  const extraKeys = Object.keys(localCustom).filter((k) => !FIXED_CUSTOM_FIELD_KEYS.has(k))
+
+  function handleCustomFieldSaved(key: string, value: string) {
+    setLocalCustom((prev) => {
+      const next = { ...prev }
+      if (value === "") delete next[key]
+      else next[key] = value
+      return next
+    })
+  }
 
   function handleCancel() {
     setLocalFirst(firstName)
@@ -160,25 +185,24 @@ export function ProfileTab({
         <fieldset className="rounded-xl border p-4" style={{ borderColor: "#dde3ea" }}>
           <legend className="px-1 text-xs font-semibold text-gray-400">Zusatzfelder</legend>
           <dl className="mt-1 flex flex-col gap-3">
-            {mappingFields.length === 0 && extraKeys.length === 0 && !editMode && (
-              <p className="text-sm text-gray-400">Keine Zusatzfelder vorhanden.</p>
-            )}
-
-            {/* Felder aus Kampagnen-Mapping — immer anzeigen */}
-            {mappingFields.map((key) => (
-              <FieldRow key={key} label={formatLabel(key)} editMode={editMode} stacked>
-                {editMode ? (
-                  <input
-                    className={inputClass}
-                    style={inputStyle}
-                    value={localCustom[key] ?? ""}
-                    onChange={(e) => setLocalCustom((prev) => ({ ...prev, [key]: e.target.value }))}
-                  />
-                ) : (localCustom[key] || "—")}
-              </FieldRow>
+            {/* Fester Satz von 12 Feldern — immer in dieser Reihenfolge, direkt inline editierbar */}
+            {FIXED_CUSTOM_FIELDS.map(({ key, label }) => (
+              <CustomFieldRow
+                key={key}
+                candidateId={candidateId}
+                fieldKey={key}
+                label={label}
+                value={localCustom[key] ?? ""}
+                onSaved={handleCustomFieldSaved}
+              />
             ))}
 
-            {/* Extra Keys: in custom_fields, aber nicht im Mapping */}
+            {/* Extra Keys: in custom_fields, aber nicht im festen Satz (z.B. ältere Imports) */}
+            {extraKeys.length > 0 && (
+              <div className="mt-1 border-t pt-3" style={{ borderColor: "#dde3ea" }}>
+                <span className="text-xs font-medium text-gray-400">Weitere Felder</span>
+              </div>
+            )}
             {extraKeys.map((key) => (
               <FieldRow key={key} label={formatLabel(key)} editMode={editMode} stacked>
                 {editMode ? (
@@ -244,6 +268,61 @@ export function ProfileTab({
         </div>
       )}
     </div>
+  )
+}
+
+function CustomFieldRow({
+  candidateId,
+  fieldKey,
+  label,
+  value,
+  onSaved,
+}: {
+  candidateId: string
+  fieldKey: string
+  label: string
+  value: string
+  onSaved: (key: string, value: string) => void
+}) {
+  const router = useRouter()
+  const [localValue, setLocalValue] = useState(value)
+  const [pending, startTransition] = useTransition()
+  const savedValueRef = useRef(value)
+
+  function handleBlur() {
+    const trimmed = localValue.trim()
+    if (trimmed === savedValueRef.current) {
+      setLocalValue(trimmed)
+      return
+    }
+    startTransition(async () => {
+      await updateCandidateCustomFieldAction(candidateId, fieldKey, trimmed)
+      savedValueRef.current = trimmed
+      setLocalValue(trimmed)
+      onSaved(fieldKey, trimmed)
+      router.refresh()
+    })
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.currentTarget.blur()
+    }
+  }
+
+  return (
+    <FieldRow label={label} editMode stacked>
+      <input
+        className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1 disabled:opacity-50"
+        style={{ borderColor: "#dde3ea" }}
+        value={localValue}
+        placeholder="Hier eingeben"
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        disabled={pending}
+      />
+    </FieldRow>
   )
 }
 

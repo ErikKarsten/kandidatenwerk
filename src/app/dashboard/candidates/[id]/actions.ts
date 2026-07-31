@@ -68,6 +68,44 @@ export async function updateCandidateProfileAction(
   return null
 }
 
+export async function updateCandidateCustomFieldAction(
+  candidateId: string,
+  key: string,
+  value: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("candidates")
+    .select("custom_fields")
+    .eq("id", candidateId)
+    .single()
+
+  if (fetchError) return { error: fetchError.message }
+
+  const existingFields = (existing?.custom_fields as Record<string, string> | null) ?? {}
+  const trimmed = value.trim()
+  const updatedFields = { ...existingFields }
+  if (trimmed === "") {
+    delete updatedFields[key]
+  } else {
+    updatedFields[key] = trimmed
+  }
+
+  const { error } = await supabase
+    .from("candidates")
+    .update({ custom_fields: updatedFields })
+    .eq("id", candidateId)
+
+  if (error) return { error: error.message }
+
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
+  return null
+}
+
 export async function saveDescriptionAction(
   candidateId: string,
   notes: string
