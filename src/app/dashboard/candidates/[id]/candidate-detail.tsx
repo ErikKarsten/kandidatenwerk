@@ -7,10 +7,12 @@ import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import { saveDescriptionAction, addNoteAction, archiveCandidateAction, deleteCandidateAction } from "./actions"
 import { ProfileTab } from "./profile-tab"
 import { FilesTab } from "./files-tab"
+import { HistoryTab } from "./history-tab"
 import { MatchesSection } from "./matches-section"
 
 const STATUS_OPTIONS = [
   { value: "neu", label: "Neu" },
+  { value: "pruefung", label: "In Prüfung" },
   { value: "interview", label: "Interview" },
   { value: "vorgestellt", label: "Vorgestellt" },
   { value: "platziert", label: "Platziert" },
@@ -19,6 +21,7 @@ const STATUS_OPTIONS = [
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   neu: { bg: "#4ba3c318", text: "#0e7490" },
+  pruefung: { bg: "#f59e0b18", text: "#b45309" },
   interview: { bg: "#1e56a018", text: "#1e56a0" },
   vorgestellt: { bg: "#8b5cf618", text: "#7c3aed" },
   platziert: { bg: "#1a9a6a18", text: "#1a9a6a" },
@@ -38,6 +41,7 @@ interface HistoryEntry {
   type: string | null
   content: string | null
   created_at: string
+  createdByName: string | null
 }
 
 interface FileItem {
@@ -88,7 +92,7 @@ type ModalStep = null | "choice"
 export function CandidateDetail({ candidate, history, files, campaignMapping, matches }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
-  const [tab, setTab] = useState<"profil" | "dateien">("profil")
+  const [tab, setTab] = useState<"profil" | "dateien" | "verlauf">("profil")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [modalError, setModalError] = useState<string | null>(null)
   const [archivePending, startArchiveTransition] = useTransition()
@@ -239,6 +243,12 @@ export function CandidateDetail({ candidate, history, files, campaignMapping, ma
             >
               Dateien
             </TabButton>
+            <TabButton
+              active={tab === "verlauf"}
+              onClick={() => setTab("verlauf")}
+            >
+              Verlauf
+            </TabButton>
           </div>
 
           <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
@@ -258,6 +268,7 @@ export function CandidateDetail({ candidate, history, files, campaignMapping, ma
             {tab === "dateien" && (
               <FilesTab candidateId={candidate.id} files={files} />
             )}
+            {tab === "verlauf" && <HistoryTab history={history} />}
           </div>
         </div>
 

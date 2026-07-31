@@ -35,6 +35,21 @@ export default async function CandidateDetailPage({
 
   if (!candidate) notFound()
 
+  const creatorIds = [...new Set((history ?? []).map((h) => h.created_by).filter((id): id is string => id !== null))]
+  const { data: creatorProfiles } =
+    creatorIds.length > 0
+      ? await supabase.from("profiles").select("id, full_name").in("id", creatorIds)
+      : { data: [] }
+  const creatorNameById = new Map((creatorProfiles ?? []).map((p) => [p.id, p.full_name]))
+
+  const historyWithCreatorNames = (history ?? []).map((h) => ({
+    id: h.id,
+    type: h.type,
+    content: h.content,
+    created_at: h.created_at,
+    createdByName: h.created_by ? (creatorNameById.get(h.created_by) ?? null) : null,
+  }))
+
   const files = await Promise.all(
     (fileRows ?? []).map(async (f) => {
       const { data: urlData } = await supabase.storage
@@ -87,7 +102,7 @@ export default async function CandidateDetailPage({
   return (
     <CandidateDetail
       candidate={candidateData}
-      history={history ?? []}
+      history={historyWithCreatorNames}
       files={files}
       campaignMapping={campaigns?.meta_field_mapping ?? null}
       matches={matches}
