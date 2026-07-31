@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
+import { Search } from "lucide-react"
 import {
   Table,
   TableBody,
@@ -37,31 +38,63 @@ export interface MatchListItem {
 const COLUMN_COUNT = 6
 
 export function MatchesList({ matches }: { matches: MatchListItem[] }) {
+  const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("alle")
 
-  const filtered = useMemo(
-    () => (statusFilter === "alle" ? matches : matches.filter((m) => m.status === statusFilter)),
-    [matches, statusFilter]
-  )
+  const filtered = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return matches.filter((m) => {
+      if (statusFilter !== "alle" && m.status !== statusFilter) return false
+      if (query) {
+        const candidate = first(m.candidates)
+        const campaign = first(m.campaigns)
+        const candidateName = candidate ? `${candidate.first_name} ${candidate.last_name}`.toLowerCase() : ""
+        const campaignTitle = campaign ? campaign.title.toLowerCase() : ""
+        if (!candidateName.includes(query) && !campaignTitle.includes(query)) return false
+      }
+      return true
+    })
+  }, [matches, searchQuery, statusFilter])
 
   const { visible, page, totalPages, pageSize, setPage, handlePageSize } = usePaginatedList(
     filtered,
     "matches_page_size"
   )
 
+  function handleSearchChange(value: string) {
+    setSearchQuery(value)
+    setPage(1)
+  }
+
+  function handleStatusFilterChange(value: string) {
+    setStatusFilter(value)
+    setPage(1)
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="Kandidat oder Kampagne suchen…"
+            className="rounded-md border py-1.5 pl-8 pr-3 text-sm focus:outline-none"
+            style={{ borderColor: "#dde3ea", minWidth: "220px" }}
+          />
+        </div>
         <label htmlFor="match-status-filter" className="text-sm text-gray-600">
           Status:
         </label>
         <select
           id="match-status-filter"
           value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value)
-            setPage(1)
-          }}
+          onChange={(e) => handleStatusFilterChange(e.target.value)}
           className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
           style={{ borderColor: "#dde3ea" }}
         >
@@ -72,6 +105,9 @@ export function MatchesList({ matches }: { matches: MatchListItem[] }) {
             </option>
           ))}
         </select>
+        <span className="text-sm text-gray-500">
+          {filtered.length} von {matches.length} Match{matches.length !== 1 ? "es" : ""}
+        </span>
       </div>
 
       {matches.length === 0 ? (
@@ -114,7 +150,7 @@ export function MatchesList({ matches }: { matches: MatchListItem[] }) {
                 {visible.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={COLUMN_COUNT} className="py-12 text-center text-gray-400">
-                      Keine Matches mit diesem Status.
+                      Keine Matches entsprechen den aktuellen Filtern.
                     </TableCell>
                   </TableRow>
                 ) : (
