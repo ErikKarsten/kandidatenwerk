@@ -18,7 +18,7 @@ export default async function CandidatesPage({
 
   let query = supabase
     .from("candidates")
-    .select("id, first_name, last_name, email, status, created_at, campaign_id, campaigns(id, title, clients(id, name))")
+    .select("id, first_name, last_name, email, status, berufsbild, created_at, campaign_id, campaigns(id, title, clients(id, name))")
     .order("created_at", { ascending: false })
 
   query = showArchived
