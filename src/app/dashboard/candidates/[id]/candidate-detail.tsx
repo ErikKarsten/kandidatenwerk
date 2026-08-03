@@ -58,6 +58,7 @@ interface Candidate {
   phone: string | null
   status: string
   notes: string | null
+  description: string | null
   berufsbild: string | null
   plz: string | null
   custom_fields: Record<string, string> | null
@@ -252,7 +253,9 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
             {tab === "dateien" && (
               <FilesTab candidateId={candidate.id} files={files} />
             )}
-            {tab === "verlauf" && <HistoryTab history={history} />}
+            {tab === "verlauf" && (
+              <HistoryTab history={history} leadtableDescription={candidate.description} />
+            )}
           </div>
         </div>
 

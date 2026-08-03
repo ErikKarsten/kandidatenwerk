@@ -1,3 +1,6 @@
+"use client"
+
+import { useState } from "react"
 import { ArrowRightLeft, StickyNote, Circle } from "lucide-react"
 
 export interface HistoryTabEntry {
@@ -37,8 +40,45 @@ const TYPE_COLOR: Record<string, { bg: string; text: string }> = {
 }
 const FALLBACK_COLOR = { bg: "#9ca3af18", text: "#6b7280" }
 
-export function HistoryTab({ history }: { history: HistoryTabEntry[] }) {
-  if (history.length === 0) {
+const DESCRIPTION_PREVIEW_LENGTH = 300
+
+function LeadtableDescription({ description }: { description: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = description.length > DESCRIPTION_PREVIEW_LENGTH
+  const shownText = expanded || !isLong ? description : `${description.slice(0, DESCRIPTION_PREVIEW_LENGTH)}…`
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+        Leadtable-Notizen (importiert)
+      </p>
+      <div className="rounded-lg border px-3 py-2" style={{ borderColor: "#dde3ea" }}>
+        <p className="text-sm text-gray-700 whitespace-pre-wrap">{shownText}</p>
+        {isLong && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-2 text-xs font-medium hover:underline"
+            style={{ color: "#1e56a0" }}
+          >
+            {expanded ? "Weniger anzeigen" : "Mehr anzeigen"}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function HistoryTab({
+  history,
+  leadtableDescription,
+}: {
+  history: HistoryTabEntry[]
+  leadtableDescription?: string | null
+}) {
+  const hasDescription = typeof leadtableDescription === "string" && leadtableDescription.trim() !== ""
+
+  if (history.length === 0 && !hasDescription) {
     return <p className="text-sm text-gray-400">Noch keine Aktivität</p>
   }
 
@@ -55,6 +95,8 @@ export function HistoryTab({ history }: { history: HistoryTabEntry[] }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {hasDescription && <LeadtableDescription description={leadtableDescription!} />}
+
       {groups.map((group) => (
         <div key={group.key} className="flex flex-col gap-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{group.label}</p>
