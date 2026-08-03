@@ -4,6 +4,8 @@ import { ClientGrid } from "@/components/dashboard/client-grid"
 import { type PipelineSegment } from "@/components/dashboard/client-card"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
+import { getLatestLeadtableSyncRunAction } from "./actions"
+import { LeadtableSyncStatus } from "./leadtable-sync-status"
 
 const VALID_STATUSES: Set<string> = new Set(CANDIDATE_STATUS_OPTIONS.map((o) => o.value))
 
@@ -18,6 +20,7 @@ export default async function DashboardPage() {
     { count: campaignCount },
     { count: candidateCount },
     { count: placementCount },
+    latestSyncRun,
   ] = await Promise.all([
     supabase.from("clients").select("id, name, active"),
     supabase.from("campaigns").select("id, client_id"),
@@ -26,6 +29,7 @@ export default async function DashboardPage() {
     supabase.from("campaigns").select("*", { count: "exact", head: true }),
     supabase.from("candidates").select("*", { count: "exact", head: true }),
     supabase.from("candidates").select("*", { count: "exact", head: true }).eq("status", "platziert"),
+    getLatestLeadtableSyncRunAction(),
   ])
 
   // campaign_id -> client_id lookup
@@ -96,6 +100,8 @@ export default async function DashboardPage() {
           <KpiCard key={kpi.label} {...kpi} />
         ))}
       </div>
+
+      <LeadtableSyncStatus initialRun={latestSyncRun} />
 
       <div>
         <div className="mb-4 flex items-center justify-between">
