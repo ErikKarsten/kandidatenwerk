@@ -194,6 +194,7 @@ export type Database = {
           lat: number | null
           lng: number | null
           kanzleistelle_application_id: string | null
+          leadtable_lead_id: string | null
         }
         Insert: {
           id?: string
@@ -214,6 +215,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           kanzleistelle_application_id?: string | null
+          leadtable_lead_id?: string | null
         }
         Update: {
           id?: string
@@ -234,6 +236,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           kanzleistelle_application_id?: string | null
+          leadtable_lead_id?: string | null
         }
         Relationships: [
           {
