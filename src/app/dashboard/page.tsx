@@ -3,8 +3,9 @@ import { KpiCard } from "@/components/dashboard/kpi-card"
 import { ClientGrid } from "@/components/dashboard/client-grid"
 import { type PipelineSegment } from "@/components/dashboard/client-card"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 
-const VALID_STATUSES = new Set(["neu", "pruefung", "interview", "vorgestellt", "platziert", "abgelehnt"])
+const VALID_STATUSES: Set<string> = new Set(CANDIDATE_STATUS_OPTIONS.map((o) => o.value))
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient()

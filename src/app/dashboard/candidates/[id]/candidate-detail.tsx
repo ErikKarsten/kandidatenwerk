@@ -9,24 +9,10 @@ import { ProfileTab } from "./profile-tab"
 import { FilesTab } from "./files-tab"
 import { HistoryTab } from "./history-tab"
 import { MatchesSection } from "./matches-section"
+import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 
-const STATUS_OPTIONS = [
-  { value: "neu", label: "Neu" },
-  { value: "pruefung", label: "In Prüfung" },
-  { value: "interview", label: "Interview" },
-  { value: "vorgestellt", label: "Vorgestellt" },
-  { value: "platziert", label: "Platziert" },
-  { value: "abgelehnt", label: "Abgelehnt" },
-]
-
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  neu: { bg: "#4ba3c318", text: "#0e7490" },
-  pruefung: { bg: "#f59e0b18", text: "#b45309" },
-  interview: { bg: "#1e56a018", text: "#1e56a0" },
-  vorgestellt: { bg: "#8b5cf618", text: "#7c3aed" },
-  platziert: { bg: "#1a9a6a18", text: "#1a9a6a" },
-  abgelehnt: { bg: "#9ca3af18", text: "#6b7280" },
-}
+const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
+const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
 
 const HISTORY_TYPE_LABEL: Record<string, string> = {
   note: "Notiz",
@@ -97,7 +83,7 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
   const [archivePending, startArchiveTransition] = useTransition()
   const [deletePending, startDeleteTransition] = useTransition()
 
-  const colors = STATUS_COLORS[candidate.status] ?? STATUS_COLORS.abgelehnt
+  const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
 
   function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const newStatus = e.target.value

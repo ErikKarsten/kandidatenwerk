@@ -3,15 +3,8 @@
 import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { updateCampaignSettingsAction } from "./actions"
-
-const CANDIDATE_STATUSES = [
-  { value: "neu", label: "Neu", bg: "#4ba3c318", dot: "#4ba3c3", text: "#0e7490" },
-  { value: "interview", label: "Interview", bg: "#1e56a018", dot: "#1e56a0", text: "#1e56a0" },
-  { value: "vorgestellt", label: "Vorgestellt", bg: "#8b5cf618", dot: "#8b5cf6", text: "#7c3aed" },
-  { value: "platziert", label: "Platziert", bg: "#1a9a6a18", dot: "#1a9a6a", text: "#1a9a6a" },
-  { value: "abgelehnt", label: "Abgelehnt", bg: "#9ca3af18", dot: "#9ca3af", text: "#6b7280" },
-]
 
 const TEMPLATES: Record<string, { label: string; fields: string[] }> = {
   steuerfachangestellte: {
@@ -123,7 +116,7 @@ export function SettingsTab({ campaignId, metaFormId, metaFieldMapping, berufsbi
         <h3 className="mb-1 text-sm font-semibold text-gray-700">Status-Felder</h3>
         <p className="mb-3 text-xs text-gray-400">Pipeline-Stufen für Kandidaten in dieser Kampagne</p>
         <div className="flex flex-wrap gap-2">
-          {CANDIDATE_STATUSES.map((s) => (
+          {CANDIDATE_STATUS_OPTIONS.map((s) => (
             <span
               key={s.value}
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"

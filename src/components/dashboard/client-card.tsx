@@ -1,18 +1,12 @@
 import { Badge } from "@/components/ui/badge"
+import { CANDIDATE_STATUS_OPTIONS, type CandidateStatusValue } from "@/lib/candidate-status"
 
-const STATUS_COLORS = {
-  neu: { bar: "#4ba3c3", label: "Neu" },
-  pruefung: { bar: "#f0c040", label: "In Prüfung" },
-  interview: { bar: "#e07820", label: "Interview" },
-  vorgestellt: { bar: "#8b5cf6", label: "Vorgestellt" },
-  platziert: { bar: "#1a9a6a", label: "Platziert" },
-  abgelehnt: { bar: "#d03030", label: "Abgelehnt" },
-} as const
-
-type StatusKey = keyof typeof STATUS_COLORS
+const STATUS_COLORS = Object.fromEntries(
+  CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, { bar: o.dot, label: o.label }])
+) as Record<CandidateStatusValue, { bar: string; label: string }>
 
 export interface PipelineSegment {
-  status: StatusKey
+  status: CandidateStatusValue
   count: number
 }
 

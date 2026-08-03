@@ -10,6 +10,7 @@ import {
   toggleAutomationActiveAction,
   type AutomationData,
 } from "./automations-actions"
+import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 
 export interface Automation {
   id: string
@@ -34,14 +35,7 @@ const TRIGGER_OPTIONS = [
   { value: "status_change", label: "Statusänderung" },
 ]
 
-const STATUS_OPTIONS = [
-  { value: "neu", label: "Neu" },
-  { value: "pruefung", label: "In Prüfung" },
-  { value: "interview", label: "Interview" },
-  { value: "vorgestellt", label: "Vorgestellt" },
-  { value: "platziert", label: "Platziert" },
-  { value: "abgelehnt", label: "Abgelehnt" },
-]
+const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 
 const DELAY_OPTIONS = [
   { value: 10, label: "10 Sekunden" },

@@ -13,26 +13,10 @@ import {
 } from "@/components/ui/table"
 import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 
-const STATUS_LABEL: Record<string, string> = {
-  neu: "Neu",
-  pruefung: "In Prüfung",
-  interview: "Interview",
-  vorgestellt: "Vorgestellt",
-  platziert: "Platziert",
-  abgelehnt: "Abgelehnt",
-}
-
-const STATUS_COLORS: Record<string, { bg: string; dot: string; text: string }> = {
-  neu: { bg: "#4ba3c318", dot: "#4ba3c3", text: "#0e7490" },
-  pruefung: { bg: "#f59e0b18", dot: "#f59e0b", text: "#b45309" },
-  interview: { bg: "#1e56a018", dot: "#1e56a0", text: "#1e56a0" },
-  vorgestellt: { bg: "#8b5cf618", dot: "#8b5cf6", text: "#7c3aed" },
-  platziert: { bg: "#1a9a6a18", dot: "#1a9a6a", text: "#1a9a6a" },
-  abgelehnt: { bg: "#9ca3af18", dot: "#9ca3af", text: "#6b7280" },
-}
-
-const FALLBACK_COLOR = { bg: "#9ca3af18", dot: "#9ca3af", text: "#6b7280" }
+const STATUS_LABEL = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o.label]))
+const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
 
 export interface CandidateListItem {
   id: string
@@ -186,7 +170,7 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
               </TableHeader>
               <TableBody>
                 {visible.map((c) => {
-                  const colors = STATUS_COLORS[c.status] ?? FALLBACK_COLOR
+                  const colors = STATUS_COLORS[c.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
                   const campaign = Array.isArray(c.campaigns) ? c.campaigns[0] : c.campaigns as { id: string; title: string; clients: { id: string; name: string } | null } | null
                   const client = campaign ? (Array.isArray(campaign.clients) ? campaign.clients[0] : campaign.clients) : null
                   return (
