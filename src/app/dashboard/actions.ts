@@ -44,6 +44,7 @@ export async function triggerLeadtableSyncAction(): Promise<
           Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github+json",
           "Content-Type": "application/json",
+          "User-Agent": "kandidatenwerk-leadtable-sync",
         },
         body: JSON.stringify({ ref: "main" }),
       }
