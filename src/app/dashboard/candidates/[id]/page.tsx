@@ -91,6 +91,7 @@ export default async function CandidateDetailPage({
     email: candidate.email,
     phone: candidate.phone,
     status: candidate.status,
+    source: candidate.source,
     notes: candidate.notes,
     description: candidate.description,
     berufsbild: candidate.berufsbild ?? null,

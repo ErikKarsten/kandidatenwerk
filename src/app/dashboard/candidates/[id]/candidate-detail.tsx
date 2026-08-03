@@ -3,8 +3,15 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { RefreshCw } from "lucide-react"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
-import { saveDescriptionAction, addNoteAction, archiveCandidateAction, deleteCandidateAction } from "./actions"
+import {
+  saveDescriptionAction,
+  addNoteAction,
+  archiveCandidateAction,
+  deleteCandidateAction,
+  refreshLeadtableCandidateAction,
+} from "./actions"
 import { ProfileTab } from "./profile-tab"
 import { FilesTab } from "./files-tab"
 import { HistoryTab } from "./history-tab"
@@ -57,6 +64,7 @@ interface Candidate {
   email: string | null
   phone: string | null
   status: string
+  source: string
   notes: string | null
   description: string | null
   berufsbild: string | null
@@ -83,6 +91,8 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
   const [modalError, setModalError] = useState<string | null>(null)
   const [archivePending, startArchiveTransition] = useTransition()
   const [deletePending, startDeleteTransition] = useTransition()
+  const [refreshPending, startRefreshTransition] = useTransition()
+  const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
 
@@ -91,6 +101,22 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
     startStatusTransition(async () => {
       await updateCandidateStatusAction(candidate.id, newStatus, candidate.campaign_id ?? undefined)
       router.refresh()
+    })
+  }
+
+  function handleLeadtableRefresh() {
+    setRefreshMessage(null)
+    startRefreshTransition(async () => {
+      const result = await refreshLeadtableCandidateAction(candidate.id)
+      if (result.success) {
+        setRefreshMessage({
+          type: "success",
+          text: result.changedFields.length > 0 ? `Aktualisiert: ${result.changedFields.join(", ")}` : "Bereits aktuell",
+        })
+        router.refresh()
+      } else {
+        setRefreshMessage({ type: "error", text: result.error })
+      }
     })
   }
 
@@ -201,6 +227,18 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
                 </option>
               ))}
             </select>
+            {candidate.source === "leadtable" && (
+              <button
+                type="button"
+                onClick={handleLeadtableRefresh}
+                disabled={refreshPending}
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+                style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+              >
+                <RefreshCw size={12} className={refreshPending ? "animate-spin" : undefined} />
+                {refreshPending ? "Wird aktualisiert…" : "Mit Leadtable aktualisieren"}
+              </button>
+            )}
           </div>
           <button
             onClick={() => { setModalStep("choice"); setModalError(null) }}
@@ -210,6 +248,14 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
             Löschen
           </button>
         </div>
+        {refreshMessage && (
+          <p
+            className="mt-2 text-xs"
+            style={{ color: refreshMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
+          >
+            {refreshMessage.text}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-6" style={{ gridTemplateColumns: "60% 1fr" }}>

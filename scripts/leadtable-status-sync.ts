@@ -8,8 +8,12 @@
 //
 // Nutzt, wo vorhanden, GET /lead/{leadtable_lead_id} (zuverlässiger als die
 // E-Mail-Suche). Ist noch keine Lead-ID gespeichert, wird per searchLeadByMail
-// gesucht und die gefundene ID gleich für künftige Läufe (und den geplanten
-// Beschreibungs-Import) in candidates.leadtable_lead_id gespeichert.
+// gesucht und die gefundene ID gleich für künftige Läufe (und den Beschreibungs-
+// Import) in candidates.leadtable_lead_id gespeichert.
+//
+// Mapping-Logik in src/lib/leadtable-sync-shared.ts (gemeinsam mit
+// leadtable-description-import.ts, leadtable-backfill-fields.ts und der
+// refreshLeadtableCandidateAction Server Action).
 //
 // Usage:
 //   npx tsx scripts/leadtable-status-sync.ts            (alle Kandidaten)
@@ -21,55 +25,19 @@ import dotenv from "dotenv"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "../src/types/database"
 import { leadtableFetch } from "../src/lib/leadtable-client"
+import {
+  type LeadtableSyncLead,
+  sleep,
+  withRetry,
+  leadtableStatusName,
+  mapLeadtableStatus,
+} from "../src/lib/leadtable-sync-shared"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
 
 const DELAY_MS = 250
 const PROGRESS_EVERY = 30
-
-// 1:1-Mapping der Leadtable-Statusnamen auf unsere 8 dafür vorgesehenen Kandidatenwerk-
-// Status ("vorgestellt" hat keine Leadtable-Entsprechung, wird hier nie gesetzt).
-const STATUS_MAP: Record<string, string> = {
-  Unbearbeitet: "neu",
-  Vorqualifiziert: "vorqualifiziert",
-  "Nicht erreicht": "nicht_erreicht",
-  "2x nicht erreicht + Mail": "nicht_erreicht_mail",
-  "In Kontakt": "in_kontakt",
-  Vorstellungsgespräch: "interview",
-  Absage: "abgelehnt",
-  "aktuell kein Interesse": "abgelehnt",
-  Eingestellt: "platziert",
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function withRetry<T>(fn: () => Promise<T>, retries = 6): Promise<T> {
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      return await fn()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (message.includes("429") && attempt < retries - 1) {
-        await sleep(2000 * (attempt + 1))
-        continue
-      }
-      throw err
-    }
-  }
-  throw new Error("unreachable")
-}
-
-interface LeadtableLead {
-  _id: string
-  // Flaches "status" existiert nur in der GET /lead/{leadID}-Antwort, nicht bei
-  // searchLeadByMail - dort gibt es nur statusID.name. Beide werden unterstützt,
-  // statusID.name hat Vorrang, da in beiden Endpunkten vorhanden.
-  status?: string
-  statusID?: { name?: string }
-}
 
 function parseLimitArg(): number | null {
   const arg = process.argv.find((a) => a.startsWith("--limit="))
@@ -122,17 +90,17 @@ async function main() {
     try {
       await sleep(DELAY_MS)
 
-      let lead: LeadtableLead | undefined
+      let lead: LeadtableSyncLead | undefined
       let newLeadId: string | null = null
 
       if (candidate.leadtable_lead_id) {
         const resp = await withRetry(() =>
-          leadtableFetch<{ lead: LeadtableLead }>(`/lead/${candidate.leadtable_lead_id}`)
+          leadtableFetch<{ lead: LeadtableSyncLead }>(`/lead/${candidate.leadtable_lead_id}`)
         )
         lead = resp.lead
       } else {
         const resp = await withRetry(() =>
-          leadtableFetch<{ leads: LeadtableLead[] }>(`/searchLeadByMail/${encodeURIComponent(email)}`)
+          leadtableFetch<{ leads: LeadtableSyncLead[] }>(`/searchLeadByMail/${encodeURIComponent(email)}`)
         )
         lead = resp.leads[0]
         if (lead) newLeadId = lead._id
@@ -141,15 +109,14 @@ async function main() {
       if (!lead) {
         totals.notFound++
       } else {
-        const leadtableStatus = lead.statusID?.name ?? lead.status ?? ""
-        const mappedStatus = STATUS_MAP[leadtableStatus]
+        const mappedStatus = mapLeadtableStatus(lead)
 
         if (!mappedStatus) {
           totals.unmappedStatus++
           errorDetails.push({
             name,
             id: candidate.id,
-            message: `Unbekannter Leadtable-Status "${leadtableStatus}" - kein Mapping, Status nicht geändert`,
+            message: `Unbekannter Leadtable-Status "${leadtableStatusName(lead)}" - kein Mapping, Status nicht geändert`,
           })
         } else {
           // status und leadtable_lead_id bewusst in getrennten Updates: mehrere

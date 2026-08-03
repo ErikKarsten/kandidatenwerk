@@ -7,6 +7,10 @@
 // wird nur gesetzt, wenn candidates.description bei uns noch leer ist - Freitext, den
 // jemand seither manuell eingetragen hat, wird nicht überschrieben.
 //
+// HTML-zu-Text-Konvertierung in src/lib/leadtable-sync-shared.ts (gemeinsam mit
+// leadtable-status-sync.ts, leadtable-backfill-fields.ts und der
+// refreshLeadtableCandidateAction Server Action).
+//
 // Usage:
 //   npx tsx scripts/leadtable-description-import.ts            (alle Kandidaten)
 //   npx tsx scripts/leadtable-description-import.ts --limit=15 (nur die ersten 15, zum Testen)
@@ -17,82 +21,13 @@ import dotenv from "dotenv"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "../src/types/database"
 import { leadtableFetch } from "../src/lib/leadtable-client"
+import { type LeadtableSyncLead, sleep, withRetry, htmlDescriptionToPlainText } from "../src/lib/leadtable-sync-shared"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
 
 const DELAY_MS = 250
 const PROGRESS_EVERY = 30
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function withRetry<T>(fn: () => Promise<T>, retries = 6): Promise<T> {
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      return await fn()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (message.includes("429") && attempt < retries - 1) {
-        await sleep(2000 * (attempt + 1))
-        continue
-      }
-      throw err
-    }
-  }
-  throw new Error("unreachable")
-}
-
-interface LeadtableLead {
-  _id: string
-  description?: string
-}
-
-// Leadtables description-Feld ist rohes Quill-Editor-HTML (<p>, <br/>, <ol>/<li
-// data-list="bullet">, HTML-Entities wie &gt;). Der API-eigene plainDescription-
-// Query-Parameter entfernt zwar Tags, fügt aber KEINE Trenner zwischen Absätzen/
-// Listenpunkten ein - mehrere Notizen verschmelzen dadurch zu einem Textblock ohne
-// Leerzeichen (getestet, z.B. "...gemachtaktuell..."). Deshalb wird hier bewusst das
-// rohe HTML geholt und selbst in lesbaren Text mit Zeilenumbrüchen umgewandelt.
-// Manche Notizen hängen mehrere chronologische Einträge ohne jedes Trenn-Tag
-// aneinander (z.B. "...geändert29.07.26 [19:17 Uhr]: nicht erreicht..." - im
-// rohen HTML dort schlicht kein Tag vorhanden). Als Sicherheitsnetz wird vor
-// jedem Datums-Präfix im Format "TT.MM.JJ[JJ] [[HH:MM Uhr]]:" ein Zeilenumbruch
-// eingefügt, falls dort noch keiner steht - dieses Format ist spezifisch genug,
-// um nicht versehentlich mitten in normalem Fließtext zu greifen.
-const DATE_PREFIX_RE = /\d{2}\.\d{2}\.(?:\d{2}|\d{4})\s*(?:\[\d{1,2}:\d{2}\s*Uhr\])?:/g
-
-function htmlDescriptionToPlainText(html: string): string {
-  let text = html
-    .replace(/<span class="ql-ui"[^>]*>\s*<\/span>/g, "")
-    .replace(/<li[^>]*>/g, "- ")
-    .replace(/<\/li>/g, "\n")
-    .replace(/<br\s*\/?>/g, "\n")
-    .replace(/<\/?(p|div)[^>]*>/g, (m) => (m.startsWith("</") ? "\n" : ""))
-    .replace(/<[^>]+>/g, "")
-
-  text = text
-    .replace(/&gt;/g, ">")
-    .replace(/&lt;/g, "<")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-
-  text = text.replace(DATE_PREFIX_RE, (match, offset: number, full: string) => {
-    const precedingChar = full[offset - 1]
-    const alreadyAtLineStart = offset === 0 || precedingChar === "\n"
-    return alreadyAtLineStart ? match : `\n${match}`
-  })
-
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-}
 
 function parseLimitArg(): number | null {
   const arg = process.argv.find((a) => a.startsWith("--limit="))
@@ -144,7 +79,7 @@ async function main() {
     try {
       await sleep(DELAY_MS)
       const resp = await withRetry(() =>
-        leadtableFetch<{ lead: LeadtableLead }>(`/lead/${candidate.leadtable_lead_id}`)
+        leadtableFetch<{ lead: LeadtableSyncLead }>(`/lead/${candidate.leadtable_lead_id}`)
       )
       const rawHtml = resp.lead.description?.trim() ?? ""
       const description = rawHtml === "" ? "" : htmlDescriptionToPlainText(rawHtml)

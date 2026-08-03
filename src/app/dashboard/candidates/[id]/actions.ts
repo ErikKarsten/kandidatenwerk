@@ -4,6 +4,15 @@ import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
+import { leadtableFetch } from "@/lib/leadtable-client"
+import {
+  type LeadtableSyncLead,
+  withRetry,
+  mapLeadtableStatus,
+  htmlDescriptionToPlainText,
+  extractLeadtableCustomFields,
+} from "@/lib/leadtable-sync-shared"
+import type { Json } from "@/types/database"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -104,6 +113,112 @@ export async function updateCandidateCustomFieldAction(
 
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   return null
+}
+
+export async function refreshLeadtableCandidateAction(
+  candidateId: string
+): Promise<{ success: true; changedFields: string[] } | { success: false; error: string }> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Nicht eingeloggt." }
+
+  const { data: candidate, error: fetchError } = await supabase
+    .from("candidates")
+    .select("id, source, status, description, custom_fields, leadtable_lead_id, email")
+    .eq("id", candidateId)
+    .single()
+
+  if (fetchError || !candidate) return { success: false, error: "Kandidat nicht gefunden." }
+  if (candidate.source !== "leadtable") {
+    return { success: false, error: "Kein Leadtable-Kandidat, kein Abgleich möglich." }
+  }
+
+  let lead: LeadtableSyncLead | undefined
+  let newLeadId: string | null = null
+
+  try {
+    if (candidate.leadtable_lead_id) {
+      const resp = await withRetry(() =>
+        leadtableFetch<{ lead: LeadtableSyncLead }>(`/lead/${candidate.leadtable_lead_id}`)
+      )
+      lead = resp.lead
+    } else {
+      const email = (candidate.email ?? "").trim().split(/\s+/)[0]
+      if (!email) return { success: false, error: "Kandidat hat keine E-Mail-Adresse, kein Leadtable-Abgleich möglich." }
+
+      const resp = await withRetry(() =>
+        leadtableFetch<{ leads: LeadtableSyncLead[] }>(`/searchLeadByMail/${encodeURIComponent(email)}`)
+      )
+      lead = resp.leads[0]
+      if (lead) newLeadId = lead._id
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.includes("404")) {
+      return { success: false, error: "Kandidat bei Leadtable nicht mehr auffindbar." }
+    }
+    return { success: false, error: `Leadtable-API-Fehler: ${message}` }
+  }
+
+  if (!lead) return { success: false, error: "Kandidat bei Leadtable nicht mehr auffindbar." }
+
+  const changedFields: string[] = []
+
+  // leadtable_lead_id best-effort speichern (Unique-Konflikt bei Mehrfach-Bewerbungen
+  // derselben E-Mail auf verschiedene Kampagnen darf den restlichen Sync nicht
+  // verhindern, siehe scripts/leadtable-status-sync.ts).
+  if (newLeadId) {
+    await supabase.from("candidates").update({ leadtable_lead_id: newLeadId }).eq("id", candidateId)
+  }
+
+  // Status: 1:1-Mapping, unbekannter Leadtable-Status lässt den Status unverändert,
+  // blockiert aber nicht die anderen Felder.
+  const mappedStatus = mapLeadtableStatus(lead)
+  if (mappedStatus && mappedStatus !== candidate.status) {
+    const { error: statusError } = await supabase
+      .from("candidates")
+      .update({ status: mappedStatus })
+      .eq("id", candidateId)
+    if (statusError) return { success: false, error: `Fehler beim Status-Update: ${statusError.message}` }
+    changedFields.push("Status")
+  }
+
+  // Beschreibung: bei explizitem manuellem Klick ist "aktueller Leadtable-Stand"
+  // ausdrücklich gewollt, anders als beim einmaligen Bulk-Import wird hier immer
+  // überschrieben.
+  const rawHtml = lead.description?.trim() ?? ""
+  if (rawHtml !== "") {
+    const description = htmlDescriptionToPlainText(rawHtml)
+    if (description !== "" && description !== candidate.description) {
+      const { error: descriptionError } = await supabase
+        .from("candidates")
+        .update({ description })
+        .eq("id", candidateId)
+      if (descriptionError) return { success: false, error: `Fehler beim Beschreibung-Update: ${descriptionError.message}` }
+      changedFields.push("Beschreibung")
+    }
+  }
+
+  // Zusatzfelder: wie beim Backfill nur Lücken füllen, bestehende Werte gewinnen.
+  const newCustomFields = extractLeadtableCustomFields(lead.modifiedData)
+  const existingFields = (candidate.custom_fields as Record<string, string> | null) ?? {}
+  const fieldsToAdd = Object.keys(newCustomFields).filter(
+    (key) => !(typeof existingFields[key] === "string" && existingFields[key].trim() !== "")
+  )
+  if (fieldsToAdd.length > 0) {
+    const mergedFields: Record<string, string> = { ...newCustomFields, ...existingFields }
+    const { error: fieldsError } = await supabase
+      .from("candidates")
+      .update({ custom_fields: mergedFields as Json })
+      .eq("id", candidateId)
+    if (fieldsError) return { success: false, error: `Fehler beim Zusatzfelder-Update: ${fieldsError.message}` }
+    changedFields.push("Zusatzfelder")
+  }
+
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
+
+  return { success: true, changedFields }
 }
 
 export async function saveDescriptionAction(
