@@ -22,7 +22,7 @@ export default async function DashboardPage() {
     { count: placementCount },
     latestSyncRun,
   ] = await Promise.all([
-    supabase.from("clients").select("id, name, active"),
+    supabase.from("clients").select("id, name, active, created_at"),
     supabase.from("campaigns").select("id, client_id"),
     supabase.from("candidates").select("campaign_id, status"),
     supabase.from("clients").select("*", { count: "exact", head: true }),
@@ -71,6 +71,7 @@ export default async function DashboardPage() {
       id: client.id,
       name: client.name,
       active: client.active,
+      created_at: client.created_at,
       tags: [] as string[],
       stats: {
         kandidaten: totalCandidates,
