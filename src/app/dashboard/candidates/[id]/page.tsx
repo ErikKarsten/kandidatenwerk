@@ -28,7 +28,7 @@ export default async function CandidateDetailPage({
       .order("created_at", { ascending: false }),
     supabase
       .from("candidate_campaign_matches")
-      .select("id, distance_km, status, matched_at, campaigns(id, title, clients(name))")
+      .select("id, distance_km, status, matched_at, campaigns(id, title, lat, lng, clients(name))")
       .eq("candidate_id", id)
       .order("matched_at", { ascending: false }),
   ])
@@ -70,7 +70,13 @@ export default async function CandidateDetailPage({
   type CampaignJoin = { title: string; clients: { id: string; name: string } | null } | null
   const campaigns = candidate.campaigns as CampaignJoin
 
-  type MatchCampaignJoin = { id: string; title: string; clients: { name: string } | null } | null
+  type MatchCampaignJoin = {
+    id: string
+    title: string
+    lat: number | null
+    lng: number | null
+    clients: { name: string } | null
+  } | null
   const matches = (matchRows ?? []).map((m) => {
     const matchCampaign = m.campaigns as MatchCampaignJoin
     return {
@@ -81,6 +87,8 @@ export default async function CandidateDetailPage({
       distanceKm: m.distance_km,
       status: m.status,
       matchedAt: m.matched_at,
+      lat: matchCampaign?.lat ?? null,
+      lng: matchCampaign?.lng ?? null,
     }
   })
 
@@ -96,6 +104,8 @@ export default async function CandidateDetailPage({
     description: candidate.description,
     berufsbild: candidate.berufsbild ?? null,
     plz: candidate.plz ?? null,
+    lat: candidate.lat ?? null,
+    lng: candidate.lng ?? null,
     custom_fields: (candidate.custom_fields as Record<string, string> | null) ?? null,
     campaign_id: candidate.campaign_id,
     campaigns: campaigns,

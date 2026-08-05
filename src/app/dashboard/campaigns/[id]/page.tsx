@@ -28,7 +28,7 @@ export default async function CampaignDetailPage({
       .order("created_at", { ascending: true }),
     supabase
       .from("candidate_campaign_matches")
-      .select("id, distance_km, status, matched_at, candidates(id, first_name, last_name)")
+      .select("id, distance_km, status, matched_at, candidates(id, first_name, last_name, berufsbild, lat, lng)")
       .eq("campaign_id", id)
       .order("matched_at", { ascending: false }),
   ])
@@ -39,7 +39,14 @@ export default async function CampaignDetailPage({
     ? campaign.clients[0] ?? null
     : (campaign.clients as { name: string } | null)
 
-  type MatchCandidateJoin = { id: string; first_name: string; last_name: string } | null
+  type MatchCandidateJoin = {
+    id: string
+    first_name: string
+    last_name: string
+    berufsbild: string | null
+    lat: number | null
+    lng: number | null
+  } | null
   const matches = (matchRows ?? []).map((m) => {
     const matchCandidate = m.candidates as MatchCandidateJoin
     return {
@@ -50,6 +57,9 @@ export default async function CampaignDetailPage({
       distanceKm: m.distance_km,
       status: m.status,
       matchedAt: m.matched_at,
+      berufsbild: matchCandidate?.berufsbild ?? null,
+      lat: matchCandidate?.lat ?? null,
+      lng: matchCandidate?.lng ?? null,
     }
   })
 
@@ -65,6 +75,8 @@ export default async function CampaignDetailPage({
         meta_field_mapping: (campaign.meta_field_mapping as string[] | null) ?? null,
         berufsbild: campaign.berufsbild ?? null,
         plz: campaign.plz ?? null,
+        lat: campaign.lat ?? null,
+        lng: campaign.lng ?? null,
         radius_km: campaign.radius_km ?? null,
         client,
       }}

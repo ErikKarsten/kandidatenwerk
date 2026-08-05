@@ -75,6 +75,8 @@ interface Campaign {
   meta_field_mapping: string[] | null
   berufsbild: string | null
   plz: string | null
+  lat: number | null
+  lng: number | null
   radius_km: number | null
   client: { name: string } | null
 }
@@ -87,6 +89,9 @@ interface CandidateMatch {
   distanceKm: number | null
   status: string
   matchedAt: string
+  berufsbild: string | null
+  lat: number | null
+  lng: number | null
 }
 
 interface CampaignDetailProps {
@@ -652,7 +657,14 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
       )}
 
       {/* Matches-Tab */}
-      {tab === "matches" && <MatchesTab matches={matches} />}
+      {tab === "matches" && (
+        <MatchesTab
+          matches={matches}
+          selfLat={campaign.lat}
+          selfLng={campaign.lng}
+          selfLabel={campaign.title}
+        />
+      )}
 
       {/* Automatisierungen-Tab */}
       {tab === "automatisierungen" && (

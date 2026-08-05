@@ -1,5 +1,20 @@
+"use client"
+
 import Link from "next/link"
+import dynamic from "next/dynamic"
 import { MatchStatusSelect } from "@/components/dashboard/match-status-select"
+import type { MapPoint } from "@/components/dashboard/matches-map"
+
+// Leaflet greift beim Modul-Import auf Browser-Globals zu - muss deshalb clientseitig-only
+// geladen werden (ssr:false), sonst schlägt das Server-Rendering fehl.
+const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").then((m) => m.MatchesMap), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center rounded-xl border bg-white py-12 text-sm text-gray-400" style={{ borderColor: "#dde3ea" }}>
+      Karte wird geladen…
+    </div>
+  ),
+})
 
 interface CampaignMatch {
   id: string
@@ -9,14 +24,36 @@ interface CampaignMatch {
   distanceKm: number | null
   status: string
   matchedAt: string
+  lat: number | null
+  lng: number | null
 }
 
-export function MatchesSection({ matches }: { matches: CampaignMatch[] }) {
+export function MatchesSection({
+  matches,
+  selfLat,
+  selfLng,
+  selfLabel,
+}: {
+  matches: CampaignMatch[]
+  selfLat: number | null
+  selfLng: number | null
+  selfLabel: string
+}) {
+  const mapPoints: MapPoint[] = [
+    { lat: selfLat, lng: selfLng, label: selfLabel, isSelf: true },
+    ...matches.map((m) => ({ lat: m.lat, lng: m.lng, label: m.campaignTitle, sublabel: m.clientName ?? undefined })),
+  ]
+
   return (
     <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
       <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
         Passende Kampagnen ({matches.length})
       </p>
+
+      <div className="mb-3">
+        <MatchesMap points={mapPoints} />
+      </div>
+
       {matches.length === 0 ? (
         <p className="text-sm text-gray-400">Noch keine passenden Kampagnen gefunden.</p>
       ) : (

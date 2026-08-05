@@ -55,6 +55,8 @@ interface CampaignMatch {
   distanceKm: number | null
   status: string
   matchedAt: string
+  lat: number | null
+  lng: number | null
 }
 
 interface Candidate {
@@ -69,6 +71,8 @@ interface Candidate {
   description: string | null
   berufsbild: string | null
   plz: string | null
+  lat: number | null
+  lng: number | null
   custom_fields: Record<string, string> | null
   campaign_id: string | null
   campaigns: { title: string; clients: { id: string; name: string } | null } | null
@@ -309,7 +313,12 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
         <div className="flex flex-col gap-4">
           <ContactChips email={candidate.email} phone={candidate.phone} />
           <CampaignInfoCard campaignId={candidate.campaign_id} campaigns={candidate.campaigns} />
-          <MatchesSection matches={matches} />
+          <MatchesSection
+            matches={matches}
+            selfLat={candidate.lat}
+            selfLng={candidate.lng}
+            selfLabel={`${candidate.first_name} ${candidate.last_name}`}
+          />
           <DescriptionSection candidateId={candidate.id} notes={candidate.notes} />
           <NoteSection candidateId={candidate.id} />
           <HistoryList history={history} />
