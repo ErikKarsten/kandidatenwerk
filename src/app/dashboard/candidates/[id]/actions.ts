@@ -11,6 +11,7 @@ import {
   mapLeadtableStatus,
   htmlDescriptionToPlainText,
   extractLeadtableCustomFields,
+  findLeadByEmailWithFallback,
 } from "@/lib/leadtable-sync-shared"
 import type { Json } from "@/types/database"
 
@@ -125,7 +126,7 @@ export async function refreshLeadtableCandidateAction(
 
   const { data: candidate, error: fetchError } = await supabase
     .from("candidates")
-    .select("id, source, status, description, custom_fields, leadtable_lead_id, email")
+    .select("id, source, status, description, custom_fields, leadtable_lead_id, email, campaign_id")
     .eq("id", candidateId)
     .single()
 
@@ -147,10 +148,17 @@ export async function refreshLeadtableCandidateAction(
       const email = (candidate.email ?? "").trim().split(/\s+/)[0]
       if (!email) return { success: false, error: "Kandidat hat keine E-Mail-Adresse, kein Leadtable-Abgleich möglich." }
 
-      const resp = await withRetry(() =>
-        leadtableFetch<{ leads: LeadtableSyncLead[] }>(`/searchLeadByMail/${encodeURIComponent(email)}`)
-      )
-      lead = resp.leads[0]
+      let leadtableCampaignId: string | null = null
+      if (candidate.campaign_id) {
+        const { data: campaignRow } = await supabase
+          .from("campaigns")
+          .select("leadtable_campaign_id")
+          .eq("id", candidate.campaign_id)
+          .maybeSingle()
+        leadtableCampaignId = campaignRow?.leadtable_campaign_id ?? null
+      }
+
+      lead = (await findLeadByEmailWithFallback(email, leadtableCampaignId)) ?? undefined
       if (lead) newLeadId = lead._id
     }
   } catch (err) {

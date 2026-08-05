@@ -31,6 +31,7 @@ import {
   withRetry,
   leadtableStatusName,
   mapLeadtableStatus,
+  findLeadByEmailWithFallback,
 } from "../src/lib/leadtable-sync-shared"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -58,7 +59,7 @@ async function main() {
   console.log("=== Leadtable-Kandidaten laden ===")
   const { data: candidates, error } = await supabase
     .from("candidates")
-    .select("id, first_name, last_name, email, status, leadtable_lead_id")
+    .select("id, first_name, last_name, email, status, leadtable_lead_id, campaign_id")
     .eq("source", "leadtable")
     .not("email", "is", null)
 
@@ -71,6 +72,16 @@ async function main() {
     console.log(`Test-Limit aktiv: nur die ersten ${list.length} Kandidaten`)
   }
   console.log("")
+
+  // campaign_id (Kandidatenwerk) -> leadtable_campaign_id, für den Kampagnen-Fallback
+  // bei fehlgeschlagener E-Mail-Suche (siehe findLeadByEmailWithFallback).
+  const { data: campaignRows } = await supabase
+    .from("campaigns")
+    .select("id, leadtable_campaign_id")
+    .not("leadtable_campaign_id", "is", null)
+  const leadtableCampaignIdByCampaignId = new Map(
+    (campaignRows ?? []).map((c) => [c.id, c.leadtable_campaign_id as string])
+  )
 
   const totals = {
     changed: 0,
@@ -90,7 +101,7 @@ async function main() {
     try {
       await sleep(DELAY_MS)
 
-      let lead: LeadtableSyncLead | undefined
+      let lead: LeadtableSyncLead | null = null
       let newLeadId: string | null = null
 
       if (candidate.leadtable_lead_id) {
@@ -99,10 +110,10 @@ async function main() {
         )
         lead = resp.lead
       } else {
-        const resp = await withRetry(() =>
-          leadtableFetch<{ leads: LeadtableSyncLead[] }>(`/searchLeadByMail/${encodeURIComponent(email)}`)
-        )
-        lead = resp.leads[0]
+        const leadtableCampaignId = candidate.campaign_id
+          ? (leadtableCampaignIdByCampaignId.get(candidate.campaign_id) ?? null)
+          : null
+        lead = await findLeadByEmailWithFallback(email, leadtableCampaignId)
         if (lead) newLeadId = lead._id
       }
 

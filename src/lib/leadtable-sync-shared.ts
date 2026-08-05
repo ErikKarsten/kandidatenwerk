@@ -1,13 +1,17 @@
 // Gemeinsame, umgebungsunabhängige Domänenlogik für den Leadtable-Sync - genutzt von
 // scripts/leadtable-status-sync.ts, scripts/leadtable-description-import.ts,
 // scripts/leadtable-backfill-fields.ts und der refreshLeadtableCandidateAction
-// Server Action. Bewusst OHNE Supabase-Client, dotenv oder CLI-Parsing - das bleibt
-// jeweils beim Aufrufer, da sich Überschreibverhalten und Orchestrierung
-// unterscheiden (z.B. "immer überschreiben" bei manuellem Refresh vs. "nur wenn
-// leer" beim einmaligen Bulk-Import).
+// Server Action. Anders als der Name "shared" vielleicht vermuten lässt, importiert
+// dieses Modul bewusst `leadtableFetch` (für findLeadByEmailWithFallback) - bleibt aber
+// weiterhin OHNE Supabase-Client, dotenv oder CLI-Parsing, das bleibt jeweils beim
+// Aufrufer, da sich Überschreibverhalten und Orchestrierung unterscheiden (z.B. "immer
+// überschreiben" bei manuellem Refresh vs. "nur wenn leer" beim einmaligen Bulk-Import).
+
+import { leadtableFetch } from "./leadtable-client"
 
 export interface LeadtableSyncLead {
   _id: string
+  email?: string
   // Flaches "status" existiert nur in der GET /lead/{leadID}-Antwort, nicht bei
   // searchLeadByMail - dort gibt es nur statusID.name. Beide werden unterstützt,
   // statusID.name hat Vorrang, da in beiden Endpunkten vorhanden.
@@ -142,4 +146,58 @@ export function extractLeadtableCustomFields(modifiedData: Record<string, unknow
   }
 
   return newFields
+}
+
+interface LeadtableLeadsPage {
+  pages?: { totalPages: number }
+  leads?: LeadtableSyncLead[]
+}
+
+async function fetchAllCampaignLeads(leadtableCampaignId: string): Promise<LeadtableSyncLead[]> {
+  const first = await withRetry(() =>
+    leadtableFetch<LeadtableLeadsPage>(`/lead/campaign/${leadtableCampaignId}`, { page: 1, limit: 100 })
+  )
+  let leads = first.leads ?? []
+  const totalPages = first.pages?.totalPages ?? 1
+  for (let page = 2; page <= totalPages; page++) {
+    await sleep(150)
+    const next = await withRetry(() =>
+      leadtableFetch<LeadtableLeadsPage>(`/lead/campaign/${leadtableCampaignId}`, { page, limit: 100 })
+    )
+    leads = leads.concat(next.leads ?? [])
+  }
+  return leads
+}
+
+// searchLeadByMail hat eine beobachtete Indexierungslücke: manche Leads (unabhängig von
+// der Quelle metaLeadAds/onePage) liefern dort ein 404, obwohl sie nachweislich existieren
+// und über die kampagnenbasierte Lead-Liste auffindbar sind (siehe Diagnose Alicia Keinz,
+// 2026-08-04). Dieser Fallback sucht bei fehlgeschlagener E-Mail-Suche zusätzlich direkt
+// in der Leadtable-Kampagne (case-insensitiver E-Mail-Vergleich), FALLS eine
+// Leadtable-Kampagnen-ID übergeben wurde - ohne die bleibt es beim bisherigen Verhalten
+// (null = nicht gefunden). Echte Fehler (Netzwerk, 5xx, nach Retry immer noch 429) werden
+// NICHT geschluckt, sondern weitergeworfen - nur ein 404 auf die Suche selbst löst den
+// Fallback aus.
+export async function findLeadByEmailWithFallback(
+  email: string,
+  leadtableCampaignId?: string | null
+): Promise<LeadtableSyncLead | null> {
+  let lead: LeadtableSyncLead | null = null
+
+  try {
+    const resp = await withRetry(() =>
+      leadtableFetch<{ leads: LeadtableSyncLead[] }>(`/searchLeadByMail/${encodeURIComponent(email)}`)
+    )
+    lead = resp.leads[0] ?? null
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (!message.includes("404")) throw err
+  }
+
+  if (lead) return lead
+  if (!leadtableCampaignId) return null
+
+  const normalizedEmail = email.toLowerCase()
+  const campaignLeads = await fetchAllCampaignLeads(leadtableCampaignId)
+  return campaignLeads.find((l) => l.email?.toLowerCase() === normalizedEmail) ?? null
 }

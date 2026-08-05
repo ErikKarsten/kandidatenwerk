@@ -15,8 +15,7 @@ import { fileURLToPath } from "node:url"
 import dotenv from "dotenv"
 import { createClient } from "@supabase/supabase-js"
 import type { Database, Json } from "../src/types/database"
-import { leadtableFetch } from "../src/lib/leadtable-client"
-import { type LeadtableSyncLead, sleep, withRetry, extractLeadtableCustomFields } from "../src/lib/leadtable-sync-shared"
+import { sleep, extractLeadtableCustomFields, findLeadByEmailWithFallback } from "../src/lib/leadtable-sync-shared"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -35,7 +34,7 @@ async function main() {
   console.log("=== Leadtable-Kandidaten mit E-Mail laden ===")
   const { data: candidates, error } = await supabase
     .from("candidates")
-    .select("id, email, custom_fields")
+    .select("id, email, custom_fields, campaign_id")
     .eq("source", "leadtable")
     .not("email", "is", null)
 
@@ -44,6 +43,16 @@ async function main() {
   const list = candidates ?? []
   console.log(`${list.length} Kandidaten geladen`)
   console.log("")
+
+  // campaign_id (Kandidatenwerk) -> leadtable_campaign_id, für den Kampagnen-Fallback
+  // bei fehlgeschlagener E-Mail-Suche (siehe findLeadByEmailWithFallback).
+  const { data: campaignRows } = await supabase
+    .from("campaigns")
+    .select("id, leadtable_campaign_id")
+    .not("leadtable_campaign_id", "is", null)
+  const leadtableCampaignIdByCampaignId = new Map(
+    (campaignRows ?? []).map((c) => [c.id, c.leadtable_campaign_id as string])
+  )
 
   const totals = {
     updated: 0,
@@ -59,10 +68,10 @@ async function main() {
 
     try {
       await sleep(DELAY_MS)
-      const resp = await withRetry(() =>
-        leadtableFetch<{ leads: LeadtableSyncLead[] }>(`/searchLeadByMail/${encodeURIComponent(email)}`)
-      )
-      const lead = resp.leads[0]
+      const leadtableCampaignId = candidate.campaign_id
+        ? (leadtableCampaignIdByCampaignId.get(candidate.campaign_id) ?? null)
+        : null
+      const lead = await findLeadByEmailWithFallback(email, leadtableCampaignId)
 
       if (!lead) {
         totals.skippedNoLead++
