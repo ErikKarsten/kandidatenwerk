@@ -4,8 +4,14 @@ import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { geocodePlz } from "@/lib/geocode-plz"
-import { matchCampaignToCandidates } from "@/lib/matching"
+import { matchCampaignToCandidates, matchCandidateToCampaigns } from "@/lib/matching"
+import { fetchAllCampaigns } from "@/lib/leadtable-import-customers"
+import { importLeadtableCampaign } from "@/lib/leadtable-import"
 import type { TablesUpdate } from "@/types/database"
+
+// Siehe src/app/dashboard/candidates/page.tsx / clients-list.tsx / campaigns-list.tsx -
+// derselbe Wert wird dort für "isArchived"-Prüfungen genutzt.
+const ARCHIVED_STATUS = "Archiviert"
 
 export async function getCampaignCandidatesForExport(campaignId: string): Promise<
   { error: string } | { candidates: Array<{ first_name: string; last_name: string; email: string | null; phone: string | null; status: string; custom_fields: Record<string, string> | null }> }
@@ -149,4 +155,84 @@ export async function updateCampaignSettingsAction(
 
   revalidatePath(`/dashboard/campaigns/${campaignId}`)
   return null
+}
+
+export async function refreshLeadtableCampaignAction(
+  campaignId: string
+): Promise<
+  { success: true; newCandidates: number; archived: boolean } | { success: false; error: string }
+> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Nicht eingeloggt." }
+
+  const { data: campaign, error: fetchError } = await supabase
+    .from("campaigns")
+    .select("id, title, status, leadtable_campaign_id, client_id, clients(leadtable_customer_id)")
+    .eq("id", campaignId)
+    .single()
+
+  if (fetchError || !campaign) return { success: false, error: "Kampagne nicht gefunden." }
+  if (!campaign.leadtable_campaign_id) {
+    return { success: false, error: "Keine Leadtable-Kampagnen-ID hinterlegt, kein Abgleich möglich." }
+  }
+
+  const clientRow = Array.isArray(campaign.clients) ? campaign.clients[0] : campaign.clients
+  const leadtableCustomerId = clientRow?.leadtable_customer_id ?? null
+
+  // Archiviert-Status: es gibt bei Leadtable keinen Single-Item-GET für eine Kampagne,
+  // nur /campaign/all/{customerId} als Liste (siehe fetchAllCampaigns) - deshalb wird
+  // hier die komplette Kampagnenliste des zugehörigen Kunden geladen und per _id
+  // gefiltert. Ohne bekannte Leadtable-Kunden-ID (Client nicht verknüpft oder ohne
+  // eigene leadtable_customer_id) wird der Archiviert-Check übersprungen, statt den
+  // ganzen Abgleich abzubrechen - das Nachholen neuer Kandidaten funktioniert davon
+  // unabhängig.
+  let archived = false
+
+  if (leadtableCustomerId) {
+    try {
+      const leadtableCampaigns = await fetchAllCampaigns(leadtableCustomerId)
+      const match = leadtableCampaigns.find((c) => c._id === campaign.leadtable_campaign_id)
+      archived = match?.archived ?? false
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, error: `Leadtable-API-Fehler beim Archiviert-Check: ${message}` }
+    }
+
+    if (archived && campaign.status !== ARCHIVED_STATUS) {
+      const { error: archiveError } = await supabase
+        .from("campaigns")
+        .update({ status: ARCHIVED_STATUS })
+        .eq("id", campaignId)
+      if (archiveError) return { success: false, error: `Fehler beim Archivieren: ${archiveError.message}` }
+    }
+  }
+
+  let importResult
+  try {
+    importResult = await importLeadtableCampaign(
+      leadtableCustomerId ?? "",
+      campaign.leadtable_campaign_id,
+      campaign.title,
+      campaign.id
+    )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: `Import neuer Kandidaten fehlgeschlagen: ${message}` }
+  }
+
+  // Matching pro neuem Kandidaten einzeln anstoßen (nicht fatal, falls ein einzelner
+  // Match-Lauf fehlschlägt - siehe gleiches Muster in updateCampaignSettingsAction oben).
+  for (const candidateId of importResult.createdCandidateIds) {
+    try {
+      await matchCandidateToCampaigns(supabase, candidateId)
+    } catch (matchError) {
+      console.error("Matching fehlgeschlagen für neuen Kandidaten", candidateId, matchError)
+    }
+  }
+
+  revalidatePath(`/dashboard/campaigns/${campaignId}`)
+
+  return { success: true, newCandidates: importResult.created, archived }
 }

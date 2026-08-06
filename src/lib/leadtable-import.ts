@@ -148,6 +148,10 @@ export type ImportLeadtableCampaignResult = {
   skippedNoEmail: number
   skippedDuplicate: number
   errors: ImportLeadtableCampaignError[]
+  // IDs der neu angelegten Kandidaten (Kandidatenwerk-IDs) - z.B. damit der Aufrufer
+  // gezielt matchCandidateToCampaigns() pro neuem Kandidaten anstoßen kann, statt
+  // pauschal für alle Kandidaten der Kampagne.
+  createdCandidateIds: string[]
 }
 
 export async function importLeadtableCampaign(
@@ -184,6 +188,7 @@ export async function importLeadtableCampaign(
     skippedNoEmail: 0,
     skippedDuplicate: 0,
     errors: [],
+    createdCandidateIds: [],
   }
 
   for (const lead of leads) {
@@ -216,23 +221,28 @@ export async function importLeadtableCampaign(
 
       const notePrefix = usedLongNameHeuristic ? "[Automatisch bereinigter Name, bitte prüfen] " : ""
 
-      const { error: insertError } = await kandidatenwerk.from("candidates").insert({
-        first_name: firstName,
-        last_name: lastName,
-        email: lead.email,
-        phone: lead.phone ?? null,
-        berufsbild,
-        plz: null,
-        status: mappedStatus,
-        source: "leadtable",
-        campaign_id: campaignRecordId ?? null,
-        client_id: clientRecordId,
-        notes: `${notePrefix}Import aus Leadtable, Kampagne "${campaignName}", ursprünglicher Status: "${lead.status}"`,
-      })
+      const { data: insertedCandidate, error: insertError } = await kandidatenwerk
+        .from("candidates")
+        .insert({
+          first_name: firstName,
+          last_name: lastName,
+          email: lead.email,
+          phone: lead.phone ?? null,
+          berufsbild,
+          plz: null,
+          status: mappedStatus,
+          source: "leadtable",
+          campaign_id: campaignRecordId ?? null,
+          client_id: clientRecordId,
+          notes: `${notePrefix}Import aus Leadtable, Kampagne "${campaignName}", ursprünglicher Status: "${lead.status}"`,
+        })
+        .select("id")
+        .single()
 
       if (insertError) throw new Error(insertError.message)
 
       result.created++
+      result.createdCandidateIds.push(insertedCandidate.id)
     } catch (err) {
       result.errors.push({
         leadId: lead._id,

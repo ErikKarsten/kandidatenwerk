@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { fetchAllCustomers, importNewLeadtableCampaignsForClient } from "@/lib/leadtable-import-customers"
 
 export async function updateClientAction(
   clientId: string,
@@ -137,6 +138,63 @@ export async function deleteClientPermanentlyAction(clientId: string): Promise<{
   console.log("[deleteClientPermanentlyAction] success, revalidating")
   revalidatePath("/dashboard/clients")
   return null
+}
+
+export async function refreshLeadtableClientAction(
+  clientId: string
+): Promise<
+  { success: true; newCampaigns: number; archived: boolean } | { success: false; error: string }
+> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Nicht eingeloggt." }
+
+  const { data: client, error: fetchError } = await supabase
+    .from("clients")
+    .select("id, active, leadtable_customer_id")
+    .eq("id", clientId)
+    .single()
+
+  if (fetchError || !client) return { success: false, error: "Kunde nicht gefunden." }
+  if (!client.leadtable_customer_id) {
+    return { success: false, error: "Keine Leadtable-Kunden-ID hinterlegt, kein Abgleich möglich." }
+  }
+
+  // Archiviert-Status: kein Single-Item-GET bei Leadtable für einen Kunden, nur
+  // /customer/all als Liste (siehe fetchAllCustomers) - deshalb komplette Kundenliste
+  // laden und per _id filtern (gleiches Muster wie bei fetchAllCampaigns).
+  let archived = false
+
+  try {
+    const leadtableCustomers = await fetchAllCustomers()
+    const match = leadtableCustomers.find((c) => c._id === client.leadtable_customer_id)
+    archived = match?.archived ?? false
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: `Leadtable-API-Fehler beim Archiviert-Check: ${message}` }
+  }
+
+  if (archived && client.active) {
+    const { error: archiveError } = await supabase
+      .from("clients")
+      .update({ active: false })
+      .eq("id", clientId)
+    if (archiveError) return { success: false, error: `Fehler beim Archivieren: ${archiveError.message}` }
+  }
+
+  let importResult
+  try {
+    importResult = await importNewLeadtableCampaignsForClient(clientId, client.leadtable_customer_id)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: `Import neuer Kampagnen fehlgeschlagen: ${message}` }
+  }
+
+  revalidatePath(`/dashboard/clients/${clientId}`)
+  revalidatePath("/dashboard/clients")
+
+  return { success: true, newCampaigns: importResult.campaignsCreated, archived }
 }
 
 // ── client_contacts ──────────────────────────────────────────────────────────

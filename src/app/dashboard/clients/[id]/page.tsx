@@ -48,6 +48,7 @@ export default async function ClientDetailPage({
         active: client.active,
         status: (client.status as string) ?? "Aktiv",
         logo_url: (client.logo_url as string | null) ?? null,
+        leadtable_customer_id: client.leadtable_customer_id ?? null,
       }}
       campaigns={campaignList}
       contacts={(contacts ?? []).map((c) => ({

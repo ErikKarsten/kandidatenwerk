@@ -3,13 +3,14 @@
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronLeft, Plus, Pencil, LayoutGrid, List, Search } from "lucide-react"
+import { ChevronLeft, Plus, Pencil, LayoutGrid, List, Search, RefreshCw } from "lucide-react"
 import {
   updateCampaignTitleAction,
   archiveCampaignAction,
   deleteCampaignAction,
   deleteCampaignWithCandidatesAction,
   getCampaignCandidatesForExport,
+  refreshLeadtableCampaignAction,
 } from "./actions"
 import { Button } from "@/components/ui/button"
 import {
@@ -78,6 +79,7 @@ interface Campaign {
   lat: number | null
   lng: number | null
   radius_km: number | null
+  leadtable_campaign_id: string | null
   client: { name: string } | null
 }
 
@@ -135,7 +137,10 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
   const [modalError, setModalError] = useState<string | null>(null)
   const [archivePending, startArchiveTransition] = useTransition()
   const [finalDeletePending, setFinalDeletePending] = useState(false)
+  const [refreshPending, startRefreshTransition] = useTransition()
+  const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const statusColors = CAMPAIGN_STATUS_COLORS[campaign.status] ?? CAMPAIGN_STATUS_COLORS.completed
+  const router = useRouter()
 
   const [view, setView] = useState<"table" | "grid">("table")
   useEffect(() => {
@@ -202,6 +207,25 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
     startArchiveTransition(async () => {
       const result = await archiveCampaignAction(campaign.id)
       if (result?.error) setModalError(result.error)
+    })
+  }
+
+  function handleLeadtableRefresh() {
+    setRefreshMessage(null)
+    startRefreshTransition(async () => {
+      const result = await refreshLeadtableCampaignAction(campaign.id)
+      if (result.success) {
+        const parts: string[] = []
+        if (result.newCandidates > 0) parts.push(`${result.newCandidates} neue Kandidat${result.newCandidates !== 1 ? "en" : ""}`)
+        if (result.archived) parts.push("bei Leadtable archiviert")
+        setRefreshMessage({
+          type: "success",
+          text: parts.length > 0 ? parts.join(", ") : "Bereits aktuell",
+        })
+        router.refresh()
+      } else {
+        setRefreshMessage({ type: "error", text: result.error })
+      }
     })
   }
 
@@ -388,6 +412,18 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
                 <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: statusColors.dot }} />
                 {CAMPAIGN_STATUS_LABEL[campaign.status] ?? campaign.status}
               </span>
+              {campaign.leadtable_campaign_id && (
+                <button
+                  type="button"
+                  onClick={handleLeadtableRefresh}
+                  disabled={refreshPending}
+                  className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+                  style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+                >
+                  <RefreshCw size={12} className={refreshPending ? "animate-spin" : undefined} />
+                  {refreshPending ? "Wird aktualisiert…" : "Mit Leadtable aktualisieren"}
+                </button>
+              )}
             </div>
             <p className="text-sm text-gray-500">
               {campaign.client?.name ?? "Kein Kunde"}
@@ -395,6 +431,14 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
             </p>
             {campaign.description && (
               <p className="mt-1 text-sm text-gray-600">{campaign.description}</p>
+            )}
+            {refreshMessage && (
+              <p
+                className="mt-1 text-xs"
+                style={{ color: refreshMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
+              >
+                {refreshMessage.text}
+              </p>
             )}
           </div>
 

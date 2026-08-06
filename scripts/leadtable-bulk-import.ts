@@ -84,7 +84,7 @@ async function main() {
   console.log(`${customers.length} Kunden geladen`)
   console.log("")
 
-  const totals: ImportLeadtableCampaignResult = {
+  const totals: Omit<ImportLeadtableCampaignResult, "createdCandidateIds"> = {
     created: 0,
     skippedAbsage: 0,
     skippedNoEmail: 0,

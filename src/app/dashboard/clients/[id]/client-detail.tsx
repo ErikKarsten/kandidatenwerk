@@ -3,12 +3,14 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { RefreshCw } from "lucide-react"
 import {
   updateClientAction,
   archiveClientAction,
   unarchiveClientAction,
   deleteClientPermanentlyAction,
   uploadClientLogoAction,
+  refreshLeadtableClientAction,
 } from "./actions"
 import { ContactsSection, type Contact } from "./contacts-section"
 
@@ -34,6 +36,7 @@ interface Client {
   active: boolean
   status: string
   logo_url: string | null
+  leadtable_customer_id: string | null
 }
 
 interface ClientDetailProps {
@@ -57,6 +60,8 @@ export function ClientDetail({ client, campaigns, contacts }: ClientDetailProps)
   const [archivePending, startArchiveTransition] = useTransition()
   const [deletePending, startDeleteTransition] = useTransition()
   const [unarchivePending, startUnarchiveTransition] = useTransition()
+  const [refreshPending, startRefreshTransition] = useTransition()
+  const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   function openModal() {
     setModalStep("choice")
@@ -82,6 +87,25 @@ export function ClientDetail({ client, campaigns, contacts }: ClientDetailProps)
     startUnarchiveTransition(async () => {
       const result = await unarchiveClientAction(client.id)
       if (!result?.error) router.refresh()
+    })
+  }
+
+  function handleLeadtableRefresh() {
+    setRefreshMessage(null)
+    startRefreshTransition(async () => {
+      const result = await refreshLeadtableClientAction(client.id)
+      if (result.success) {
+        const parts: string[] = []
+        if (result.newCampaigns > 0) parts.push(`${result.newCampaigns} neue Kampagne${result.newCampaigns !== 1 ? "n" : ""}`)
+        if (result.archived) parts.push("bei Leadtable archiviert")
+        setRefreshMessage({
+          type: "success",
+          text: parts.length > 0 ? parts.join(", ") : "Bereits aktuell",
+        })
+        router.refresh()
+      } else {
+        setRefreshMessage({ type: "error", text: result.error })
+      }
     })
   }
 
@@ -290,6 +314,19 @@ export function ClientDetail({ client, campaigns, contacts }: ClientDetailProps)
             </>
           )}
 
+          {client.leadtable_customer_id && (
+            <button
+              type="button"
+              onClick={handleLeadtableRefresh}
+              disabled={refreshPending}
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+              style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+            >
+              <RefreshCw size={12} className={refreshPending ? "animate-spin" : undefined} />
+              {refreshPending ? "Wird aktualisiert…" : "Mit Leadtable aktualisieren"}
+            </button>
+          )}
+
           <button
             onClick={openModal}
             className="ml-auto rounded-md border px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
@@ -305,6 +342,14 @@ export function ClientDetail({ client, campaigns, contacts }: ClientDetailProps)
             Bearbeiten
           </button>
         </div>
+        {refreshMessage && (
+          <p
+            className="mt-2 text-xs"
+            style={{ color: refreshMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
+          >
+            {refreshMessage.text}
+          </p>
+        )}
       </div>
 
       {/* ── Tabs ── */}
