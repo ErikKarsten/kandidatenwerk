@@ -34,7 +34,9 @@ import {
   mapLeadtableStatus,
   htmlDescriptionToPlainText,
   extractLeadtableCustomFields,
+  extractCustomFieldsFromDescriptionAI,
 } from "../src/lib/leadtable-sync-shared"
+import { FIXED_CUSTOM_FIELDS } from "../src/lib/candidate-custom-fields"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -371,6 +373,79 @@ async function backfillCustomFields(
   return { fieldsAdded, errors }
 }
 
+// ── Schritt 4 (Fortsetzung): KI-gestützte Extraktion aus der Beschreibung ──────
+// Läuft nach dem regelbasierten Backfill oben, deckt aber einen breiteren Kreis ab:
+// nicht nur Kandidaten mit komplett leerem custom_fields, sondern alle mit einer
+// description, bei denen noch mindestens eines der 12 bekannten Felder fehlt (auch
+// wenn custom_fields bereits teilweise befüllt ist, z.B. durch den Regex-Backfill oben
+// oder manuelle UI-Eingaben). Überschreibt nie bestehende Werte - siehe
+// extractCustomFieldsFromDescriptionAI in leadtable-sync-shared.ts.
+async function backfillCustomFieldsWithAI(
+  supabase: SupabaseClient,
+  limit: number | null
+): Promise<{ fieldsAdded: number; candidatesUpdated: number; errors: number }> {
+  const { data: candidates, error } = await supabase
+    .from("candidates")
+    .select("id, description, custom_fields")
+    .eq("source", "leadtable")
+    .not("description", "is", null)
+
+  if (error) throw new Error(error.message)
+
+  const withGaps = (candidates ?? []).filter((c) => {
+    if ((c.description ?? "").trim() === "") return false
+    const existing = (c.custom_fields as Record<string, string> | null) ?? {}
+    return FIXED_CUSTOM_FIELDS.some(
+      (f) => !(typeof existing[f.key] === "string" && existing[f.key].trim() !== "")
+    )
+  })
+
+  let list = withGaps
+  if (limit) list = list.slice(0, limit)
+  console.log(
+    `${list.length} Kandidaten mit description und noch fehlenden Zusatzfeldern` + (limit ? ` (Test-Limit)` : "")
+  )
+
+  let fieldsAdded = 0
+  let candidatesUpdated = 0
+  let errors = 0
+
+  for (let i = 0; i < list.length; i++) {
+    const candidate = list[i]
+    const existing = (candidate.custom_fields as Record<string, string> | null) ?? {}
+
+    try {
+      await sleep(DELAY_MS)
+      const newFields = await extractCustomFieldsFromDescriptionAI(candidate.description, existing)
+      if (Object.keys(newFields).length === 0) continue
+
+      // existing gewinnt bei Konflikt (bereits durch extractCustomFieldsFromDescriptionAI
+      // gefiltert, hier zusätzlich als Sicherheitsnetz - gleiches Muster wie beim
+      // regelbasierten Backfill/Merge an anderer Stelle).
+      const merged = { ...newFields, ...existing }
+      const { error: updateError } = await supabase
+        .from("candidates")
+        .update({ custom_fields: merged as Json })
+        .eq("id", candidate.id)
+      if (updateError) throw new Error(updateError.message)
+
+      fieldsAdded += Object.keys(newFields).length
+      candidatesUpdated++
+    } catch (err) {
+      errors++
+      console.error(`  Fehler bei Kandidat ${candidate.id}:`, err instanceof Error ? err.message : err)
+    }
+
+    if ((i + 1) % PROGRESS_EVERY === 0 || i === list.length - 1) {
+      console.log(
+        `  [${i + 1}/${list.length}] KI-Felder ergänzt bisher: ${fieldsAdded} (${candidatesUpdated} Kandidaten), Fehler: ${errors}`
+      )
+    }
+  }
+
+  return { fieldsAdded, candidatesUpdated, errors }
+}
+
 // ── main ──────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -419,12 +494,20 @@ async function main() {
     console.log(`=> Zusatzfelder ergänzt: ${stepD.fieldsAdded}, Fehler: ${stepD.errors}`)
     console.log("")
 
+    console.log("--- Schritt 4/4 (Fortsetzung): KI-Extraktion aus Beschreibung ---")
+    const stepD2 = await backfillCustomFieldsWithAI(supabase, limit)
+    console.log(
+      `=> KI-Zusatzfelder ergänzt: ${stepD2.fieldsAdded} (${stepD2.candidatesUpdated} Kandidaten), Fehler: ${stepD2.errors}`
+    )
+    console.log("")
+
     const summary = {
       newCandidates: stepA.newCandidates,
       statusUpdated: stepB.statusUpdated,
       descriptionsAdded: stepC.descriptionsAdded,
       fieldsAdded: stepD.fieldsAdded,
-      errors: stepA.errors + stepB.errors + stepC.errors + stepD.errors,
+      aiFieldsAdded: stepD2.fieldsAdded,
+      errors: stepA.errors + stepB.errors + stepC.errors + stepD.errors + stepD2.errors,
     }
 
     const { error: finishError } = await supabase

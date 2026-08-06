@@ -1,13 +1,19 @@
 // Gemeinsame, umgebungsunabhängige Domänenlogik für den Leadtable-Sync - genutzt von
 // scripts/leadtable-status-sync.ts, scripts/leadtable-description-import.ts,
-// scripts/leadtable-backfill-fields.ts und der refreshLeadtableCandidateAction
-// Server Action. Anders als der Name "shared" vielleicht vermuten lässt, importiert
-// dieses Modul bewusst `leadtableFetch` (für findLeadByEmailWithFallback) - bleibt aber
-// weiterhin OHNE Supabase-Client, dotenv oder CLI-Parsing, das bleibt jeweils beim
-// Aufrufer, da sich Überschreibverhalten und Orchestrierung unterscheiden (z.B. "immer
-// überschreiben" bei manuellem Refresh vs. "nur wenn leer" beim einmaligen Bulk-Import).
+// scripts/leadtable-backfill-fields.ts, scripts/leadtable-full-sync.ts und der
+// refreshLeadtableCandidateAction Server Action. Anders als der Name "shared" vielleicht
+// vermuten lässt, importiert dieses Modul bewusst `leadtableFetch` (für
+// findLeadByEmailWithFallback) und das Anthropic-SDK (für
+// extractCustomFieldsFromDescriptionAI) - bleibt aber weiterhin OHNE Supabase-Client,
+// dotenv oder CLI-Parsing, das bleibt jeweils beim Aufrufer, da sich
+// Überschreibverhalten und Orchestrierung unterscheiden (z.B. "immer überschreiben" bei
+// manuellem Refresh vs. "nur wenn leer" beim einmaligen Bulk-Import).
 
+import Anthropic from "@anthropic-ai/sdk"
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod"
+import { z } from "zod"
 import { leadtableFetch } from "./leadtable-client"
+import { FIXED_CUSTOM_FIELDS } from "./candidate-custom-fields"
 
 export interface LeadtableSyncLead {
   _id: string
@@ -200,4 +206,79 @@ export async function findLeadByEmailWithFallback(
   const normalizedEmail = email.toLowerCase()
   const campaignLeads = await fetchAllCampaignLeads(leadtableCampaignId)
   return campaignLeads.find((l) => l.email?.toLowerCase() === normalizedEmail) ?? null
+}
+
+// Zod-Schema für die KI-Extraktion: alle 12 bekannten Felder + ein Sammelfeld für
+// Zusatzinfos, die zu keiner der 12 Fragen passen. Bewusst ALLE Felder .optional() -
+// das Modell soll Felder komplett weglassen dürfen, statt sie zu raten (siehe Prompt).
+const ExtractedFieldsSchema = z.object({
+  ...Object.fromEntries(FIXED_CUSTOM_FIELDS.map((f) => [f.key, z.string().optional()])),
+  sonstige_hinweise_ki: z.string().optional(),
+})
+
+// KI-gestützte Zusatzfelder-Extraktion aus der Leadtable-Beschreibung (Freitext). Nutzt
+// Claude Haiku 4.5 (günstig, für diese einfache Extraktionsaufgabe ausreichend) mit
+// strukturierter JSON-Ausgabe (output_config.format via zodOutputFormat) - das ist die
+// primäre Absicherung gegen unparsbare Antworten, der Prompt-Hinweis "Gib NUR JSON
+// zurück" ist zusätzliche Verstärkung.
+//
+// WICHTIGE REGEL: überschreibt NIEMALS bereits gesetzte custom_fields-Werte - egal ob
+// sie vom bisherigen Regex-Backfill stammen oder manuell im UI eingetragen wurden. Der
+// Prompt weist das Modell an, nichts zu raten; zusätzlich filtert diese Funktion das
+// Ergebnis nach existingFields (Sicherheitsnetz gegen versehentliches Überschreiben,
+// falls das Modell dennoch ein bereits gesetztes Feld zurückgibt).
+export async function extractCustomFieldsFromDescriptionAI(
+  description: string | null | undefined,
+  existingFields: Record<string, string>
+): Promise<Record<string, string>> {
+  const trimmedDescription = (description ?? "").trim()
+  if (trimmedDescription === "") return {}
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    console.warn(
+      "[extractCustomFieldsFromDescriptionAI] ANTHROPIC_API_KEY nicht gesetzt - KI-Extraktion übersprungen."
+    )
+    return {}
+  }
+
+  const fieldList = FIXED_CUSTOM_FIELDS.map((f) => `- ${f.label} (${f.key})`).join("\n")
+  const prompt = `Hier ist ein Freitext über einen Bewerber. Extrahiere, falls vorhanden, Antworten zu folgenden Fragen (JSON-Feldname in Klammern):
+${fieldList}
+
+Gib NUR JSON zurück mit den Feldern, die du im Text findest - lass Felder komplett weg, wenn der Text dazu nichts hergibt, rate nichts. Falls du zusätzliche relevante Infos findest, die zu KEINER der Fragen passen, fasse sie kurz unter einem zusätzlichen Feld "sonstige_hinweise_ki" zusammen.
+
+Freitext:
+"""
+${trimmedDescription}
+"""`
+
+  let parsed: z.infer<typeof ExtractedFieldsSchema> | null
+  try {
+    const client = new Anthropic({ apiKey })
+    const response = await client.messages.parse({
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
+      output_config: { format: zodOutputFormat(ExtractedFieldsSchema) },
+    })
+    parsed = response.parsed_output
+  } catch (err) {
+    console.warn(
+      "[extractCustomFieldsFromDescriptionAI] Anthropic-API-Fehler:",
+      err instanceof Error ? err.message : err
+    )
+    return {}
+  }
+
+  if (!parsed) return {}
+
+  const result: Record<string, string> = {}
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value !== "string" || value.trim() === "") continue
+    const alreadySet = typeof existingFields[key] === "string" && existingFields[key].trim() !== ""
+    if (alreadySet) continue
+    result[key] = value.trim()
+  }
+  return result
 }

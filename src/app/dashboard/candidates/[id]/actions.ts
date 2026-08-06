@@ -11,6 +11,7 @@ import {
   mapLeadtableStatus,
   htmlDescriptionToPlainText,
   extractLeadtableCustomFields,
+  extractCustomFieldsFromDescriptionAI,
   findLeadByEmailWithFallback,
 } from "@/lib/leadtable-sync-shared"
 import type { Json } from "@/types/database"
@@ -195,6 +196,7 @@ export async function refreshLeadtableCandidateAction(
   // Beschreibung: bei explizitem manuellem Klick ist "aktueller Leadtable-Stand"
   // ausdrücklich gewollt, anders als beim einmaligen Bulk-Import wird hier immer
   // überschrieben.
+  let currentDescription = candidate.description
   const rawHtml = lead.description?.trim() ?? ""
   if (rawHtml !== "") {
     const description = htmlDescriptionToPlainText(rawHtml)
@@ -205,23 +207,40 @@ export async function refreshLeadtableCandidateAction(
         .eq("id", candidateId)
       if (descriptionError) return { success: false, error: `Fehler beim Beschreibung-Update: ${descriptionError.message}` }
       changedFields.push("Beschreibung")
+      currentDescription = description
     }
   }
 
   // Zusatzfelder: wie beim Backfill nur Lücken füllen, bestehende Werte gewinnen.
   const newCustomFields = extractLeadtableCustomFields(lead.modifiedData)
-  const existingFields = (candidate.custom_fields as Record<string, string> | null) ?? {}
+  let currentFields = (candidate.custom_fields as Record<string, string> | null) ?? {}
   const fieldsToAdd = Object.keys(newCustomFields).filter(
-    (key) => !(typeof existingFields[key] === "string" && existingFields[key].trim() !== "")
+    (key) => !(typeof currentFields[key] === "string" && currentFields[key].trim() !== "")
   )
   if (fieldsToAdd.length > 0) {
-    const mergedFields: Record<string, string> = { ...newCustomFields, ...existingFields }
+    const mergedFields: Record<string, string> = { ...newCustomFields, ...currentFields }
     const { error: fieldsError } = await supabase
       .from("candidates")
       .update({ custom_fields: mergedFields as Json })
       .eq("id", candidateId)
     if (fieldsError) return { success: false, error: `Fehler beim Zusatzfelder-Update: ${fieldsError.message}` }
     changedFields.push("Zusatzfelder")
+    currentFields = mergedFields
+  }
+
+  // KI-Extraktion aus der Beschreibung: nur für Lücken, die die regelbasierte
+  // Extraktion oben nicht abdeckt (die kennt nur die 4 direkt in Leadtables
+  // modifiedData verfügbaren Felder + Ausbildung, nicht alle 12). Überschreibt nie
+  // bestehende Werte - siehe extractCustomFieldsFromDescriptionAI.
+  const aiFields = await extractCustomFieldsFromDescriptionAI(currentDescription, currentFields)
+  if (Object.keys(aiFields).length > 0) {
+    const mergedAiFields: Record<string, string> = { ...aiFields, ...currentFields }
+    const { error: aiFieldsError } = await supabase
+      .from("candidates")
+      .update({ custom_fields: mergedAiFields as Json })
+      .eq("id", candidateId)
+    if (aiFieldsError) return { success: false, error: `Fehler beim KI-Zusatzfelder-Update: ${aiFieldsError.message}` }
+    changedFields.push("Zusatzfelder (KI)")
   }
 
   revalidatePath(`/dashboard/candidates/${candidateId}`)

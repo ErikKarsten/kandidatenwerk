@@ -31,6 +31,7 @@ function summaryText(summary: LeadtableSyncRunSummary["summary"]): string {
   if (summary.statusUpdated) parts.push(`${summary.statusUpdated} Status aktualisiert`)
   if (summary.descriptionsAdded) parts.push(`${summary.descriptionsAdded} Beschreibungen ergänzt`)
   if (summary.fieldsAdded) parts.push(`${summary.fieldsAdded} Zusatzfelder ergänzt`)
+  if (summary.aiFieldsAdded) parts.push(`${summary.aiFieldsAdded} Zusatzfelder per KI ergänzt`)
   return parts.length > 0 ? parts.join(", ") : "Keine Änderungen"
 }
 
