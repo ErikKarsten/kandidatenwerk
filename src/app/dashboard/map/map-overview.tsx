@@ -36,12 +36,24 @@ export interface MapCandidatePoint {
   approximate: boolean
 }
 
-type Filter = "all" | "clients" | "candidates"
+// Zwei unabhängige Toggle-Reihen statt eines einzelnen 5-Werte-Enums: "Art" entscheidet
+// Kanzlei/Kandidat/Beide, "Genauigkeit" filtert innerhalb der Kandidaten zusätzlich nach
+// eigenem vs. ungefährem Standort. Die zweite Reihe wird nur angezeigt, wenn Kandidaten
+// überhaupt einbezogen sind (Art ≠ "clients") - bei 5 flachen Buttons in einer Zeile
+// wäre es auf schmaleren Bildschirmen zu eng geworden.
+type TypeFilter = "all" | "clients" | "candidates"
+type AccuracyFilter = "all" | "own" | "approx"
 
-const FILTER_OPTIONS: { value: Filter; label: string }[] = [
+const TYPE_OPTIONS: { value: TypeFilter; label: string }[] = [
   { value: "all", label: "Beide" },
   { value: "clients", label: "Nur Kanzleien" },
   { value: "candidates", label: "Nur Kandidaten" },
+]
+
+const ACCURACY_OPTIONS: { value: AccuracyFilter; label: string }[] = [
+  { value: "all", label: "Beide" },
+  { value: "own", label: "Eigener Standort" },
+  { value: "approx", label: "Ungefährer Standort" },
 ]
 
 const CLIENT_COLOR = "#dc2626"
@@ -54,21 +66,36 @@ export function MapOverview({
   clients: MapClientPoint[]
   candidates: MapCandidatePoint[]
 }) {
-  const [filter, setFilter] = useState<Filter>("all")
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all")
+  const [accuracyFilter, setAccuracyFilter] = useState<AccuracyFilter>("all")
 
   const candidatesWithOwnLocation = useMemo(() => candidates.filter((c) => !c.approximate).length, [candidates])
   const candidatesWithApproxLocation = candidates.length - candidatesWithOwnLocation
 
-  const points: MapPoint[] = useMemo(() => {
-    const clientPoints: MapPoint[] = clients.map((c) => ({
-      lat: c.lat,
-      lng: c.lng,
-      label: c.name,
-      sublabel: "Kanzlei",
-      color: CLIENT_COLOR,
-    }))
+  const includeClients = typeFilter !== "candidates"
+  const includeCandidates = typeFilter !== "clients"
 
-    const candidatePoints: MapPoint[] = candidates.map((c) => ({
+  const points: MapPoint[] = useMemo(() => {
+    const clientPoints: MapPoint[] = includeClients
+      ? clients.map((c) => ({
+          lat: c.lat,
+          lng: c.lng,
+          label: c.name,
+          sublabel: "Kanzlei",
+          color: CLIENT_COLOR,
+          href: `/dashboard/clients/${c.id}`,
+        }))
+      : []
+
+    const filteredCandidates = includeCandidates
+      ? candidates.filter((c) => {
+          if (accuracyFilter === "own") return !c.approximate
+          if (accuracyFilter === "approx") return c.approximate
+          return true
+        })
+      : []
+
+    const candidatePoints: MapPoint[] = filteredCandidates.map((c) => ({
       lat: c.lat,
       lng: c.lng,
       label: c.name,
@@ -76,12 +103,11 @@ export function MapOverview({
       color: CANDIDATE_COLOR,
       approximate: c.approximate,
       note: c.approximate ? "Ungefährer Standort, keine eigene PLZ hinterlegt" : undefined,
+      href: `/dashboard/candidates/${c.id}`,
     }))
 
-    if (filter === "clients") return clientPoints
-    if (filter === "candidates") return candidatePoints
     return [...clientPoints, ...candidatePoints]
-  }, [clients, candidates, filter])
+  }, [clients, candidates, includeClients, includeCandidates, accuracyFilter])
 
   return (
     <div className="flex flex-col gap-4">
@@ -98,23 +124,44 @@ export function MapOverview({
         mit ungefährem Standort
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Filterleiste */}
-        <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: "#dde3ea" }}>
-          {FILTER_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setFilter(opt.value)}
-              className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-              style={{
-                backgroundColor: filter === opt.value ? "#1e56a0" : "transparent",
-                color: filter === opt.value ? "white" : "#6b7280",
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        {/* Filterleisten */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: "#dde3ea" }}>
+            {TYPE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setTypeFilter(opt.value)}
+                className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                style={{
+                  backgroundColor: typeFilter === opt.value ? "#1e56a0" : "transparent",
+                  color: typeFilter === opt.value ? "white" : "#6b7280",
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {includeCandidates && (
+            <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: "#dde3ea" }}>
+              {ACCURACY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setAccuracyFilter(opt.value)}
+                  className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: accuracyFilter === opt.value ? "#4ba3c3" : "transparent",
+                    color: accuracyFilter === opt.value ? "white" : "#6b7280",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Legende */}
