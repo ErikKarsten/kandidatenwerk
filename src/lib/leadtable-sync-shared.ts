@@ -255,7 +255,13 @@ ${trimmedDescription}
 
   let parsed: z.infer<typeof ExtractedFieldsSchema> | null
   try {
-    const client = new Anthropic({ apiKey })
+    // Explizites Timeout + reduzierte Retries statt SDK-Default (10 Minuten Timeout,
+    // maxRetries 2 - im Worst Case also bis zu ~30 Minuten, bevor der try/catch unten
+    // überhaupt greift). Diese einfache Extraktion soll den manuellen "Mit Leadtable
+    // aktualisieren"-Klick nicht minutenlang blockieren - im Worst Case (jeder Versuch
+    // läuft ins Timeout) wartet der Aufrufer jetzt maximal AI_TIMEOUT_MS * 2.
+    const AI_TIMEOUT_MS = 15_000
+    const client = new Anthropic({ apiKey, timeout: AI_TIMEOUT_MS, maxRetries: 1 })
     const response = await client.messages.parse({
       model: "claude-haiku-4-5",
       max_tokens: 1024,
