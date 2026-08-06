@@ -18,7 +18,7 @@ export default async function CandidatesPage({
 
   let query = supabase
     .from("candidates")
-    .select("id, first_name, last_name, email, status, berufsbild, created_at, campaign_id, campaigns(id, title, clients(id, name))")
+    .select("id, first_name, last_name, email, status, berufsbild, created_at, campaign_id, custom_fields, campaigns(id, title, clients(id, name))")
     .order("created_at", { ascending: false })
 
   query = showArchived
@@ -27,12 +27,17 @@ export default async function CandidatesPage({
 
   const { data: candidates } = await query
 
+  const candidateList = (candidates ?? []).map((c) => ({
+    ...c,
+    custom_fields: (c.custom_fields as Record<string, string> | null) ?? null,
+  }))
+
   return (
     <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Kandidaten</h1>
-          <p className="mt-1 text-sm text-gray-500">{candidates?.length ?? 0} Einträge</p>
+          <p className="mt-1 text-sm text-gray-500">{candidateList.length} Einträge</p>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -56,7 +61,7 @@ export default async function CandidatesPage({
         </div>
       </div>
 
-      <CandidatesList candidates={candidates ?? []} showArchived={showArchived} />
+      <CandidatesList candidates={candidateList} showArchived={showArchived} />
     </div>
   )
 }

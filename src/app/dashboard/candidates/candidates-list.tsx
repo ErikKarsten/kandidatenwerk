@@ -35,6 +35,7 @@ export interface CandidateListItem {
   status: string
   berufsbild: string | null
   created_at: string
+  custom_fields: Record<string, string> | null
   campaigns: {
     id: string
     title: string
@@ -115,15 +116,16 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
             <TableRow style={{ borderColor: "#dde3ea" }}>
               <TableHead className="text-gray-600">Name</TableHead>
               <TableHead className="text-gray-600">Status</TableHead>
-              <TableHead className="text-gray-600">Kampagne</TableHead>
-              <TableHead className="text-gray-600">Kunde</TableHead>
               <TableHead className="text-gray-600">E-Mail</TableHead>
               <TableHead className="text-gray-600">Erstellt am</TableHead>
+              <TableHead className="text-gray-600">Ausbildung</TableHead>
+              <TableHead className="text-gray-600">Kampagne</TableHead>
+              <TableHead className="text-gray-600">Kunde</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             <TableRow>
-              <TableCell colSpan={6} className="py-12 text-center text-gray-400">
+              <TableCell colSpan={7} className="py-12 text-center text-gray-400">
                 {showArchived ? "Keine archivierten Kandidaten vorhanden." : "Noch keine Kandidaten vorhanden."}
               </TableCell>
             </TableRow>
@@ -205,10 +207,11 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
                 <TableRow style={{ borderColor: "#dde3ea" }}>
                   <TableHead className="text-gray-600">Name</TableHead>
                   <TableHead className="text-gray-600">Status</TableHead>
-                  <TableHead className="text-gray-600">Kampagne</TableHead>
-                  <TableHead className="text-gray-600">Kunde</TableHead>
                   <TableHead className="text-gray-600">E-Mail</TableHead>
                   <TableHead className="text-gray-600">Erstellt am</TableHead>
+                  <TableHead className="text-gray-600">Ausbildung</TableHead>
+                  <TableHead className="text-gray-600">Kampagne</TableHead>
+                  <TableHead className="text-gray-600">Kunde</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -233,6 +236,19 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
                         </span>
                       </TableCell>
                       <TableCell className="text-gray-600">
+                        {c.email ? (
+                          <a href={`mailto:${c.email}`} className="hover:underline" style={{ color: "#1e56a0" }}>{c.email}</a>
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell className="text-gray-500 text-sm">
+                        {new Date(c.created_at).toLocaleDateString("de-DE", {
+                          day: "2-digit", month: "2-digit", year: "numeric",
+                        })}
+                      </TableCell>
+                      <TableCell className="text-gray-600">
+                        {c.custom_fields?.ausbildung ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-gray-600">
                         {campaign ? (
                           <Link href={`/dashboard/campaigns/${campaign.id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
                             {campaign.title}
@@ -245,16 +261,6 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
                             {client.name}
                           </Link>
                         ) : "—"}
-                      </TableCell>
-                      <TableCell className="text-gray-600">
-                        {c.email ? (
-                          <a href={`mailto:${c.email}`} className="hover:underline" style={{ color: "#1e56a0" }}>{c.email}</a>
-                        ) : "—"}
-                      </TableCell>
-                      <TableCell className="text-gray-500 text-sm">
-                        {new Date(c.created_at).toLocaleDateString("de-DE", {
-                          day: "2-digit", month: "2-digit", year: "numeric",
-                        })}
                       </TableCell>
                     </TableRow>
                   )
