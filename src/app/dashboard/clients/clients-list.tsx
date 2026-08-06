@@ -11,6 +11,15 @@ function getInitials(name: string): string {
 
 const ARCHIVED_STATUS = "Archiviert"
 
+type SortOption = "newest" | "oldest" | "name-asc" | "name-desc"
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "newest", label: "Neueste zuerst" },
+  { value: "oldest", label: "Älteste zuerst" },
+  { value: "name-asc", label: "Name (A-Z)" },
+  { value: "name-desc", label: "Name (Z-A)" },
+]
+
 export interface ClientListItem {
   id: string
   name: string
@@ -19,22 +28,40 @@ export interface ClientListItem {
   active: boolean
   status: string
   logo_url: string | null
+  created_at: string
   campaign_count: number
 }
 
 export function ClientsList({ clients }: { clients: ClientListItem[] }) {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("alle")
+  const [sortBy, setSortBy] = useState<SortOption>("newest")
 
   const filteredClients = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
-    return clients.filter((c) => {
+    const filtered = clients.filter((c) => {
       if (statusFilter === "aktiv" && !c.active) return false
       if (statusFilter === "inaktiv" && c.active) return false
       if (query && !c.name.toLowerCase().includes(query)) return false
       return true
     })
-  }, [clients, searchQuery, statusFilter])
+
+    const sorted = [...filtered]
+    sorted.sort((a, b) => {
+      switch (sortBy) {
+        case "name-asc":
+          return a.name.localeCompare(b.name, "de")
+        case "name-desc":
+          return b.name.localeCompare(a.name, "de")
+        case "oldest":
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        case "newest":
+        default:
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      }
+    })
+    return sorted
+  }, [clients, searchQuery, statusFilter, sortBy])
 
   const { visible, page, totalPages, pageSize, setPage, handlePageSize } = usePaginatedList(
     filteredClients,
@@ -48,6 +75,11 @@ export function ClientsList({ clients }: { clients: ClientListItem[] }) {
 
   function handleStatusFilterChange(value: string) {
     setStatusFilter(value)
+    setPage(1)
+  }
+
+  function handleSortChange(value: string) {
+    setSortBy(value as SortOption)
     setPage(1)
   }
 
@@ -77,6 +109,18 @@ export function ClientsList({ clients }: { clients: ClientListItem[] }) {
           <option value="alle">Alle Status</option>
           <option value="aktiv">Aktiv</option>
           <option value="inaktiv">Inaktiv</option>
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => handleSortChange(e.target.value)}
+          className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
+          style={{ borderColor: "#dde3ea" }}
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
         </select>
         <span className="text-sm text-gray-500">
           {filteredClients.length} von {clients.length} Kunde{clients.length !== 1 ? "n" : ""}

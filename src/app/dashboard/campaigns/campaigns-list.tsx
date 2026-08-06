@@ -36,6 +36,15 @@ const STATUS_FILTER_OPTIONS = [
   { value: "completed", label: "Abgeschlossen" },
 ]
 
+type SortOption = "newest" | "oldest" | "name-asc" | "name-desc"
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "newest", label: "Neueste zuerst" },
+  { value: "oldest", label: "Älteste zuerst" },
+  { value: "name-asc", label: "Name (A-Z)" },
+  { value: "name-desc", label: "Name (Z-A)" },
+]
+
 export interface CampaignListItem {
   id: string
   title: string
@@ -55,10 +64,11 @@ export function CampaignsList({ campaigns, showArchived }: { campaigns: Campaign
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("alle")
   const [berufsbildFilter, setBerufsbildFilter] = useState("alle")
+  const [sortBy, setSortBy] = useState<SortOption>("newest")
 
   const filteredCampaigns = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
-    return campaigns.filter((c) => {
+    const filtered = campaigns.filter((c) => {
       if (statusFilter !== "alle" && c.status !== statusFilter) return false
       if (berufsbildFilter !== "alle" && c.berufsbild !== berufsbildFilter) return false
       if (query) {
@@ -68,7 +78,23 @@ export function CampaignsList({ campaigns, showArchived }: { campaigns: Campaign
       }
       return true
     })
-  }, [campaigns, searchQuery, statusFilter, berufsbildFilter])
+
+    const sorted = [...filtered]
+    sorted.sort((a, b) => {
+      switch (sortBy) {
+        case "name-asc":
+          return a.title.localeCompare(b.title, "de")
+        case "name-desc":
+          return b.title.localeCompare(a.title, "de")
+        case "oldest":
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        case "newest":
+        default:
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      }
+    })
+    return sorted
+  }, [campaigns, searchQuery, statusFilter, berufsbildFilter, sortBy])
 
   const { visible, page, totalPages, pageSize, setPage, handlePageSize } = usePaginatedList(
     filteredCampaigns,
@@ -87,6 +113,11 @@ export function CampaignsList({ campaigns, showArchived }: { campaigns: Campaign
 
   function handleBerufsbildFilterChange(value: string) {
     setBerufsbildFilter(value)
+    setPage(1)
+  }
+
+  function handleSortChange(value: string) {
+    setSortBy(value as SortOption)
     setPage(1)
   }
 
@@ -164,6 +195,18 @@ export function CampaignsList({ campaigns, showArchived }: { campaigns: Campaign
         >
           <option value="alle">Alle Berufsbilder</option>
           {BERUFSBILD_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => handleSortChange(e.target.value)}
+          className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
+          style={{ borderColor: "#dde3ea" }}
+        >
+          {SORT_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
