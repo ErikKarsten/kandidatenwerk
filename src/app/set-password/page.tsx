@@ -43,10 +43,14 @@ export default function SetPasswordPage() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    // TEMP DEBUG - siehe Task "Diagnose-Ausgaben für set-password"
+    console.log("[set-password DEBUG] window.location.hash:", window.location.hash)
+
     // Hash-Fehler zuerst und synchron auslesen - bevor der Supabase-Client (dessen
     // Initialisierung asynchron läuft) das Hash-Fragment bei Erfolg löscht.
     const hashError = readHashError()
     if (hashError) {
+      console.log("[set-password DEBUG] readHashError() hat einen Fehler gefunden:", hashError)
       setPageError(hashError)
       setPageState("error")
       return
@@ -54,10 +58,20 @@ export default function SetPasswordPage() {
 
     const supabase = createClient()
 
-    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+    // TEMP DEBUG
+    console.log("[set-password DEBUG] registriere onAuthStateChange-Listener…")
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      // TEMP DEBUG - JEDES Event, unabhängig davon ob SIGNED_IN/PASSWORD_RECOVERY
+      console.log("[set-password DEBUG] onAuthStateChange event:", event, "session:", session)
       if (event === "SIGNED_IN" || event === "PASSWORD_RECOVERY") {
         setPageState("ready")
       }
+    })
+
+    // TEMP DEBUG
+    supabase.auth.getSession().then(({ data, error }) => {
+      console.log("[set-password DEBUG] getSession() Ergebnis - session:", data.session, "error:", error)
     })
 
     const timeout = setTimeout(() => {
