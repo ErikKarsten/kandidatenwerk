@@ -10,6 +10,7 @@ import {
   UserSearch,
   GitCompare,
   GitMerge,
+  MapPin,
   Settings,
   Briefcase,
   PanelLeftClose,
@@ -34,6 +35,7 @@ function buildNavItems(
     { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: String(candidatesCount) },
     { href: "/dashboard/matches", label: "Matching", icon: GitCompare, badge: String(matchesCount) },
     { href: "/dashboard/pipeline", label: "Pipeline", icon: GitMerge },
+    { href: "/dashboard/map", label: "Karte", icon: MapPin },
   ] as const
 }
 

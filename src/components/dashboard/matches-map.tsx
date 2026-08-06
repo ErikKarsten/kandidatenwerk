@@ -11,28 +11,56 @@ export interface MapPoint {
   label: string
   sublabel?: string
   isSelf?: boolean
+  // Für Anwendungsfälle jenseits des einfachen "Ich" vs. "Match" (z.B. die Karten-
+  // Übersicht in dashboard/map): explizite Farbe statt nur isSelf, ein gestrichelter
+  // Rand für Näherungswerte, sowie ein zusätzlicher Hinweistext im Popup dafür.
+  color?: string
+  approximate?: boolean
+  note?: string
 }
 
 // Einfache farbige Punkt-Icons statt Leaflets Standard-Marker-Bildern - vermeidet das
 // bekannte Problem kaputter Icon-Pfade beim Bundling und passt visuell besser zu den
-// Farbpunkten, die im Rest der App für Status/Badges genutzt werden.
-function createDotIcon(color: string) {
-  return L.divIcon({
+// Farbpunkten, die im Rest der App für Status/Badges genutzt werden. Gecacht pro
+// Farbe/Rand-Kombination (endliche, sehr kleine Anzahl an Varianten), damit nicht bei
+// jedem Render pro Marker ein neues L.divIcon-Objekt entsteht.
+const iconCache = new Map<string, L.DivIcon>()
+
+function createDotIcon(color: string, dashed = false): L.DivIcon {
+  const cacheKey = `${color}|${dashed}`
+  const cached = iconCache.get(cacheKey)
+  if (cached) return cached
+
+  // Gestrichelter Rand in dunklem Grau statt Weiß, damit die Strichelung auf hellen
+  // Kartenkacheln überhaupt sichtbar ist (weißer gestrichelter Rand auf hellem
+  // Untergrund würde kaum auffallen).
+  const border = dashed ? "2px dashed #374151" : "2px solid white"
+  const icon = L.divIcon({
     className: "",
-    html: `<span style="display:block;width:14px;height:14px;border-radius:9999px;background:${color};border:2px solid white;box-shadow:0 0 3px rgba(0,0,0,0.5);"></span>`,
+    html: `<span style="display:block;width:14px;height:14px;border-radius:9999px;background:${color};border:${border};box-shadow:0 0 3px rgba(0,0,0,0.5);"></span>`,
     iconSize: [14, 14],
     iconAnchor: [7, 7],
   })
+  iconCache.set(cacheKey, icon)
+  return icon
 }
 
-const DEFAULT_ICON = createDotIcon("#1e56a0")
-const SELF_ICON = createDotIcon("#dc2626")
+const DEFAULT_COLOR = "#1e56a0"
+const SELF_COLOR = "#dc2626"
 
 function hasCoords(p: MapPoint): p is MapPoint & { lat: number; lng: number } {
   return typeof p.lat === "number" && typeof p.lng === "number"
 }
 
-export function MatchesMap({ points }: { points: MapPoint[] }) {
+export function MatchesMap({
+  points,
+  height = "280px",
+  scrollWheelZoom = false,
+}: {
+  points: MapPoint[]
+  height?: string
+  scrollWheelZoom?: boolean
+}) {
   const validPoints = useMemo(() => points.filter(hasCoords), [points])
 
   // WICHTIG: bewusst useState statt useRef für die Map-Instanz. react-leaflets
@@ -84,21 +112,30 @@ export function MatchesMap({ points }: { points: MapPoint[] }) {
         ref={setMap}
         bounds={bounds}
         boundsOptions={{ padding: [30, 30] }}
-        style={{ height: "280px", width: "100%" }}
-        scrollWheelZoom={false}
+        style={{ height, width: "100%" }}
+        scrollWheelZoom={scrollWheelZoom}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {validPoints.map((p, i) => (
-          <Marker key={i} position={[p.lat, p.lng]} icon={p.isSelf ? SELF_ICON : DEFAULT_ICON}>
-            <Popup>
-              <span className="font-medium">{p.label}</span>
-              {p.sublabel && <span className="block text-xs text-gray-500">{p.sublabel}</span>}
-            </Popup>
-          </Marker>
-        ))}
+        {validPoints.map((p, i) => {
+          const color = p.color ?? (p.isSelf ? SELF_COLOR : DEFAULT_COLOR)
+          const icon = createDotIcon(color, p.approximate ?? false)
+          return (
+            <Marker key={i} position={[p.lat, p.lng]} icon={icon}>
+              <Popup>
+                <span className="font-medium">{p.label}</span>
+                {p.sublabel && <span className="block text-xs text-gray-500">{p.sublabel}</span>}
+                {p.note && (
+                  <span className="mt-1 block text-xs" style={{ color: "#b45309" }}>
+                    {p.note}
+                  </span>
+                )}
+              </Popup>
+            </Marker>
+          )
+        })}
       </MapContainer>
     </div>
   )
