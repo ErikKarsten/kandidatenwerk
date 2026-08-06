@@ -141,7 +141,7 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
   }
 
   return (
-    <div className="flex flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex flex-col gap-6 overflow-x-hidden p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
 
       {/* Modal */}
       {modalStep !== null && (
@@ -262,7 +262,7 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
         )}
       </div>
 
-      <div className="grid gap-6" style={{ gridTemplateColumns: "60% 1fr" }}>
+      <div className="grid gap-6" style={{ gridTemplateColumns: "60% minmax(0, 1fr)" }}>
         {/* Linke Spalte */}
         <div className="flex flex-col gap-4">
           {/* Tab-Bar */}
@@ -367,10 +367,10 @@ function CampaignInfoCard({
       <dl className="flex flex-col gap-2">
         <div className="flex items-start gap-2">
           <dt className="shrink-0 text-sm text-gray-500" style={{ minWidth: "5rem" }}>Kampagne</dt>
-          <dd className="text-sm">
+          <dd className="min-w-0 text-sm">
             <Link
               href={`/dashboard/campaigns/${campaignId}`}
-              className="font-medium hover:underline"
+              className="block truncate font-medium hover:underline"
               style={{ color: "#1e56a0" }}
             >
               {campaigns.title}
@@ -380,10 +380,10 @@ function CampaignInfoCard({
         {campaigns.clients && (
           <div className="flex items-start gap-2">
             <dt className="shrink-0 text-sm text-gray-500" style={{ minWidth: "5rem" }}>Kunde</dt>
-            <dd className="text-sm">
+            <dd className="min-w-0 text-sm">
               <Link
                 href={`/dashboard/clients/${campaigns.clients.id}`}
-                className="font-medium hover:underline"
+                className="block truncate font-medium hover:underline"
                 style={{ color: "#1e56a0" }}
               >
                 {campaigns.clients.name}

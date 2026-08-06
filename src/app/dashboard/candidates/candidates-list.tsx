@@ -18,6 +18,15 @@ import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/li
 const STATUS_LABEL = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o.label]))
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
 
+// Tatsächliche Werte aus candidates.source (siehe candidates_source_check-Constraint
+// bzw. Live-Daten-Check). "meta_ads" ist zwar als Constraint-Wert erlaubt, kommt aktuell
+// aber in keinem Datensatz vor - taucht er künftig auf, hier ergänzen.
+const SOURCE_OPTIONS: { value: string; label: string }[] = [
+  { value: "leadtable", label: "Leadtable" },
+  { value: "kanzleistelle24", label: "Kanzleistelle24" },
+  { value: "manual", label: "Manuell" },
+]
+
 type SortOption = "newest" | "oldest" | "name-asc" | "name-desc"
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
@@ -34,6 +43,7 @@ export interface CandidateListItem {
   email: string | null
   status: string
   berufsbild: string | null
+  source: string
   created_at: string
   custom_fields: Record<string, string> | null
   campaigns: {
@@ -51,6 +61,7 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("alle")
   const [berufsbildFilter, setBerufsbildFilter] = useState("alle")
+  const [sourceFilter, setSourceFilter] = useState("alle")
   const [sortBy, setSortBy] = useState<SortOption>("newest")
 
   const filteredCandidates = useMemo(() => {
@@ -58,6 +69,7 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
     const filtered = candidates.filter((c) => {
       if (statusFilter !== "alle" && c.status !== statusFilter) return false
       if (berufsbildFilter !== "alle" && c.berufsbild !== berufsbildFilter) return false
+      if (sourceFilter !== "alle" && c.source !== sourceFilter) return false
       if (query) {
         const name = `${c.first_name} ${c.last_name}`.toLowerCase()
         const email = (c.email ?? "").toLowerCase()
@@ -81,7 +93,7 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
       }
     })
     return sorted
-  }, [candidates, searchQuery, statusFilter, berufsbildFilter, sortBy])
+  }, [candidates, searchQuery, statusFilter, berufsbildFilter, sourceFilter, sortBy])
 
   const { visible, page, totalPages, pageSize, setPage, handlePageSize } = usePaginatedList(
     filteredCandidates,
@@ -100,6 +112,11 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
 
   function handleBerufsbildFilterChange(value: string) {
     setBerufsbildFilter(value)
+    setPage(1)
+  }
+
+  function handleSourceFilterChange(value: string) {
+    setSourceFilter(value)
     setPage(1)
   }
 
@@ -173,6 +190,19 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
         >
           <option value="alle">Alle Berufsbilder</option>
           {BERUFSBILD_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={sourceFilter}
+          onChange={(e) => handleSourceFilterChange(e.target.value)}
+          className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
+          style={{ borderColor: "#dde3ea" }}
+        >
+          <option value="alle">Alle Herkünfte</option>
+          {SOURCE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
