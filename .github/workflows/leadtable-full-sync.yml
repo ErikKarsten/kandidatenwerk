@@ -44,4 +44,5 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           LEADTABLE_API_KEY: ${{ secrets.LEADTABLE_API_KEY }}
           LEADTABLE_ACCOUNT_EMAIL: ${{ secrets.LEADTABLE_ACCOUNT_EMAIL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: npx tsx scripts/leadtable-full-sync.ts
