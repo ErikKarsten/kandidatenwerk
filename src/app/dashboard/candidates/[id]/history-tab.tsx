@@ -42,16 +42,16 @@ const FALLBACK_COLOR = { bg: "#9ca3af18", text: "#6b7280" }
 
 const DESCRIPTION_PREVIEW_LENGTH = 300
 
-function LeadtableDescription({ description }: { description: string }) {
+// Gemeinsame Darstellung für beide Leadtable-Textblöcke unten (Beschreibung + weitere
+// Antworten) - selbes "lang? dann einklappen"-Verhalten, nur Titel und Inhalt variieren.
+function CollapsibleTextBlock({ title, text }: { title: string; text: string }) {
   const [expanded, setExpanded] = useState(false)
-  const isLong = description.length > DESCRIPTION_PREVIEW_LENGTH
-  const shownText = expanded || !isLong ? description : `${description.slice(0, DESCRIPTION_PREVIEW_LENGTH)}…`
+  const isLong = text.length > DESCRIPTION_PREVIEW_LENGTH
+  const shownText = expanded || !isLong ? text : `${text.slice(0, DESCRIPTION_PREVIEW_LENGTH)}…`
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-        Leadtable-Notizen (importiert)
-      </p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{title}</p>
       <div className="rounded-lg border px-3 py-2" style={{ borderColor: "#dde3ea" }}>
         <p className="text-sm text-gray-700 whitespace-pre-wrap">{shownText}</p>
         {isLong && (
@@ -72,13 +72,16 @@ function LeadtableDescription({ description }: { description: string }) {
 export function HistoryTab({
   history,
   leadtableDescription,
+  weitereAntworten,
 }: {
   history: HistoryTabEntry[]
   leadtableDescription?: string | null
+  weitereAntworten?: string | null
 }) {
   const hasDescription = typeof leadtableDescription === "string" && leadtableDescription.trim() !== ""
+  const hasWeitereAntworten = typeof weitereAntworten === "string" && weitereAntworten.trim() !== ""
 
-  if (history.length === 0 && !hasDescription) {
+  if (history.length === 0 && !hasDescription && !hasWeitereAntworten) {
     return <p className="text-sm text-gray-400">Noch keine Aktivität</p>
   }
 
@@ -95,7 +98,10 @@ export function HistoryTab({
 
   return (
     <div className="flex flex-col gap-6">
-      {hasDescription && <LeadtableDescription description={leadtableDescription!} />}
+      {hasDescription && <CollapsibleTextBlock title="Leadtable-Notizen (importiert)" text={leadtableDescription!} />}
+      {hasWeitereAntworten && (
+        <CollapsibleTextBlock title="Weitere Leadtable-Antworten" text={weitereAntworten!} />
+      )}
 
       {groups.map((group) => (
         <div key={group.key} className="flex flex-col gap-3">

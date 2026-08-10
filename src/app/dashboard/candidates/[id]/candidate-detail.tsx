@@ -15,6 +15,7 @@ import {
 import { ProfileTab } from "./profile-tab"
 import { FilesTab } from "./files-tab"
 import { HistoryTab } from "./history-tab"
+import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { MatchesSection } from "./matches-section"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 
@@ -96,7 +97,7 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
   const [archivePending, startArchiveTransition] = useTransition()
   const [deletePending, startDeleteTransition] = useTransition()
   const [refreshPending, startRefreshTransition] = useTransition()
-  const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "warning" | "error"; text: string } | null>(null)
 
   const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
 
@@ -113,10 +114,12 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
     startRefreshTransition(async () => {
       const result = await refreshLeadtableCandidateAction(candidate.id)
       if (result.success) {
-        setRefreshMessage({
-          type: "success",
-          text: result.changedFields.length > 0 ? `Aktualisiert: ${result.changedFields.join(", ")}` : "Bereits aktuell",
-        })
+        const baseText = result.changedFields.length > 0 ? `Aktualisiert: ${result.changedFields.join(", ")}` : "Bereits aktuell"
+        setRefreshMessage(
+          result.aiWarning
+            ? { type: "warning", text: `${baseText}. ${result.aiWarning}` }
+            : { type: "success", text: baseText }
+        )
         router.refresh()
       } else {
         setRefreshMessage({ type: "error", text: result.error })
@@ -255,7 +258,10 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
         {refreshMessage && (
           <p
             className="mt-2 text-xs"
-            style={{ color: refreshMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
+            style={{
+              color:
+                refreshMessage.type === "success" ? "#1a9a6a" : refreshMessage.type === "warning" ? "#b45309" : "#dc2626",
+            }}
           >
             {refreshMessage.text}
           </p>
@@ -304,7 +310,11 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
               <FilesTab candidateId={candidate.id} files={files} />
             )}
             {tab === "verlauf" && (
-              <HistoryTab history={history} leadtableDescription={candidate.description} />
+              <HistoryTab
+                history={history}
+                leadtableDescription={candidate.description}
+                weitereAntworten={candidate.custom_fields?.[WEITERE_ANTWORTEN_KEY]}
+              />
             )}
           </div>
         </div>

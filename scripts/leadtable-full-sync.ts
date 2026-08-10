@@ -35,6 +35,7 @@ import {
   htmlDescriptionToPlainText,
   extractLeadtableCustomFields,
   extractCustomFieldsFromDescriptionAI,
+  findLeadByEmailWithFallback,
 } from "../src/lib/leadtable-sync-shared"
 import { FIXED_CUSTOM_FIELDS } from "../src/lib/candidate-custom-fields"
 
@@ -373,20 +374,23 @@ async function backfillCustomFields(
   return { fieldsAdded, errors }
 }
 
-// ── Schritt 4 (Fortsetzung): KI-gestützte Extraktion aus der Beschreibung ──────
+// ── Schritt 4 (Fortsetzung): KI-gestützte Extraktion aus modifiedData + Beschreibung ──
 // Läuft nach dem regelbasierten Backfill oben, deckt aber einen breiteren Kreis ab:
 // nicht nur Kandidaten mit komplett leerem custom_fields, sondern alle mit einer
 // description, bei denen noch mindestens eines der 12 bekannten Felder fehlt (auch
 // wenn custom_fields bereits teilweise befüllt ist, z.B. durch den Regex-Backfill oben
-// oder manuelle UI-Eingaben). Überschreibt nie bestehende Werte - siehe
-// extractCustomFieldsFromDescriptionAI in leadtable-sync-shared.ts.
+// oder manuelle UI-Eingaben). Holt dafür zusätzlich den Leadtable-Lead (für
+// modifiedData - die regelbasierte Extraktion oben kennt nur 4 fest codierte
+// Frage-IDs, viele Kampagnen-Formulare nutzen aber andere IDs für dieselben
+// inhaltlichen Fragen, siehe Diagnose Carina Krongart). Überschreibt nie bestehende
+// Werte - siehe extractCustomFieldsFromDescriptionAI in leadtable-sync-shared.ts.
 async function backfillCustomFieldsWithAI(
   supabase: SupabaseClient,
   limit: number | null
-): Promise<{ fieldsAdded: number; candidatesUpdated: number; errors: number }> {
+): Promise<{ fieldsAdded: number; candidatesUpdated: number; errors: number; aiWarnings: number }> {
   const { data: candidates, error } = await supabase
     .from("candidates")
-    .select("id, description, custom_fields")
+    .select("id, email, description, custom_fields, leadtable_lead_id, campaign_id")
     .eq("source", "leadtable")
     .not("description", "is", null)
 
@@ -406,9 +410,18 @@ async function backfillCustomFieldsWithAI(
     `${list.length} Kandidaten mit description und noch fehlenden Zusatzfeldern` + (limit ? ` (Test-Limit)` : "")
   )
 
+  const { data: campaignRows } = await supabase
+    .from("campaigns")
+    .select("id, leadtable_campaign_id")
+    .not("leadtable_campaign_id", "is", null)
+  const leadtableCampaignIdByCampaignId = new Map(
+    (campaignRows ?? []).map((c) => [c.id, c.leadtable_campaign_id as string])
+  )
+
   let fieldsAdded = 0
   let candidatesUpdated = 0
   let errors = 0
+  let aiWarnings = 0
 
   for (let i = 0; i < list.length; i++) {
     const candidate = list[i]
@@ -416,34 +429,54 @@ async function backfillCustomFieldsWithAI(
 
     try {
       await sleep(DELAY_MS)
-      const newFields = await extractCustomFieldsFromDescriptionAI(candidate.description, existing)
-      if (Object.keys(newFields).length === 0) continue
+
+      let lead: LeadtableSyncLead | undefined
+      if (candidate.leadtable_lead_id) {
+        const resp = await withRetry(() =>
+          leadtableFetch<{ lead: LeadtableSyncLead }>(`/lead/${candidate.leadtable_lead_id}`)
+        )
+        lead = resp.lead
+      } else {
+        const email = (candidate.email ?? "").trim().split(/\s+/)[0]
+        const leadtableCampaignId = candidate.campaign_id
+          ? (leadtableCampaignIdByCampaignId.get(candidate.campaign_id) ?? null)
+          : null
+        lead = email ? (await findLeadByEmailWithFallback(email, leadtableCampaignId)) ?? undefined : undefined
+      }
+
+      const result = await extractCustomFieldsFromDescriptionAI(candidate.description, lead?.modifiedData, existing)
+      if (result.error) aiWarnings++
+
+      if (Object.keys(result.fields).length === 0) continue
 
       // existing gewinnt bei Konflikt (bereits durch extractCustomFieldsFromDescriptionAI
       // gefiltert, hier zusätzlich als Sicherheitsnetz - gleiches Muster wie beim
       // regelbasierten Backfill/Merge an anderer Stelle).
-      const merged = { ...newFields, ...existing }
+      const merged = { ...result.fields, ...existing }
       const { error: updateError } = await supabase
         .from("candidates")
         .update({ custom_fields: merged as Json })
         .eq("id", candidate.id)
       if (updateError) throw new Error(updateError.message)
 
-      fieldsAdded += Object.keys(newFields).length
+      fieldsAdded += Object.keys(result.fields).length
       candidatesUpdated++
     } catch (err) {
-      errors++
-      console.error(`  Fehler bei Kandidat ${candidate.id}:`, err instanceof Error ? err.message : err)
+      const message = err instanceof Error ? err.message : String(err)
+      if (!message.includes("404")) {
+        errors++
+        console.error(`  Fehler bei Kandidat ${candidate.id}:`, message)
+      }
     }
 
     if ((i + 1) % PROGRESS_EVERY === 0 || i === list.length - 1) {
       console.log(
-        `  [${i + 1}/${list.length}] KI-Felder ergänzt bisher: ${fieldsAdded} (${candidatesUpdated} Kandidaten), Fehler: ${errors}`
+        `  [${i + 1}/${list.length}] KI-Felder ergänzt bisher: ${fieldsAdded} (${candidatesUpdated} Kandidaten), Fehler: ${errors}, KI-Warnungen: ${aiWarnings}`
       )
     }
   }
 
-  return { fieldsAdded, candidatesUpdated, errors }
+  return { fieldsAdded, candidatesUpdated, errors, aiWarnings }
 }
 
 // ── main ──────────────────────────────────────────────────────────────────
@@ -494,10 +527,10 @@ async function main() {
     console.log(`=> Zusatzfelder ergänzt: ${stepD.fieldsAdded}, Fehler: ${stepD.errors}`)
     console.log("")
 
-    console.log("--- Schritt 4/4 (Fortsetzung): KI-Extraktion aus Beschreibung ---")
+    console.log("--- Schritt 4/4 (Fortsetzung): KI-Extraktion aus modifiedData + Beschreibung ---")
     const stepD2 = await backfillCustomFieldsWithAI(supabase, limit)
     console.log(
-      `=> KI-Zusatzfelder ergänzt: ${stepD2.fieldsAdded} (${stepD2.candidatesUpdated} Kandidaten), Fehler: ${stepD2.errors}`
+      `=> KI-Zusatzfelder ergänzt: ${stepD2.fieldsAdded} (${stepD2.candidatesUpdated} Kandidaten), Fehler: ${stepD2.errors}, KI-Warnungen: ${stepD2.aiWarnings}`
     )
     console.log("")
 

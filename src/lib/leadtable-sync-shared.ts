@@ -10,10 +10,8 @@
 // manuellem Refresh vs. "nur wenn leer" beim einmaligen Bulk-Import).
 
 import Anthropic from "@anthropic-ai/sdk"
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod"
-import { z } from "zod"
 import { leadtableFetch } from "./leadtable-client"
-import { FIXED_CUSTOM_FIELDS } from "./candidate-custom-fields"
+import { FIXED_CUSTOM_FIELDS, WEITERE_ANTWORTEN_KEY } from "./candidate-custom-fields"
 
 export interface LeadtableSyncLead {
   _id: string
@@ -208,52 +206,136 @@ export async function findLeadByEmailWithFallback(
   return campaignLeads.find((l) => l.email?.toLowerCase() === normalizedEmail) ?? null
 }
 
-// Zod-Schema für die KI-Extraktion: alle 12 bekannten Felder + ein Sammelfeld für
-// Zusatzinfos, die zu keiner der 12 Fragen passen. Bewusst ALLE Felder .optional() -
-// das Modell soll Felder komplett weglassen dürfen, statt sie zu raten (siehe Prompt).
-const ExtractedFieldsSchema = z.object({
-  ...Object.fromEntries(FIXED_CUSTOM_FIELDS.map((f) => [f.key, z.string().optional()])),
-  sonstige_hinweise_ki: z.string().optional(),
-})
+// Bekannte Zielfelder der KI-Extraktion: alle 12 festen Felder + das Sammelfeld
+// "weitere_antworten". Dient als Allowlist beim manuellen Parsen der Modell-Antwort
+// (siehe parseExtractedFields) - alles andere im JSON wird verworfen.
+const EXTRACTABLE_FIELD_KEYS = new Set<string>([
+  ...FIXED_CUSTOM_FIELDS.map((f) => f.key),
+  WEITERE_ANTWORTEN_KEY,
+])
 
-// KI-gestützte Zusatzfelder-Extraktion aus der Leadtable-Beschreibung (Freitext). Nutzt
-// Claude Haiku 4.5 (günstig, für diese einfache Extraktionsaufgabe ausreichend) mit
-// strukturierter JSON-Ausgabe (output_config.format via zodOutputFormat) - das ist die
-// primäre Absicherung gegen unparsbare Antworten, der Prompt-Hinweis "Gib NUR JSON
-// zurück" ist zusätzliche Verstärkung.
+// Extrahiert das erste JSON-Objekt aus der Modell-Antwort. Trotz Prompt-Anweisung
+// "gib NUR JSON zurück" umschließt Haiku die Antwort öfter mit ```json ... ```-
+// Codeblöcken (empirisch beobachtet) - dieser Schritt entfernt sie, statt sich blind
+// auf die Prompt-Befolgung zu verlassen.
+function extractJsonObject(text: string): string | null {
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const candidate = fenceMatch ? fenceMatch[1] : text
+  const start = candidate.indexOf("{")
+  const end = candidate.lastIndexOf("}")
+  if (start === -1 || end === -1 || end < start) return null
+  return candidate.slice(start, end + 1)
+}
+
+// Parst die Modell-Antwort zu einem Record<string, string>, gefiltert auf bekannte
+// Feld-Keys (EXTRACTABLE_FIELD_KEYS) und String-Werte - alles andere (unbekannte
+// Keys, falsche Typen, nicht parsbares JSON) wird stillschweigend verworfen statt
+// einen Fehler zu werfen. Bewusst KEINE strukturierte Ausgabe (output_config.format)
+// hier: ein Schema mit 13 Feldern wird von der Anthropic-API als "Schema is too
+// complex" abgelehnt bzw. läuft verlässlich in Timeouts (verifiziert per Bisektion:
+// 3/6 Felder gehen, ab ~9 Feldern schlägt es fehl) - deshalb einfaches Prompt-JSON
+// mit manuellem, tolerantem Parsing statt zodOutputFormat/messages.parse().
+function parseExtractedFields(rawText: string): Record<string, string> {
+  const jsonText = extractJsonObject(rawText)
+  if (!jsonText) return {}
+
+  let candidate: unknown
+  try {
+    candidate = JSON.parse(jsonText)
+  } catch {
+    return {}
+  }
+
+  if (typeof candidate !== "object" || candidate === null) return {}
+
+  const result: Record<string, string> = {}
+  for (const [key, value] of Object.entries(candidate as Record<string, unknown>)) {
+    if (!EXTRACTABLE_FIELD_KEYS.has(key)) continue
+    if (typeof value !== "string" || value.trim() === "") continue
+    result[key] = value.trim()
+  }
+  return result
+}
+
+// Extrahiert aus Leadtables modifiedData (Frage-ID -> Antwort) NUR die Antwort-Werte,
+// ohne die für die KI bedeutungslosen Frage-IDs (z.B. "q_bl03zr"). Reihenfolge bleibt
+// wie in modifiedData, damit die nummerierte Liste im Prompt stabil/deterministisch ist.
+// Nicht-String-Werte (z.B. verschachtelte Objekte) werden übersprungen statt geraten
+// gestringified zu werden - laut bisheriger Live-Daten-Stichprobe sind Leadtable-
+// Formularantworten durchgehend Strings.
+function leadtableAnswerValues(modifiedData: Record<string, unknown> | undefined): string[] {
+  if (!modifiedData) return []
+  return Object.values(modifiedData)
+    .filter((v): v is string => typeof v === "string" && v.trim() !== "")
+    .map((v) => v.trim())
+}
+
+// KI-gestützte Zusatzfelder-Extraktion aus Leadtables modifiedData (rohe Formular-
+// Antworten, OHNE die Frage-IDs, die der KI nichts sagen) UND der Beschreibung
+// (Freitext-Bericht). Nutzt Claude Haiku 4.5 (günstig, für diese Extraktionsaufgabe
+// ausreichend) mit einfachem Prompt-JSON statt output_config.format/messages.parse():
+// ein Schema mit allen 13 Zielfeldern wird von der Anthropic-API als "Schema is too
+// complex" abgelehnt (verifiziert per Bisektion, siehe parseExtractedFields) - die
+// primäre Absicherung gegen unparsbare Antworten ist deshalb das tolerante manuelle
+// Parsing in parseExtractedFields, der Prompt-Hinweis "Gib NUR JSON zurück" zusätzlich.
 //
 // WICHTIGE REGEL: überschreibt NIEMALS bereits gesetzte custom_fields-Werte - egal ob
 // sie vom bisherigen Regex-Backfill stammen oder manuell im UI eingetragen wurden. Der
 // Prompt weist das Modell an, nichts zu raten; zusätzlich filtert diese Funktion das
 // Ergebnis nach existingFields (Sicherheitsnetz gegen versehentliches Überschreiben,
 // falls das Modell dennoch ein bereits gesetztes Feld zurückgibt).
+//
+// Rückgabe statt eines reinen Record: `error` wird gesetzt, wenn der KI-Aufruf
+// fehlgeschlagen ist (Timeout, API-Fehler, fehlender Key) - Aufrufer können das dann
+// dem Nutzer anzeigen, statt es (wie bisher) nur in console.warn verschwinden zu lassen.
+// Kein `error`, aber leere `fields`: die KI lief erfolgreich, hat aber nichts gefunden -
+// aus Nutzersicht ein anderer Fall als ein fehlgeschlagener Aufruf.
+export interface CustomFieldsAIResult {
+  fields: Record<string, string>
+  error?: string
+}
+
+const AI_GENERIC_ERROR = "KI-Extraktion fehlgeschlagen, bitte später erneut versuchen."
+
 export async function extractCustomFieldsFromDescriptionAI(
   description: string | null | undefined,
+  modifiedData: Record<string, unknown> | undefined,
   existingFields: Record<string, string>
-): Promise<Record<string, string>> {
+): Promise<CustomFieldsAIResult> {
   const trimmedDescription = (description ?? "").trim()
-  if (trimmedDescription === "") return {}
+  const answerValues = leadtableAnswerValues(modifiedData)
+  if (trimmedDescription === "" && answerValues.length === 0) return { fields: {} }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     console.warn(
       "[extractCustomFieldsFromDescriptionAI] ANTHROPIC_API_KEY nicht gesetzt - KI-Extraktion übersprungen."
     )
-    return {}
+    return { fields: {}, error: AI_GENERIC_ERROR }
   }
 
   const fieldList = FIXED_CUSTOM_FIELDS.map((f) => `- ${f.label} (${f.key})`).join("\n")
-  const prompt = `Hier ist ein Freitext über einen Bewerber. Extrahiere, falls vorhanden, Antworten zu folgenden Fragen (JSON-Feldname in Klammern):
+  const answersList = answerValues.length > 0
+    ? answerValues.map((v, i) => `${i + 1}. ${v}`).join("\n")
+    : "(keine Formular-Antworten vorhanden)"
+  const prompt = `Hier sind alle Formular-Antworten eines Bewerbers (Fragen sind anonymisiert, nur Antworten sichtbar) plus ein Freitext-Bericht.
+
+Formular-Antworten:
+${answersList}
+
+Freitext-Bericht:
+"""
+${trimmedDescription || "(kein Freitext-Bericht vorhanden)"}
+"""
+
+Ordne den folgenden 12 bekannten Fragen zu, was du eindeutig zuordnen kannst (JSON-Feldname in Klammern):
 ${fieldList}
 
-Gib NUR JSON zurück mit den Feldern, die du im Text findest - lass Felder komplett weg, wenn der Text dazu nichts hergibt, rate nichts. Falls du zusätzliche relevante Infos findest, die zu KEINER der Fragen passen, fasse sie kurz unter einem zusätzlichen Feld "sonstige_hinweise_ki" zusammen.
+Ordne nur zu, wenn du dir wirklich sicher bist. Im Zweifel: nicht zuordnen, sondern in "${WEITERE_ANTWORTEN_KEY}" aufnehmen. Die Fragen sind anonymisiert - eine Antwort wie "18 Uhr" könnte z.B. sowohl Erreichbarkeit als auch etwas ganz anderes meinen. Bei einer solchen Mehrdeutigkeit rätst du NICHT, welches der 12 Felder gemeint ist.
 
-Freitext:
-"""
-${trimmedDescription}
-"""`
+Gib NUR JSON zurück. Lass ein Feld komplett weg, wenn weder die Formular-Antworten noch der Freitext dazu etwas eindeutig hergeben - rate nichts. Für alles, was du NICHT eindeutig einer der 12 Fragen zuordnen kannst, aber dennoch eine relevante Information über den Bewerber ist: sammle es roh, eine Zeile pro Information, im Feld "${WEITERE_ANTWORTEN_KEY}" statt es zu verwerfen.`
 
-  let parsed: z.infer<typeof ExtractedFieldsSchema> | null
+  let rawText: string
   try {
     // Explizites Timeout + reduzierte Retries statt SDK-Default (10 Minuten Timeout,
     // maxRetries 2 - im Worst Case also bis zu ~30 Minuten, bevor der try/catch unten
@@ -262,29 +344,27 @@ ${trimmedDescription}
     // läuft ins Timeout) wartet der Aufrufer jetzt maximal AI_TIMEOUT_MS * 2.
     const AI_TIMEOUT_MS = 15_000
     const client = new Anthropic({ apiKey, timeout: AI_TIMEOUT_MS, maxRetries: 1 })
-    const response = await client.messages.parse({
+    const response = await client.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 1024,
       messages: [{ role: "user", content: prompt }],
-      output_config: { format: zodOutputFormat(ExtractedFieldsSchema) },
     })
-    parsed = response.parsed_output
+    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text")
+    rawText = textBlock?.text ?? ""
   } catch (err) {
     console.warn(
       "[extractCustomFieldsFromDescriptionAI] Anthropic-API-Fehler:",
       err instanceof Error ? err.message : err
     )
-    return {}
+    return { fields: {}, error: AI_GENERIC_ERROR }
   }
 
-  if (!parsed) return {}
-
+  const extracted = parseExtractedFields(rawText)
   const result: Record<string, string> = {}
-  for (const [key, value] of Object.entries(parsed)) {
-    if (typeof value !== "string" || value.trim() === "") continue
+  for (const [key, value] of Object.entries(extracted)) {
     const alreadySet = typeof existingFields[key] === "string" && existingFields[key].trim() !== ""
     if (alreadySet) continue
-    result[key] = value.trim()
+    result[key] = value
   }
-  return result
+  return { fields: result }
 }

@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
-import { FIXED_CUSTOM_FIELDS, FIXED_CUSTOM_FIELD_KEYS } from "@/lib/candidate-custom-fields"
+import { FIXED_CUSTOM_FIELDS, FIXED_CUSTOM_FIELD_KEYS, WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { updateCandidateProfileAction, updateCandidateCustomFieldAction } from "./actions"
 
 function formatLabel(key: string): string {
@@ -48,7 +48,12 @@ export function ProfileTab({
 
   // Keys in custom_fields, die nicht zum festen 12-Felder-Satz gehören (z.B. aus
   // älteren Imports) — werden weiterhin angezeigt und nicht stillschweigend gelöscht.
-  const extraKeys = Object.keys(localCustom).filter((k) => !FIXED_CUSTOM_FIELD_KEYS.has(k))
+  // WEITERE_ANTWORTEN_KEY ist ausgenommen: der hat einen eigenen, mehrzeiligen
+  // Anzeige-Block im Verlauf-Tab (siehe history-tab.tsx) statt hier als einzeiliges
+  // Eingabefeld zu doppeln.
+  const extraKeys = Object.keys(localCustom).filter(
+    (k) => !FIXED_CUSTOM_FIELD_KEYS.has(k) && k !== WEITERE_ANTWORTEN_KEY
+  )
 
   function handleCustomFieldSaved(key: string, value: string) {
     setLocalCustom((prev) => {

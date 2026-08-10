@@ -20,3 +20,11 @@ export const FIXED_CUSTOM_FIELDS: { key: string; label: string }[] = [
 ]
 
 export const FIXED_CUSTOM_FIELD_KEYS = new Set(FIXED_CUSTOM_FIELDS.map((f) => f.key))
+
+// Sammelfeld für KI-extrahierte Antworten (aus Leadtables modifiedData + description),
+// die sich keinem der 12 festen Felder oben eindeutig zuordnen lassen - roher,
+// mehrzeiliger Text statt eines einzelnen Werts. Bekommt einen eigenen Anzeige-Block im
+// Verlauf-Tab (siehe history-tab.tsx) statt in der generischen "Weitere Felder"-Liste im
+// Profil-Tab zu landen - deshalb hier als eigener Key exportiert, den profile-tab.tsx
+// explizit aus seiner extraKeys-Liste ausschließt.
+export const WEITERE_ANTWORTEN_KEY = "weitere_antworten"

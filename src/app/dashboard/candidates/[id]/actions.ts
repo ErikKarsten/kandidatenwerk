@@ -119,7 +119,10 @@ export async function updateCandidateCustomFieldAction(
 
 export async function refreshLeadtableCandidateAction(
   candidateId: string
-): Promise<{ success: true; changedFields: string[] } | { success: false; error: string }> {
+): Promise<
+  | { success: true; changedFields: string[]; aiWarning?: string }
+  | { success: false; error: string }
+> {
   const supabase = await createSupabaseServerClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -228,13 +231,16 @@ export async function refreshLeadtableCandidateAction(
     currentFields = mergedFields
   }
 
-  // KI-Extraktion aus der Beschreibung: nur für Lücken, die die regelbasierte
-  // Extraktion oben nicht abdeckt (die kennt nur die 4 direkt in Leadtables
-  // modifiedData verfügbaren Felder + Ausbildung, nicht alle 12). Überschreibt nie
-  // bestehende Werte - siehe extractCustomFieldsFromDescriptionAI.
-  const aiFields = await extractCustomFieldsFromDescriptionAI(currentDescription, currentFields)
-  if (Object.keys(aiFields).length > 0) {
-    const mergedAiFields: Record<string, string> = { ...aiFields, ...currentFields }
+  // KI-Extraktion aus modifiedData + Beschreibung: deckt auch Felder ab, die die
+  // regelbasierte Extraktion oben nicht kennt (die kennt nur 4 fest codierte
+  // Leadtable-Frage-IDs + Ausbildung - je nach Kampagnen-Formular können das ganz
+  // andere IDs sein, siehe Diagnose Carina Krongart). Überschreibt nie bestehende
+  // Werte - siehe extractCustomFieldsFromDescriptionAI. Ein fehlgeschlagener KI-Aufruf
+  // bricht den Refresh nicht ab, wird aber über aiWarning an die UI durchgereicht statt
+  // nur in den Server-Logs zu verschwinden.
+  const aiResult = await extractCustomFieldsFromDescriptionAI(currentDescription, lead.modifiedData, currentFields)
+  if (Object.keys(aiResult.fields).length > 0) {
+    const mergedAiFields: Record<string, string> = { ...aiResult.fields, ...currentFields }
     const { error: aiFieldsError } = await supabase
       .from("candidates")
       .update({ custom_fields: mergedAiFields as Json })
@@ -245,7 +251,7 @@ export async function refreshLeadtableCandidateAction(
 
   revalidatePath(`/dashboard/candidates/${candidateId}`)
 
-  return { success: true, changedFields }
+  return { success: true, changedFields, ...(aiResult.error ? { aiWarning: aiResult.error } : {}) }
 }
 
 export async function saveDescriptionAction(
