@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { fetchAllCustomers, importNewLeadtableCampaignsForClient } from "@/lib/leadtable-import-customers"
+import { geocodePlz } from "@/lib/geocode-plz"
 
 export async function updateClientAction(
   clientId: string,
@@ -12,10 +13,17 @@ export async function updateClientAction(
   const contact_email = formData.get("contact_email") as string
   const phone = formData.get("phone") as string
   const active = formData.get("active") === "true"
+  const plz = formData.get("plz") as string
 
   if (!name) return { error: "Firmenname ist ein Pflichtfeld." }
 
   const supabase = await createSupabaseServerClient()
+
+  // PLZ wird immer als Rohwert gespeichert, auch wenn sie nicht in der Lookup-Tabelle
+  // gefunden wird (geocodePlz gibt dann null zurück) - lat/lng bleiben in dem Fall
+  // leer statt eines Fehlers, siehe geocode-plz.ts (gleiches Muster wie bei
+  // Kandidaten/Kampagnen, candidates/actions.ts bzw. campaigns/actions.ts).
+  const coords = plz ? geocodePlz(plz) : null
 
   const { error } = await supabase
     .from("clients")
@@ -24,6 +32,9 @@ export async function updateClientAction(
       contact_email: contact_email || null,
       phone: phone || null,
       active,
+      plz: plz || null,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
     })
     .eq("id", clientId)
 

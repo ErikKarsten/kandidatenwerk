@@ -37,6 +37,9 @@ interface Client {
   status: string
   logo_url: string | null
   leadtable_customer_id: string | null
+  plz: string | null
+  lat: number | null
+  lng: number | null
 }
 
 interface ClientDetailProps {
@@ -490,6 +493,7 @@ function StammdatenTab({
   const [localEmail, setLocalEmail] = useState(client.contact_email ?? "")
   const [localPhone, setLocalPhone] = useState(client.phone ?? "")
   const [localActive, setLocalActive] = useState(client.active)
+  const [localPlz, setLocalPlz] = useState(client.plz ?? "")
 
   const [localLogoUrl, setLocalLogoUrl] = useState(client.logo_url)
   const [logoUploading, setLogoUploading] = useState(false)
@@ -517,6 +521,7 @@ function StammdatenTab({
     setLocalEmail(client.contact_email ?? "")
     setLocalPhone(client.phone ?? "")
     setLocalActive(client.active)
+    setLocalPlz(client.plz ?? "")
     setError(null)
     setEditMode(false)
   }
@@ -528,6 +533,7 @@ function StammdatenTab({
     fd.append("contact_email", localEmail)
     fd.append("phone", localPhone)
     fd.append("active", String(localActive))
+    fd.append("plz", localPlz)
     startTransition(async () => {
       const result = await updateClientAction(client.id, fd)
       if (result?.error) { setError(result.error); return }
@@ -581,6 +587,36 @@ function StammdatenTab({
           {editMode
             ? <input className={inputClass} style={inputStyle} type="tel" value={localPhone} onChange={(e) => setLocalPhone(e.target.value)} />
             : (client.phone || "—")}
+        </FieldRow>
+
+        <FieldRow label="PLZ" editMode={editMode}>
+          <div className="flex flex-col gap-1">
+            {editMode
+              ? (
+                <input
+                  className={inputClass}
+                  style={inputStyle}
+                  value={localPlz}
+                  onChange={(e) => setLocalPlz(e.target.value)}
+                  maxLength={5}
+                  inputMode="numeric"
+                />
+              )
+              : (client.plz || "—")}
+            {/* Koordinaten-Status: rein informativ, basiert auf dem zuletzt gespeicherten
+                Stand (client.lat/lng) - keine Live-Prüfung während der Eingabe. Keine
+                Anzeige ohne PLZ, damit das Feld bei neuen/leeren Kunden nicht unnötig
+                mit einem Hinweis vollgestellt wird. */}
+            {client.plz && (
+              client.lat != null && client.lng != null ? (
+                <span className="text-xs" style={{ color: "#1a9a6a" }}>✓ Koordinaten gefunden</span>
+              ) : (
+                <span className="text-xs" style={{ color: "#b45309" }}>
+                  Koordinaten konnten nicht automatisch ermittelt werden
+                </span>
+              )
+            )}
+          </div>
         </FieldRow>
 
         {editMode && (
