@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { fetchAllCustomers, importNewLeadtableCampaignsForClient } from "@/lib/leadtable-import-customers"
 import { geocodePlz } from "@/lib/geocode-plz"
+import { reverseGeocodeCity } from "@/lib/reverse-geocode"
 
 export async function updateClientAction(
   clientId: string,
@@ -25,6 +26,12 @@ export async function updateClientAction(
   // Kandidaten/Kampagnen, candidates/actions.ts bzw. campaigns/actions.ts).
   const coords = plz ? geocodePlz(plz) : null
 
+  // Ortsname nur EINMAL beim Speichern per Nominatim ermitteln (nicht bei jedem
+  // Seitenaufruf) - und auch nur, wenn die PLZ überhaupt erfolgreich geocodiert wurde.
+  // Schlägt die Anfrage fehl, bleibt ort einfach null - blockiert nicht das Speichern
+  // von PLZ/lat/lng, die bereits erfolgreich ermittelt wurden (siehe reverse-geocode.ts).
+  const ort = coords ? await reverseGeocodeCity(coords.lat, coords.lng) : null
+
   const { error } = await supabase
     .from("clients")
     .update({
@@ -35,6 +42,7 @@ export async function updateClientAction(
       plz: plz || null,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
+      ort,
     })
     .eq("id", clientId)
 

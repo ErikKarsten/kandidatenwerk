@@ -52,6 +52,7 @@ export default async function ClientDetailPage({
         plz: client.plz ?? null,
         lat: client.lat ?? null,
         lng: client.lng ?? null,
+        ort: client.ort ?? null,
       }}
       campaigns={campaignList}
       contacts={(contacts ?? []).map((c) => ({

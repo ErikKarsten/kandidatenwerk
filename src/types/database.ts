@@ -68,6 +68,7 @@ export type Database = {
           plz: string | null
           lat: number | null
           lng: number | null
+          ort: string | null
         }
         Insert: {
           id?: string
@@ -86,6 +87,7 @@ export type Database = {
           plz?: string | null
           lat?: number | null
           lng?: number | null
+          ort?: string | null
         }
         Update: {
           id?: string
@@ -104,6 +106,7 @@ export type Database = {
           plz?: string | null
           lat?: number | null
           lng?: number | null
+          ort?: string | null
         }
         Relationships: [
           {

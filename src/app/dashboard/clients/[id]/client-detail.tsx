@@ -40,6 +40,7 @@ interface Client {
   plz: string | null
   lat: number | null
   lng: number | null
+  ort: string | null
 }
 
 interface ClientDetailProps {
@@ -602,7 +603,7 @@ function StammdatenTab({
                   inputMode="numeric"
                 />
               )
-              : (client.plz || "—")}
+              : (client.plz ? (client.ort ? `${client.plz} (${client.ort})` : client.plz) : "—")}
             {/* Koordinaten-Status: rein informativ, basiert auf dem zuletzt gespeicherten
                 Stand (client.lat/lng) - keine Live-Prüfung während der Eingabe. Keine
                 Anzeige ohne PLZ, damit das Feld bei neuen/leeren Kunden nicht unnötig
