@@ -14,6 +14,16 @@ export interface LeadtableSyncRunSummary {
 const GITHUB_REPO = "ErikKarsten/kandidatenwerk"
 const GITHUB_WORKFLOW_FILE = "leadtable-full-sync.yml"
 
+// Ein "running"-Eintrag blockiert einen neuen Sync nur, wenn er noch plausibel aktiv
+// sein könnte. Bisher beobachtete echte Laufzeiten liegen bei bis zu ~130 Minuten
+// (siehe leadtable_sync_runs-Historie) - 2 Stunden liegt großzügig darüber. Läuft der
+// Prozess (z.B. durch harten Abbruch/OOM/Timeout der CI-Umgebung) ab, ohne den
+// try/catch in leadtable-full-sync.ts zu erreichen, bleibt der Eintrag sonst für immer
+// auf "running" stehen und blockiert jeden künftigen Sync-Versuch dauerhaft (siehe
+// Diagnose vom 2026-08-10: Eintrag d566746b... hing seit 4 Tagen fest). Ältere
+// "running"-Einträge gelten deshalb als vermutlich verwaist und blockieren nicht mehr.
+const STALE_RUN_THRESHOLD_MS = 2 * 60 * 60 * 1000
+
 export async function triggerLeadtableSyncAction(): Promise<
   { success: true } | { success: false; error: string }
 > {
@@ -22,10 +32,12 @@ export async function triggerLeadtableSyncAction(): Promise<
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Nicht eingeloggt." }
 
+  const staleCutoff = new Date(Date.now() - STALE_RUN_THRESHOLD_MS).toISOString()
   const { data: runningRun, error: checkError } = await supabase
     .from("leadtable_sync_runs")
     .select("id")
     .eq("status", "running")
+    .gte("started_at", staleCutoff)
     .maybeSingle()
 
   if (checkError) return { success: false, error: checkError.message }
