@@ -23,6 +23,7 @@
 // Usage:
 //   npx tsx scripts/leadtable-custom-fields-ai-resync.ts                (alle Kandidaten)
 //   npx tsx scripts/leadtable-custom-fields-ai-resync.ts --limit=5      (Testlauf)
+//   npx tsx scripts/leadtable-custom-fields-ai-resync.ts --id=<uuid>    (einzelnen Kandidaten nachziehen, z.B. nach einem transienten Fehler)
 
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -52,6 +53,13 @@ function parseLimitArg(): number | null {
   return Number.isFinite(value) && value > 0 ? value : null
 }
 
+function parseIdArg(): string | null {
+  const arg = process.argv.find((a) => a.startsWith("--id="))
+  if (!arg) return null
+  const value = arg.split("=")[1]?.trim()
+  return value || null
+}
+
 async function main() {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error(
@@ -67,6 +75,7 @@ async function main() {
   )
 
   const limit = parseLimitArg()
+  const onlyId = parseIdArg()
   const startedAt = Date.now()
 
   console.log("=== Alle Leadtable-Kandidaten laden ===")
@@ -79,7 +88,10 @@ async function main() {
 
   let list = (candidates ?? []).filter((c) => c.leadtable_lead_id || c.email)
   console.log(`${list.length} Kandidaten mit leadtable_lead_id oder E-Mail geladen`)
-  if (limit) {
+  if (onlyId) {
+    list = list.filter((c) => c.id === onlyId)
+    console.log(`--id aktiv: nur Kandidat ${onlyId} (${list.length} gefunden)`)
+  } else if (limit) {
     list = list.slice(0, limit)
     console.log(`Test-Limit aktiv: nur die ersten ${list.length} Kandidaten`)
   }
