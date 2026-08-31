@@ -1,10 +1,5 @@
 // Generated from PostgREST OpenAPI spec — do not edit manually.
 // Regenerate: node scripts/gen-types.mjs
-//
-// Ausnahme: "locations" und "campaigns.location_id" wurden manuell ergänzt, bevor die
-// Migration 20260831000000_add_locations.sql angewendet wurde (siehe dort). Nach dem
-// Anwenden der Migration bitte per gen-types.mjs neu generieren und gegenprüfen, dass
-// diese Handeinträge exakt übernommen wurden.
 
 export type Json =
   | string
@@ -181,6 +176,27 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      }
+      locations: {
+        Row: {
+          id: string
+          plz_prefix: string
+          name: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          plz_prefix: string
+          name?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          plz_prefix?: string
+          name?: string | null
+          created_at?: string
+        }
+        Relationships: []
       }
       candidates: {
         Row: {
@@ -364,27 +380,6 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
-      }
-      locations: {
-        Row: {
-          id: string
-          plz_prefix: string
-          name: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          plz_prefix: string
-          name?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          plz_prefix?: string
-          name?: string | null
-          created_at?: string
-        }
-        Relationships: []
       }
       campaign_automations: {
         Row: {

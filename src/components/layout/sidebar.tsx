@@ -6,10 +6,9 @@ import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   Users,
-  Megaphone,
+  Building2,
   UserSearch,
   GitCompare,
-  GitMerge,
   MapPin,
   Settings,
   Briefcase,
@@ -26,15 +25,14 @@ function buildNavItems(
   matchesCount: number,
   candidatesCount: number,
   clientsCount: number,
-  campaignsCount: number
+  locationsCount: number
 ) {
   return [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/dashboard/clients", label: "Kunden", icon: Users, badge: String(clientsCount) },
-    { href: "/dashboard/campaigns", label: "Kampagnen", icon: Megaphone, badge: String(campaignsCount) },
+    { href: "/dashboard/locations", label: "Standorte", icon: Building2, badge: String(locationsCount) },
     { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: String(candidatesCount) },
     { href: "/dashboard/matches", label: "Matching", icon: GitCompare, badge: String(matchesCount) },
-    { href: "/dashboard/pipeline", label: "Pipeline", icon: GitMerge },
     { href: "/dashboard/map", label: "Karte", icon: MapPin },
   ] as const
 }
@@ -96,15 +94,15 @@ export function Sidebar({
   matchesCount = 0,
   candidatesCount = 0,
   clientsCount = 0,
-  campaignsCount = 0,
+  locationsCount = 0,
 }: {
   matchesCount?: number
   candidatesCount?: number
   clientsCount?: number
-  campaignsCount?: number
+  locationsCount?: number
 }) {
   const pathname = usePathname()
-  const navItems = buildNavItems(matchesCount, candidatesCount, clientsCount, campaignsCount)
+  const navItems = buildNavItems(matchesCount, candidatesCount, clientsCount, locationsCount)
 
   // Start bewusst ausgeklappt (= Server-/Erstrender-Zustand), der localStorage-Wert wird
   // erst nach dem Mount übernommen - sonst Hydration-Mismatch, da localStorage auf dem
