@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { geocodePlz } from "@/lib/geocode-plz"
+import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { matchCampaignToCandidates } from "@/lib/matching"
 
 export type CreateCampaignState = { error: string } | null
@@ -29,6 +30,7 @@ export async function createCampaignAction(
   if (!user) return { error: "Nicht eingeloggt." }
 
   const coords = plz ? geocodePlz(plz) : null
+  const location_id = await getOrCreateLocationForPlz(supabase, plz)
 
   const { data: campaign, error } = await supabase
     .from("campaigns")
@@ -42,6 +44,7 @@ export async function createCampaignAction(
       plz: plz || null,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
+      location_id,
       ...(radius_km_raw ? { radius_km: parseInt(radius_km_raw, 10) } : {}),
     })
     .select("id")

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { geocodePlz } from "@/lib/geocode-plz"
+import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { matchCampaignToCandidates, matchCandidateToCampaigns } from "@/lib/matching"
 import { fetchAllCampaigns } from "@/lib/leadtable-import-customers"
 import { importLeadtableCampaign } from "@/lib/leadtable-import"
@@ -130,6 +131,7 @@ export async function updateCampaignSettingsAction(
     update.plz = plz || null
     update.lat = coords?.lat ?? null
     update.lng = coords?.lng ?? null
+    update.location_id = await getOrCreateLocationForPlz(supabase, plz)
     if (update.plz !== (before?.plz ?? null)) matchingRelevantChanged = true
   }
   if (formData.has("radius_km")) {

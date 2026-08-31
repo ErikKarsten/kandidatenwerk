@@ -1,5 +1,10 @@
 // Generated from PostgREST OpenAPI spec — do not edit manually.
 // Regenerate: node scripts/gen-types.mjs
+//
+// Ausnahme: "locations" und "campaigns.location_id" wurden manuell ergänzt, bevor die
+// Migration 20260831000000_add_locations.sql angewendet wurde (siehe dort). Nach dem
+// Anwenden der Migration bitte per gen-types.mjs neu generieren und gegenprüfen, dass
+// diese Handeinträge exakt übernommen wurden.
 
 export type Json =
   | string
@@ -303,6 +308,7 @@ export type Database = {
           radius_km: number
           kanzleistelle_job_id: string | null
           leadtable_campaign_id: string | null
+          location_id: string | null
         }
         Insert: {
           id?: string
@@ -321,6 +327,7 @@ export type Database = {
           radius_km?: number
           kanzleistelle_job_id?: string | null
           leadtable_campaign_id?: string | null
+          location_id?: string | null
         }
         Update: {
           id?: string
@@ -339,6 +346,7 @@ export type Database = {
           radius_km?: number
           kanzleistelle_job_id?: string | null
           leadtable_campaign_id?: string | null
+          location_id?: string | null
         }
         Relationships: [
           {
@@ -347,8 +355,36 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
           }
         ]
+      }
+      locations: {
+        Row: {
+          id: string
+          plz_prefix: string
+          name: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          plz_prefix: string
+          name?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          plz_prefix?: string
+          name?: string | null
+          created_at?: string
+        }
+        Relationships: []
       }
       campaign_automations: {
         Row: {

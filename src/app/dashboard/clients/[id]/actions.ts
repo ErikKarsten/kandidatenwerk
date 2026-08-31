@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { fetchAllCustomers, importNewLeadtableCampaignsForClient } from "@/lib/leadtable-import-customers"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { reverseGeocodeCity } from "@/lib/reverse-geocode"
+import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 
 export async function updateClientAction(
   clientId: string,
@@ -48,8 +49,44 @@ export async function updateClientAction(
 
   if (error) return { error: error.message }
 
+  // Kampagnen ohne eigene PLZ übernehmen automatisch die (neue) Kunden-PLZ inkl.
+  // lat/lng/location_id. Kampagnen, die bereits eine eigene PLZ haben, bleiben
+  // unangetastet, damit eine manuell abweichend gesetzte Kampagnen-PLZ dauerhaft
+  // erhalten bleibt, auch wenn sich die Kunden-PLZ später nochmal ändert. Nicht fatal
+  // bei Fehlern - der Kunde ist zu diesem Zeitpunkt bereits erfolgreich gespeichert
+  // (gleiches "loggen statt abbrechen"-Muster wie beim Matching-Aufruf in
+  // campaigns/actions.ts).
+  try {
+    const { data: campaignsWithoutPlz, error: campaignsFetchError } = await supabase
+      .from("campaigns")
+      .select("id")
+      .eq("client_id", clientId)
+      .is("plz", null)
+
+    if (campaignsFetchError) throw new Error(campaignsFetchError.message)
+
+    if (campaignsWithoutPlz && campaignsWithoutPlz.length > 0) {
+      const location_id = await getOrCreateLocationForPlz(supabase, plz)
+
+      const { error: campaignsUpdateError } = await supabase
+        .from("campaigns")
+        .update({
+          plz: plz || null,
+          lat: coords?.lat ?? null,
+          lng: coords?.lng ?? null,
+          location_id,
+        })
+        .in("id", campaignsWithoutPlz.map((c) => c.id))
+
+      if (campaignsUpdateError) throw new Error(campaignsUpdateError.message)
+    }
+  } catch (cascadeError) {
+    console.error("PLZ-Vererbung an Kampagnen fehlgeschlagen für Kunde", clientId, cascadeError)
+  }
+
   revalidatePath(`/dashboard/clients/${clientId}`)
   revalidatePath("/dashboard/clients")
+  revalidatePath("/dashboard/campaigns")
   return null
 }
 

@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { leadtableFetch } from "@/lib/leadtable-client"
+import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 
 // Einzige bisher existierende Agentur ("Endlich Mitarbeiter") — Standard-Zuordnung für
 // Kunden, die außerhalb einer eingeloggten Nutzer-Session (z.B. per Skript) angelegt werden.
@@ -121,6 +122,11 @@ export async function importNewLeadtableCampaignsForClient(
     const campaignName = campaign.occupation ?? ""
     const berufsbild = mapKanzleistelleBerufsbild(campaignName)
 
+    // plz kommt hier aktuell nie von Leadtable mit (siehe plz: null unten) - der
+    // getOrCreateLocationForPlz()-Aufruf ist trotzdem Pflicht an dieser Stelle, siehe
+    // location-clustering.ts, und liefert bei null-PLZ selbst wieder null zurück.
+    const location_id = await getOrCreateLocationForPlz(kandidatenwerk, null)
+
     const { error: campaignInsertError } = await kandidatenwerk.from("campaigns").insert({
       title: campaignName,
       client_id: clientRecordId,
@@ -130,6 +136,7 @@ export async function importNewLeadtableCampaignsForClient(
       plz: null,
       lat: null,
       lng: null,
+      location_id,
     })
 
     if (campaignInsertError) throw new Error(campaignInsertError.message)
