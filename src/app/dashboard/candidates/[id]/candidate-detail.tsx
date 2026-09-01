@@ -15,6 +15,7 @@ import {
 import { ProfileTab } from "./profile-tab"
 import { FilesTab } from "./files-tab"
 import { HistorySection, type HistoryEntry } from "./history-section"
+import { ClientAssignmentSection, type ClientAssignment, type ClientOption } from "./client-assignment-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { MatchesSection } from "./matches-section"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
@@ -68,11 +69,13 @@ interface CandidateDetailProps {
   history: HistoryEntry[]
   files: FileItem[]
   matches: CampaignMatch[]
+  clientAssignment: ClientAssignment | null
+  clients: ClientOption[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, matches }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, matches, clientAssignment, clients }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien">("profil")
@@ -293,6 +296,7 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
         {/* Rechte Spalte */}
         <div className="flex flex-col gap-4">
           <ContactChips email={candidate.email} phone={candidate.phone} />
+          <ClientAssignmentSection candidateId={candidate.id} assignment={clientAssignment} clients={clients} />
           <NewTaskLink candidateId={candidate.id} />
           <CampaignInfoCard campaignId={candidate.campaign_id} campaigns={candidate.campaigns} />
           <MatchesSection

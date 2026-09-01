@@ -419,3 +419,98 @@ export async function deleteFileAction(
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   return null
 }
+
+// ── client_assignments (Kanzlei-Zuordnung mit Status-Pipeline) ────────────────────
+
+export async function assignToClientAction(
+  candidateId: string,
+  clientId: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  // Erst explizit prüfen (bessere Fehlermeldung als der rohe Constraint-Fehler) - die
+  // eigentliche Absicherung gegen ein Race Condition ist der UNIQUE PARTIAL INDEX auf
+  // DB-Ebene (client_assignments, nur eine Zeile mit removed_at IS NULL pro Kandidat).
+  const { data: existing, error: existingError } = await supabase
+    .from("client_assignments")
+    .select("id")
+    .eq("candidate_id", candidateId)
+    .is("removed_at", null)
+    .maybeSingle()
+
+  if (existingError) return { error: existingError.message }
+  if (existing) {
+    return {
+      error: "Kandidat ist bereits einer Kanzlei zugeordnet. Bitte zuerst die bestehende Zuordnung entfernen.",
+    }
+  }
+
+  const { error } = await supabase.from("client_assignments").insert({
+    candidate_id: candidateId,
+    client_id: clientId,
+    created_by: user.id,
+  })
+
+  if (error) {
+    // Race Condition zwischen obigem Check und diesem Insert - der UNIQUE PARTIAL
+    // INDEX schlägt dann hier zu (Postgres-Code 23505).
+    if (error.code === "23505") {
+      return { error: "Kandidat wurde inzwischen bereits einer anderen Kanzlei zugeordnet." }
+    }
+    return { error: error.message }
+  }
+
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
+  return null
+}
+
+export async function removeClientAssignmentAction(
+  assignmentId: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  // Soft-Delete statt DELETE - removed_at markiert das Ende der Zuordnung, die
+  // Historie (wer war wann bei welcher Kanzlei) bleibt erhalten.
+  const { data, error } = await supabase
+    .from("client_assignments")
+    .update({ removed_at: new Date().toISOString() })
+    .eq("id", assignmentId)
+    .select("candidate_id")
+    .single()
+
+  if (error) return { error: error.message }
+
+  revalidatePath(`/dashboard/candidates/${data.candidate_id}`)
+  return null
+}
+
+export async function updateAssignmentStatusAction(
+  assignmentId: string,
+  status: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  // .is("removed_at", null) - nur die aktive Zuordnung darf im Status verändert
+  // werden, eine bereits entfernte (historische) Zuordnung bleibt unveränderlich.
+  const { data, error } = await supabase
+    .from("client_assignments")
+    .update({ status })
+    .eq("id", assignmentId)
+    .is("removed_at", null)
+    .select("candidate_id")
+    .single()
+
+  if (error) return { error: error.message }
+
+  revalidatePath(`/dashboard/candidates/${data.candidate_id}`)
+  return null
+}

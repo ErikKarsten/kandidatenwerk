@@ -10,7 +10,14 @@ export default async function CandidateDetailPage({
   const { id } = await params
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: candidate }, { data: history }, { data: fileRows }, { data: matchRows }] = await Promise.all([
+  const [
+    { data: candidate },
+    { data: history },
+    { data: fileRows },
+    { data: matchRows },
+    { data: assignmentRow },
+    { data: clientRows },
+  ] = await Promise.all([
     supabase
       .from("candidates")
       .select("*, campaigns(title, clients(id, name))")
@@ -31,6 +38,16 @@ export default async function CandidateDetailPage({
       .select("id, distance_km, status, matched_at, campaigns(id, title, lat, lng, clients(name))")
       .eq("candidate_id", id)
       .order("matched_at", { ascending: false }),
+    supabase
+      .from("client_assignments")
+      .select("id, status, client_id, clients(name)")
+      .eq("candidate_id", id)
+      .is("removed_at", null)
+      .maybeSingle(),
+    supabase
+      .from("clients")
+      .select("id, name")
+      .order("name", { ascending: true }),
   ])
 
   if (!candidate) notFound()
@@ -111,12 +128,29 @@ export default async function CandidateDetailPage({
     campaigns: campaigns,
   }
 
+  type AssignmentClientJoin = { name: string } | null
+  const assignmentClient = assignmentRow
+    ? ((Array.isArray(assignmentRow.clients) ? assignmentRow.clients[0] : assignmentRow.clients) as AssignmentClientJoin)
+    : null
+  const clientAssignment = assignmentRow
+    ? {
+        id: assignmentRow.id,
+        status: assignmentRow.status,
+        clientId: assignmentRow.client_id,
+        clientName: assignmentClient?.name ?? "Unbekannt",
+      }
+    : null
+
+  const clients = (clientRows ?? []).map((c) => ({ id: c.id, name: c.name }))
+
   return (
     <CandidateDetail
       candidate={candidateData}
       history={historyWithCreatorNames}
       files={files}
       matches={matches}
+      clientAssignment={clientAssignment}
+      clients={clients}
     />
   )
 }

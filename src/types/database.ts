@@ -259,6 +259,58 @@ export type Database = {
         }
         Relationships: []
       }
+      client_assignments: {
+        Row: {
+          id: string
+          candidate_id: string
+          client_id: string
+          status: string
+          created_at: string
+          created_by: string | null
+          removed_at: string | null
+        }
+        Insert: {
+          id?: string
+          candidate_id: string
+          client_id: string
+          status?: string
+          created_at?: string
+          created_by?: string | null
+          removed_at?: string | null
+        }
+        Update: {
+          id?: string
+          candidate_id?: string
+          client_id?: string
+          status?: string
+          created_at?: string
+          created_by?: string | null
+          removed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_assignments_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_assignments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_assignments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       candidates: {
         Row: {
           id: string
