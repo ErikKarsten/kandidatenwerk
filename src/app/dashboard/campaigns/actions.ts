@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { matchCampaignToCandidates } from "@/lib/matching"
+import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 
 export type CreateCampaignState = { error: string } | null
 
@@ -17,7 +18,7 @@ export async function createCampaignAction(
   const description = formData.get("description") as string
   const status = (formData.get("status") as string) || "active"
   const meta_campaign_id = formData.get("meta_campaign_id") as string
-  const berufsbild = formData.get("berufsbild") as string
+  const berufsbildInput = formData.get("berufsbild") as string
   const plz = formData.get("plz") as string
   const radius_km_raw = formData.get("radius_km") as string
 
@@ -32,6 +33,11 @@ export async function createCampaignAction(
   const coords = plz ? geocodePlz(plz) : null
   const location_id = await getOrCreateLocationForPlz(supabase, plz)
 
+  // Automatischer Vorschlag NUR, wenn das Dropdown leer gelassen wurde - eine bewusste
+  // manuelle Wahl (auch "Kein Berufsbild") wird nie überschrieben, da dieser Fallback
+  // erst greift, wenn berufsbildInput selbst schon leer ist.
+  const berufsbild = berufsbildInput || (title ? mapKanzleistelleBerufsbild(title) : null)
+
   const { data: campaign, error } = await supabase
     .from("campaigns")
     .insert({
@@ -40,7 +46,7 @@ export async function createCampaignAction(
       description: description || null,
       status,
       meta_campaign_id: meta_campaign_id || null,
-      berufsbild: berufsbild || null,
+      berufsbild,
       plz: plz || null,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,

@@ -8,6 +8,7 @@ import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { matchCampaignToCandidates, matchCandidateToCampaigns } from "@/lib/matching"
 import { fetchAllCampaigns } from "@/lib/leadtable-import-customers"
 import { importLeadtableCampaign } from "@/lib/leadtable-import"
+import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import type { TablesUpdate } from "@/types/database"
 
 // Siehe src/app/dashboard/candidates/page.tsx / clients-list.tsx / campaigns-list.tsx -
@@ -110,7 +111,7 @@ export async function updateCampaignSettingsAction(
 
   const { data: before } = await supabase
     .from("campaigns")
-    .select("berufsbild, plz, radius_km")
+    .select("berufsbild, plz, radius_km, title")
     .eq("id", campaignId)
     .single()
 
@@ -122,7 +123,14 @@ export async function updateCampaignSettingsAction(
   let matchingRelevantChanged = false
 
   if (formData.has("berufsbild")) {
-    update.berufsbild = (formData.get("berufsbild") as string) || null
+    const berufsbildInput = (formData.get("berufsbild") as string) || null
+    // Automatischer Vorschlag NUR, wenn im Formular nichts gewählt wurde UND aktuell
+    // noch gar kein Wert gesetzt ist - ein bereits vorhandener Wert (auch manuell
+    // gesetzt) wird dadurch nie überschrieben; das bewusste Leeren eines gesetzten
+    // Werts über das Dropdown bleibt davon unberührt möglich.
+    update.berufsbild =
+      berufsbildInput ??
+      (!before?.berufsbild && before?.title ? mapKanzleistelleBerufsbild(before.title) : null)
     if (update.berufsbild !== (before?.berufsbild ?? null)) matchingRelevantChanged = true
   }
   if (formData.has("plz")) {

@@ -55,7 +55,10 @@ export function mapKanzleistelleBerufsbild(text: string): Berufsbild | null {
   const normalized = text.toLowerCase().trim()
 
   if (
-    normalized.includes("steuerfachangestellte") ||
+    // (fach)? statt eines festen .includes("steuerfachangestellte") - fängt auch
+    // Tippfehler mit verdoppeltem "fach" ab (z.B. "Steuerfachfachangestellter"),
+    // die den reinen Substring-Vergleich sonst brechen.
+    /steuerfach(fach)?angestellte/.test(normalized) ||
     normalized.includes("fachangestellte für steuern") ||
     normalized.includes("fachangestellter für steuern") ||
     /\bstfa\b/.test(normalized)
@@ -72,6 +75,13 @@ export function mapKanzleistelleBerufsbild(text: string): Berufsbild | null {
   if (/\bsfw\b/.test(normalized)) return "steuerfachwirt"
   if (/\bstb\b/.test(normalized)) return "steuerberater"
   if (/\bbb\b/.test(normalized)) return "bilanzbuchhalter"
+
+  // Berufe außerhalb der vier Kern-Kategorien, aber trotzdem eindeutig erkennbar -
+  // mappen bewusst auf "sonstige" statt auf null (Diagnose: "Lohnbuchhalter" war mit
+  // 9 von 49 unerkannten Kampagnen-Titeln die mit Abstand größte Einzelgruppe).
+  if (normalized.includes("lohnbuchhalter")) return "sonstige"
+  if (normalized.includes("finanzbuchhalter")) return "sonstige"
+  if (/\bfibu\b/.test(normalized)) return "sonstige"
 
   return null
 }
