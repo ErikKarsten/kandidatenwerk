@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { RefreshCw } from "lucide-react"
+import { RefreshCw, ListTodo } from "lucide-react"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import {
   saveDescriptionAction,
@@ -293,6 +293,7 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
         {/* Rechte Spalte */}
         <div className="flex flex-col gap-4">
           <ContactChips email={candidate.email} phone={candidate.phone} />
+          <NewTaskLink candidateId={candidate.id} />
           <CampaignInfoCard campaignId={candidate.campaign_id} campaigns={candidate.campaigns} />
           <MatchesSection
             matches={matches}
@@ -378,6 +379,22 @@ function CampaignInfoCard({
         )}
       </dl>
     </div>
+  )
+}
+
+// Einfacher Link statt eigenem Mini-Formular hier - führt zur Aufgaben-Seite mit schon
+// vorausgefülltem Kandidaten (siehe ?new=1&candidate_id=... in tasks-list.tsx). Spart
+// ein zweites, dupliziertes "Neue Aufgabe"-Formular direkt auf der Kandidatenseite.
+function NewTaskLink({ candidateId }: { candidateId: string }) {
+  return (
+    <Link
+      href={`/dashboard/tasks?new=1&candidate_id=${candidateId}`}
+      className="flex items-center justify-center gap-2 rounded-xl border border-dashed bg-white p-3 text-sm font-medium transition-colors hover:bg-gray-50"
+      style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+    >
+      <ListTodo size={16} />
+      Aufgabe erstellen
+    </Link>
   )
 }
 

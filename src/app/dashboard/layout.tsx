@@ -16,6 +16,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .from("locations")
     .select("id", { count: "exact", head: true })
 
+  const { data: { user } } = await supabase.auth.getUser()
+  const { count: myOpenTasksCount } = user
+    ? await supabase
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("assigned_to", user.id)
+        .eq("status", "offen")
+    : { count: 0 }
+
   return (
     <div className="flex h-full">
       <Sidebar
@@ -23,6 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         candidatesCount={candidatesCount ?? 0}
         clientsCount={clientsCount ?? 0}
         locationsCount={locationsCount ?? 0}
+        myOpenTasksCount={myOpenTasksCount ?? 0}
       />
       <main className="flex-1 overflow-y-auto">{children}</main>
     </div>
