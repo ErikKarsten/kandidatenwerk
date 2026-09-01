@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { RefreshCw } from "lucide-react"
+import { RefreshCw, Inbox, Send, ClipboardCheck } from "lucide-react"
 import {
   updateClientAction,
   archiveClientAction,
@@ -13,6 +13,8 @@ import {
   refreshLeadtableClientAction,
 } from "./actions"
 import { ContactsSection, type Contact } from "./contacts-section"
+import { KpiCard } from "@/components/dashboard/kpi-card"
+import type { DashboardKpis } from "@/lib/kpis"
 
 const CAMPAIGN_STATUS: Record<string, { label: string; bg: string; dot: string; text: string }> = {
   active: { label: "Aktiv", bg: "#1a9a6a18", dot: "#1a9a6a", text: "#1a9a6a" },
@@ -47,11 +49,12 @@ interface ClientDetailProps {
   client: Client
   campaigns: Campaign[]
   contacts: Contact[]
+  kpis: DashboardKpis
 }
 
 type ModalStep = null | "choice" | "delete_confirm"
 
-export function ClientDetail({ client, campaigns, contacts }: ClientDetailProps) {
+export function ClientDetail({ client, campaigns, contacts, kpis }: ClientDetailProps) {
   const router = useRouter()
   const [tab, setTab] = useState<"kampagnen" | "stammdaten">("kampagnen")
   const [editMode, setEditMode] = useState(false)
@@ -354,6 +357,13 @@ export function ClientDetail({ client, campaigns, contacts }: ClientDetailProps)
             {refreshMessage.text}
           </p>
         )}
+      </div>
+
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <KpiCard icon={Inbox} label="Neue Eingänge heute" value={kpis.newToday} iconColor="#4ba3c3" />
+        <KpiCard icon={Send} label="Weitergeleitet" value={kpis.forwarded} iconColor="#8b5cf6" />
+        <KpiCard icon={ClipboardCheck} label="Bearbeitet" value={kpis.processed} iconColor="#1a9a6a" />
       </div>
 
       {/* ── Tabs ── */}

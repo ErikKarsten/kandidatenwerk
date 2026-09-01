@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { getDashboardKpis } from "@/lib/kpis"
 import { ClientDetail } from "./client-detail"
 
 export default async function ClientDetailPage({
@@ -10,7 +11,7 @@ export default async function ClientDetailPage({
   const { id } = await params
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: client }, { data: campaigns }, { data: contacts }] = await Promise.all([
+  const [{ data: client }, { data: campaigns }, { data: contacts }, kpis] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
     supabase
       .from("campaigns")
@@ -22,6 +23,7 @@ export default async function ClientDetailPage({
       .select("id, name, email, phone, role")
       .eq("client_id", id)
       .order("created_at", { ascending: true }),
+    getDashboardKpis(supabase, id),
   ])
 
   if (!client) notFound()
@@ -62,6 +64,7 @@ export default async function ClientDetailPage({
         phone: c.phone ?? null,
         role: c.role ?? null,
       }))}
+      kpis={kpis}
     />
   )
 }

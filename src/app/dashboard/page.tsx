@@ -1,9 +1,10 @@
-import { Users, Megaphone, UserSearch, TrendingUp } from "lucide-react"
+import { Users, Megaphone, UserSearch, TrendingUp, Inbox, Send, ClipboardCheck } from "lucide-react"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { ClientGrid } from "@/components/dashboard/client-grid"
 import { type PipelineSegment } from "@/components/dashboard/client-card"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
+import { getDashboardKpis } from "@/lib/kpis"
 import { getLatestLeadtableSyncRunAction } from "./actions"
 import { LeadtableSyncStatus } from "./leadtable-sync-status"
 
@@ -21,6 +22,7 @@ export default async function DashboardPage() {
     { count: candidateCount },
     { count: placementCount },
     latestSyncRun,
+    activityKpis,
   ] = await Promise.all([
     supabase.from("clients").select("id, name, active, created_at"),
     supabase.from("campaigns").select("id, client_id"),
@@ -30,6 +32,7 @@ export default async function DashboardPage() {
     supabase.from("candidates").select("*", { count: "exact", head: true }),
     supabase.from("candidates").select("*", { count: "exact", head: true }).eq("status", "platziert"),
     getLatestLeadtableSyncRunAction(),
+    getDashboardKpis(supabase),
   ])
 
   // campaign_id -> client_id lookup
@@ -89,6 +92,12 @@ export default async function DashboardPage() {
     { icon: TrendingUp, label: "Platzierungen", value: placementCount ?? 0, iconColor: "#1a9a6a", href: "/dashboard/pipeline" },
   ]
 
+  const activityKpiData = [
+    { icon: Inbox, label: "Neue Eingänge heute", value: activityKpis.newToday, iconColor: "#4ba3c3", href: "/dashboard/candidates" },
+    { icon: Send, label: "Weitergeleitet", value: activityKpis.forwarded, iconColor: "#8b5cf6" },
+    { icon: ClipboardCheck, label: "Bearbeitet", value: activityKpis.processed, iconColor: "#1a9a6a", href: "/dashboard/pipeline" },
+  ]
+
   return (
     <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
@@ -98,6 +107,12 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpiData.map((kpi) => (
+          <KpiCard key={kpi.label} {...kpi} />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {activityKpiData.map((kpi) => (
           <KpiCard key={kpi.label} {...kpi} />
         ))}
       </div>
