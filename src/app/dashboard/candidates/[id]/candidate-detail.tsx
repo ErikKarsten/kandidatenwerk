@@ -14,29 +14,13 @@ import {
 } from "./actions"
 import { ProfileTab } from "./profile-tab"
 import { FilesTab } from "./files-tab"
-import { HistoryTab } from "./history-tab"
+import { HistorySection, type HistoryEntry } from "./history-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { MatchesSection } from "./matches-section"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
-
-const HISTORY_TYPE_LABEL: Record<string, string> = {
-  note: "Notiz",
-  call: "Anruf",
-  email: "E-Mail",
-  status_change: "Statusänderung",
-  interview: "Interview",
-}
-
-interface HistoryEntry {
-  id: string
-  type: string | null
-  content: string | null
-  created_at: string
-  createdByName: string | null
-}
 
 interface FileItem {
   id: string
@@ -91,7 +75,7 @@ type ModalStep = null | "choice"
 export function CandidateDetail({ candidate, history, files, matches }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
-  const [tab, setTab] = useState<"profil" | "dateien" | "verlauf">("profil")
+  const [tab, setTab] = useState<"profil" | "dateien">("profil")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [modalError, setModalError] = useState<string | null>(null)
   const [archivePending, startArchiveTransition] = useTransition()
@@ -285,12 +269,6 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
             >
               Dateien
             </TabButton>
-            <TabButton
-              active={tab === "verlauf"}
-              onClick={() => setTab("verlauf")}
-            >
-              Verlauf
-            </TabButton>
           </div>
 
           <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
@@ -309,13 +287,6 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
             {tab === "dateien" && (
               <FilesTab candidateId={candidate.id} files={files} />
             )}
-            {tab === "verlauf" && (
-              <HistoryTab
-                history={history}
-                leadtableDescription={candidate.description}
-                weitereAntworten={candidate.custom_fields?.[WEITERE_ANTWORTEN_KEY]}
-              />
-            )}
           </div>
         </div>
 
@@ -331,7 +302,11 @@ export function CandidateDetail({ candidate, history, files, matches }: Candidat
           />
           <DescriptionSection candidateId={candidate.id} notes={candidate.notes} />
           <NoteSection candidateId={candidate.id} />
-          <HistoryList history={history} />
+          <HistorySection
+            history={history}
+            leadtableDescription={candidate.description}
+            weitereAntworten={candidate.custom_fields?.[WEITERE_ANTWORTEN_KEY]}
+          />
         </div>
       </div>
     </div>
@@ -533,55 +508,3 @@ function NoteSection({ candidateId }: { candidateId: string }) {
   )
 }
 
-function HistoryList({ history }: { history: HistoryEntry[] }) {
-  return (
-    <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
-      <p className="mb-3 text-sm font-semibold text-gray-700">
-        Verlauf ({history.length})
-      </p>
-      {history.length === 0 ? (
-        <p className="text-sm text-gray-400">Noch keine Einträge.</p>
-      ) : (
-        <ol className="flex flex-col gap-4">
-          {history.map((entry) => {
-            const isStatusChange = entry.type === "status_change"
-            const dotColor = isStatusChange ? "#1e56a0" : "#9ca3af"
-            return (
-              <li key={entry.id} className="flex gap-3">
-                <div className="mt-1 shrink-0">
-                  <span
-                    className="block h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: dotColor }}
-                  />
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400">
-                      {new Date(entry.created_at).toLocaleDateString("de-DE", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })}
-                    </span>
-                    <span
-                      className="rounded px-1.5 py-0.5 text-xs font-medium"
-                      style={{
-                        backgroundColor: isStatusChange ? "#1e56a018" : "#9ca3af18",
-                        color: isStatusChange ? "#1e56a0" : "#6b7280",
-                      }}
-                    >
-                      {HISTORY_TYPE_LABEL[entry.type ?? ""] ?? entry.type ?? "Eintrag"}
-                    </span>
-                  </div>
-                  {entry.content && (
-                    <p className="text-sm text-gray-600 whitespace-pre-wrap">{entry.content}</p>
-                  )}
-                </div>
-              </li>
-            )
-          })}
-        </ol>
-      )}
-    </div>
-  )
-}

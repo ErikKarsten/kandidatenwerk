@@ -49,7 +49,7 @@ export function ProfileTab({
   // Keys in custom_fields, die nicht zum festen 12-Felder-Satz gehören (z.B. aus
   // älteren Imports) — werden weiterhin angezeigt und nicht stillschweigend gelöscht.
   // WEITERE_ANTWORTEN_KEY ist ausgenommen: der hat einen eigenen, mehrzeiligen
-  // Anzeige-Block im Verlauf-Tab (siehe history-tab.tsx) statt hier als einzeiliges
+  // Anzeige-Block im Verlauf-Bereich (siehe history-section.tsx) statt hier als einzeiliges
   // Eingabefeld zu doppeln.
   const extraKeys = Object.keys(localCustom).filter(
     (k) => !FIXED_CUSTOM_FIELD_KEYS.has(k) && k !== WEITERE_ANTWORTEN_KEY

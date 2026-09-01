@@ -295,6 +295,33 @@ export async function addNoteAction(
   return null
 }
 
+export async function deleteNoteAction(
+  historyEntryId: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  // Nur "note"-Einträge sind löschbar - automatische Einträge (z.B. status_change)
+  // bleiben als unveränderliches Prüfprotokoll erhalten. .eq("type", "note") schützt
+  // das serverseitig ab, nicht nur durchs Ausblenden des Lösch-Icons im UI (siehe
+  // history-section.tsx). Betrifft der Filter keine Zeile (falsche ID oder kein
+  // note-Eintrag), liefert .single() einen Fehler statt still nichts zu tun.
+  const { data, error } = await supabase
+    .from("candidate_history")
+    .delete()
+    .eq("id", historyEntryId)
+    .eq("type", "note")
+    .select("candidate_id")
+    .single()
+
+  if (error) return { error: error.message }
+
+  revalidatePath(`/dashboard/candidates/${data.candidate_id}`)
+  return null
+}
+
 export async function uploadFileAction(
   candidateId: string,
   formData: FormData
