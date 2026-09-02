@@ -37,6 +37,7 @@ interface CampaignMatch {
   id: string
   campaignId: string
   campaignTitle: string
+  clientId: string | null
   clientName: string | null
   distanceKm: number | null
   status: string
@@ -297,11 +298,18 @@ export function CandidateDetail({ candidate, history, files, matches, clientAssi
         {/* Rechte Spalte */}
         <div className="flex flex-col gap-4">
           <ContactChips email={candidate.email} phone={candidate.phone} />
-          <ClientAssignmentSection candidateId={candidate.id} assignment={clientAssignment} clients={clients} />
+          <ClientAssignmentSection
+            candidateId={candidate.id}
+            assignment={clientAssignment}
+            clients={clients}
+            hasMatches={matches.length > 0}
+          />
           <NewTaskLink candidateId={candidate.id} />
           <CampaignInfoCard campaignId={candidate.campaign_id} campaigns={candidate.campaigns} />
           <MatchesSection
             matches={matches}
+            candidateId={candidate.id}
+            hasActiveAssignment={clientAssignment !== null}
             selfLat={candidate.lat}
             selfLng={candidate.lng}
             selfLabel={`${candidate.first_name} ${candidate.last_name}`}

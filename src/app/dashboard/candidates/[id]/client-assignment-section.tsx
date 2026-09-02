@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Building2 } from "lucide-react"
 import {
   assignToClientAction,
   removeClientAssignmentAction,
@@ -37,10 +36,12 @@ export function ClientAssignmentSection({
   candidateId,
   assignment,
   clients,
+  hasMatches,
 }: {
   candidateId: string
   assignment: ClientAssignment | null
   clients: ClientOption[]
+  hasMatches: boolean
 }) {
   return (
     <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
@@ -50,13 +51,21 @@ export function ClientAssignmentSection({
       {assignment ? (
         <ActiveAssignment assignment={assignment} />
       ) : (
-        <AssignForm candidateId={candidateId} clients={clients} />
+        <AssignForm candidateId={candidateId} clients={clients} hasMatches={hasMatches} />
       )}
     </div>
   )
 }
 
-function AssignForm({ candidateId, clients }: { candidateId: string; clients: ClientOption[] }) {
+function AssignForm({
+  candidateId,
+  clients,
+  hasMatches,
+}: {
+  candidateId: string
+  clients: ClientOption[]
+  hasMatches: boolean
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [clientId, setClientId] = useState("")
@@ -79,14 +88,18 @@ function AssignForm({ candidateId, clients }: { candidateId: string; clients: Cl
   }
 
   if (!open) {
+    // Gibt es passende Kampagnen, läuft die Zuordnung über den direkten "Kanzlei
+    // zuordnen"-Knopf je Kampagne in MatchesSection - der generische Dropdown-Weg
+    // hier entfällt dann komplett. Nur ohne Matches bleibt er als unauffälliger
+    // Fallback-Link erhalten, damit trotzdem manuell zugeordnet werden kann.
+    if (hasMatches) return null
+
     return (
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-        style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+        className="text-xs text-gray-400 hover:text-gray-600 hover:underline"
       >
-        <Building2 size={14} />
-        Kanzlei zuordnen
+        Kanzlei manuell wählen
       </button>
     )
   }
