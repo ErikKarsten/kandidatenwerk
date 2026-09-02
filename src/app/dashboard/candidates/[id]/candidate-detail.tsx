@@ -15,9 +15,9 @@ import {
 import { ProfileTab } from "./profile-tab"
 import { FilesTab } from "./files-tab"
 import { HistorySection, type HistoryEntry } from "./history-section"
-import { ClientAssignmentSection, type ClientAssignment, type ClientOption } from "./client-assignment-section"
+import { type ClientOption } from "./client-assignment-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
-import { MatchesSection } from "./matches-section"
+import { MatchesSection, type ActiveAssignment } from "./matches-section"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
@@ -70,13 +70,13 @@ interface CandidateDetailProps {
   history: HistoryEntry[]
   files: FileItem[]
   matches: CampaignMatch[]
-  clientAssignment: ClientAssignment | null
+  activeAssignments: ActiveAssignment[]
   clients: ClientOption[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, matches, clientAssignment, clients }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, matches, activeAssignments, clients }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien">("profil")
@@ -298,18 +298,13 @@ export function CandidateDetail({ candidate, history, files, matches, clientAssi
         {/* Rechte Spalte */}
         <div className="flex flex-col gap-4">
           <ContactChips email={candidate.email} phone={candidate.phone} />
-          <ClientAssignmentSection
-            candidateId={candidate.id}
-            assignment={clientAssignment}
-            clients={clients}
-            hasMatches={matches.length > 0}
-          />
           <NewTaskLink candidateId={candidate.id} />
           <CampaignInfoCard campaignId={candidate.campaign_id} campaigns={candidate.campaigns} />
           <MatchesSection
             matches={matches}
             candidateId={candidate.id}
-            hasActiveAssignment={clientAssignment !== null}
+            activeAssignments={activeAssignments}
+            clients={clients}
             selfLat={candidate.lat}
             selfLng={candidate.lng}
             selfLabel={`${candidate.first_name} ${candidate.last_name}`}

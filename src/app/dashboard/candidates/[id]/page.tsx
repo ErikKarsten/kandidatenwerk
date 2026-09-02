@@ -15,7 +15,7 @@ export default async function CandidateDetailPage({
     { data: history },
     { data: fileRows },
     { data: matchRows },
-    { data: assignmentRow },
+    { data: assignmentRows },
     { data: clientRows },
   ] = await Promise.all([
     supabase
@@ -38,12 +38,13 @@ export default async function CandidateDetailPage({
       .select("id, distance_km, status, matched_at, campaigns(id, title, lat, lng, clients(id, name))")
       .eq("candidate_id", id)
       .order("matched_at", { ascending: false }),
+    // Alle aktiven Zuordnungen (nicht mehr nur eine) - ein Kandidat kann jetzt
+    // gleichzeitig mehreren Kanzleien zugeordnet sein, siehe assignToClientAction.
     supabase
       .from("client_assignments")
-      .select("id, status, client_id, clients(name)")
+      .select("id, status, client_id")
       .eq("candidate_id", id)
-      .is("removed_at", null)
-      .maybeSingle(),
+      .is("removed_at", null),
     supabase
       .from("clients")
       .select("id, name")
@@ -129,18 +130,11 @@ export default async function CandidateDetailPage({
     campaigns: campaigns,
   }
 
-  type AssignmentClientJoin = { name: string } | null
-  const assignmentClient = assignmentRow
-    ? ((Array.isArray(assignmentRow.clients) ? assignmentRow.clients[0] : assignmentRow.clients) as AssignmentClientJoin)
-    : null
-  const clientAssignment = assignmentRow
-    ? {
-        id: assignmentRow.id,
-        status: assignmentRow.status,
-        clientId: assignmentRow.client_id,
-        clientName: assignmentClient?.name ?? "Unbekannt",
-      }
-    : null
+  const activeAssignments = (assignmentRows ?? []).map((a) => ({
+    id: a.id,
+    clientId: a.client_id,
+    status: a.status,
+  }))
 
   const clients = (clientRows ?? []).map((c) => ({ id: c.id, name: c.name }))
 
@@ -150,7 +144,7 @@ export default async function CandidateDetailPage({
       history={historyWithCreatorNames}
       files={files}
       matches={matches}
-      clientAssignment={clientAssignment}
+      activeAssignments={activeAssignments}
       clients={clients}
     />
   )

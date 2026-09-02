@@ -2,69 +2,26 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
-import {
-  assignToClientAction,
-  removeClientAssignmentAction,
-  updateAssignmentStatusAction,
-} from "./actions"
-
-export interface ClientAssignment {
-  id: string
-  status: string
-  clientId: string
-  clientName: string
-}
+import { Plus } from "lucide-react"
+import { assignToClientAction } from "./actions"
 
 export interface ClientOption {
   id: string
   name: string
 }
 
-// Deutsche Labels für die Stecktafel-Status-Pipeline (inbox/vq/vqk/vg/ja/nein), siehe
-// CHECK-Constraint auf client_assignments.status.
-const STATUS_OPTIONS: { value: string; label: string }[] = [
-  { value: "inbox", label: "Unbearbeitet" },
-  { value: "vq", label: "Vorqualifiziert" },
-  { value: "vqk", label: "Vorqualifiziert beim Kunden" },
-  { value: "vg", label: "Vorstellungsgespräch" },
-  { value: "ja", label: "Ja" },
-  { value: "nein", label: "Nein" },
-]
-
-export function ClientAssignmentSection({
-  candidateId,
-  assignment,
-  clients,
-  hasMatches,
-}: {
-  candidateId: string
-  assignment: ClientAssignment | null
-  clients: ClientOption[]
-  hasMatches: boolean
-}) {
-  return (
-    <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-        Kanzlei-Zuordnung
-      </p>
-      {assignment ? (
-        <ActiveAssignment assignment={assignment} />
-      ) : (
-        <AssignForm candidateId={candidateId} clients={clients} hasMatches={hasMatches} />
-      )}
-    </div>
-  )
-}
-
-function AssignForm({
+// Kompakter "+ Weitere Kanzlei hinzufügen"-Knopf mit Dropdown-Auswahl aller Kunden -
+// läuft unabhängig von automatischen Matches (immer sichtbar oberhalb der
+// Kampagnen-Liste in matches-section.tsx), da ein Kandidat inzwischen gleichzeitig
+// mehreren Kanzleien zugeordnet sein kann (siehe assignToClientAction: keine
+// Ein-Kanzlei-Beschränkung mehr). War früher Teil der jetzt entfernten
+// ClientAssignmentSection-Karte, Logik unverändert wiederverwendet.
+export function AddClientAssignmentButton({
   candidateId,
   clients,
-  hasMatches,
 }: {
   candidateId: string
   clients: ClientOption[]
-  hasMatches: boolean
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -88,24 +45,20 @@ function AssignForm({
   }
 
   if (!open) {
-    // Gibt es passende Kampagnen, läuft die Zuordnung über den direkten "Kanzlei
-    // zuordnen"-Knopf je Kampagne in MatchesSection - der generische Dropdown-Weg
-    // hier entfällt dann komplett. Nur ohne Matches bleibt er als unauffälliger
-    // Fallback-Link erhalten, damit trotzdem manuell zugeordnet werden kann.
-    if (hasMatches) return null
-
     return (
       <button
         onClick={() => setOpen(true)}
-        className="text-xs text-gray-400 hover:text-gray-600 hover:underline"
+        className="inline-flex items-center gap-1 text-xs font-medium hover:underline"
+        style={{ color: "#1e56a0" }}
       >
-        Kanzlei manuell wählen
+        <Plus size={12} />
+        Weitere Kanzlei hinzufügen
       </button>
     )
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
       <select
         value={clientId}
         onChange={(e) => setClientId(e.target.value)}
@@ -137,94 +90,6 @@ function AssignForm({
           Abbrechen
         </button>
       </div>
-    </div>
-  )
-}
-
-function ActiveAssignment({ assignment }: { assignment: ClientAssignment }) {
-  const router = useRouter()
-  const [statusPending, startStatusTransition] = useTransition()
-  const [removeConfirm, setRemoveConfirm] = useState(false)
-  const [removePending, startRemoveTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
-
-  function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const newStatus = e.target.value
-    setError(null)
-    startStatusTransition(async () => {
-      const result = await updateAssignmentStatusAction(assignment.id, newStatus)
-      if (result?.error) {
-        setError(result.error)
-        return
-      }
-      router.refresh()
-    })
-  }
-
-  function handleRemove() {
-    setError(null)
-    startRemoveTransition(async () => {
-      const result = await removeClientAssignmentAction(assignment.id)
-      if (result?.error) {
-        setError(result.error)
-        return
-      }
-      router.refresh()
-    })
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <Link
-        href={`/dashboard/clients/${assignment.clientId}`}
-        className="text-sm font-medium hover:underline"
-        style={{ color: "#1e56a0" }}
-      >
-        {assignment.clientName}
-      </Link>
-
-      <select
-        value={assignment.status}
-        onChange={handleStatusChange}
-        disabled={statusPending}
-        className="rounded-md border px-2.5 py-1.5 text-sm focus:outline-none disabled:opacity-50"
-        style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
-      >
-        {STATUS_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
-
-      {error && <p className="text-xs text-red-600">{error}</p>}
-
-      {removeConfirm ? (
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-gray-500">Zuordnung entfernen?</span>
-          <button
-            onClick={handleRemove}
-            disabled={removePending}
-            className="rounded px-2 py-0.5 text-xs font-medium text-white disabled:opacity-50"
-            style={{ backgroundColor: "#dc2626" }}
-          >
-            Ja
-          </button>
-          <button
-            onClick={() => setRemoveConfirm(false)}
-            disabled={removePending}
-            className="rounded border px-2 py-0.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-            style={{ borderColor: "#dde3ea" }}
-          >
-            Nein
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => setRemoveConfirm(true)}
-          className="self-start text-xs text-gray-500 hover:text-red-600"
-        >
-          Zuordnung entfernen
-        </button>
-      )}
     </div>
   )
 }

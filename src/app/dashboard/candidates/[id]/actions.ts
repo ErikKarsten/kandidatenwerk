@@ -431,37 +431,17 @@ export async function assignToClientAction(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
 
-  // Erst explizit prüfen (bessere Fehlermeldung als der rohe Constraint-Fehler) - die
-  // eigentliche Absicherung gegen ein Race Condition ist der UNIQUE PARTIAL INDEX auf
-  // DB-Ebene (client_assignments, nur eine Zeile mit removed_at IS NULL pro Kandidat).
-  const { data: existing, error: existingError } = await supabase
-    .from("client_assignments")
-    .select("id")
-    .eq("candidate_id", candidateId)
-    .is("removed_at", null)
-    .maybeSingle()
-
-  if (existingError) return { error: existingError.message }
-  if (existing) {
-    return {
-      error: "Kandidat ist bereits einer Kanzlei zugeordnet. Bitte zuerst die bestehende Zuordnung entfernen.",
-    }
-  }
-
+  // Kein Check mehr auf eine bereits bestehende aktive Zuordnung - ein Kandidat kann
+  // jetzt gleichzeitig mehreren Kanzleien zugeordnet sein, siehe
+  // 20260902000000_drop_client_assignments_unique_index.sql (der frühere UNIQUE PARTIAL
+  // INDEX, der das auf DB-Ebene erzwungen hat, wurde entfernt).
   const { error } = await supabase.from("client_assignments").insert({
     candidate_id: candidateId,
     client_id: clientId,
     created_by: user.id,
   })
 
-  if (error) {
-    // Race Condition zwischen obigem Check und diesem Insert - der UNIQUE PARTIAL
-    // INDEX schlägt dann hier zu (Postgres-Code 23505).
-    if (error.code === "23505") {
-      return { error: "Kandidat wurde inzwischen bereits einer anderen Kanzlei zugeordnet." }
-    }
-    return { error: error.message }
-  }
+  if (error) return { error: error.message }
 
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   return null
