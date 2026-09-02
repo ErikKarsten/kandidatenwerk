@@ -2,9 +2,12 @@ import Link from "next/link"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
+import { type PipelineSegment } from "@/components/dashboard/client-card"
 import { ClientsList } from "./clients-list"
 
 const ARCHIVED_STATUS = "Archiviert"
+const VALID_STATUSES: Set<string> = new Set(CANDIDATE_STATUS_OPTIONS.map((o) => o.value))
 
 export default async function ClientsPage({
   searchParams,
@@ -16,21 +19,78 @@ export default async function ClientsPage({
 
   const supabase = await createSupabaseServerClient()
 
-  let query = supabase
+  let clientsQuery = supabase
     .from("clients")
-    .select("id, name, contact_name, contact_email, active, status, logo_url, created_at, campaigns(count)")
+    .select("id, name, contact_name, contact_email, active, status, logo_url, created_at")
     .order("created_at", { ascending: false })
 
-  query = showArchived
-    ? query.eq("status", ARCHIVED_STATUS)
-    : query.neq("status", ARCHIVED_STATUS)
+  clientsQuery = showArchived
+    ? clientsQuery.eq("status", ARCHIVED_STATUS)
+    : clientsQuery.neq("status", ARCHIVED_STATUS)
 
-  const { data: clients } = await query
+  // Kampagnen/Kandidaten werden bewusst komplett geladen statt pro Kunde gefiltert
+  // abgefragt (gleiches Muster wie vormals in dashboard/page.tsx) - die drei
+  // Kennzahlen (Kandidaten/Kampagnen/Platzierungen) pro Kunde werden anschließend
+  // in-memory über campaign_id -> client_id aggregiert, da candidates keine direkte
+  // client_id-Verknüpfung über die Kampagne hinaus hat.
+  const [{ data: clients }, { data: campaigns }, { data: candidates }] = await Promise.all([
+    clientsQuery,
+    supabase.from("campaigns").select("id, client_id"),
+    supabase.from("candidates").select("campaign_id, status"),
+  ])
 
-  const clientList = (clients ?? []).map((c) => {
-    const countRow = Array.isArray(c.campaigns) ? c.campaigns[0] : null
-    const campaign_count = countRow ? Number((countRow as { count: number | string }).count) : 0
-    return { ...c, campaign_count }
+  // campaign_id -> client_id lookup
+  const campaignToClient = new Map<string, string>()
+  for (const c of campaigns ?? []) {
+    campaignToClient.set(c.id, c.client_id)
+  }
+
+  // client_id -> campaign ids
+  const clientCampaigns = new Map<string, Set<string>>()
+  // client_id -> { status -> count }
+  const clientStatusCounts = new Map<string, Record<string, number>>()
+
+  for (const c of clients ?? []) {
+    clientCampaigns.set(c.id, new Set())
+    clientStatusCounts.set(c.id, {})
+  }
+
+  for (const camp of campaigns ?? []) {
+    clientCampaigns.get(camp.client_id)?.add(camp.id)
+  }
+
+  for (const cand of candidates ?? []) {
+    const clientId = cand.campaign_id ? campaignToClient.get(cand.campaign_id) : undefined
+    if (!clientId) continue
+    const statuses = clientStatusCounts.get(clientId)
+    if (!statuses) continue
+    statuses[cand.status] = (statuses[cand.status] ?? 0) + 1
+  }
+
+  const clientList = (clients ?? []).map((client) => {
+    const statuses = clientStatusCounts.get(client.id) ?? {}
+    const totalCandidates = Object.values(statuses).reduce((s, v) => s + v, 0)
+    const pipeline: PipelineSegment[] = Object.entries(statuses)
+      .filter(([s]) => VALID_STATUSES.has(s))
+      .map(([status, count]) => ({ status: status as PipelineSegment["status"], count }))
+
+    return {
+      id: client.id,
+      name: client.name,
+      contact_name: client.contact_name,
+      contact_email: client.contact_email,
+      active: client.active,
+      status: client.status,
+      logo_url: client.logo_url,
+      created_at: client.created_at,
+      tags: [] as string[],
+      stats: {
+        kandidaten: totalCandidates,
+        kampagnen: clientCampaigns.get(client.id)?.size ?? 0,
+        platzierungen: statuses["platziert"] ?? 0,
+      },
+      pipeline,
+    }
   })
 
   return (

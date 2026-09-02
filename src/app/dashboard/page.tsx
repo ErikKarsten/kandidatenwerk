@@ -1,22 +1,14 @@
 import { Users, Megaphone, UserSearch, TrendingUp, Inbox, Send, ClipboardCheck } from "lucide-react"
 import { KpiCard } from "@/components/dashboard/kpi-card"
-import { ClientGrid } from "@/components/dashboard/client-grid"
-import { type PipelineSegment } from "@/components/dashboard/client-card"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
-import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { getDashboardKpis } from "@/lib/kpis"
 import { getLatestLeadtableSyncRunAction } from "./actions"
 import { LeadtableSyncStatus } from "./leadtable-sync-status"
-
-const VALID_STATUSES: Set<string> = new Set(CANDIDATE_STATUS_OPTIONS.map((o) => o.value))
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient()
 
   const [
-    { data: clients },
-    { data: campaigns },
-    { data: candidates },
     { count: clientCount },
     { count: campaignCount },
     { count: candidateCount },
@@ -24,9 +16,6 @@ export default async function DashboardPage() {
     latestSyncRun,
     activityKpis,
   ] = await Promise.all([
-    supabase.from("clients").select("id, name, active, created_at"),
-    supabase.from("campaigns").select("id, client_id"),
-    supabase.from("candidates").select("campaign_id, status"),
     supabase.from("clients").select("*", { count: "exact", head: true }),
     supabase.from("campaigns").select("*", { count: "exact", head: true }),
     supabase.from("candidates").select("*", { count: "exact", head: true }),
@@ -34,56 +23,6 @@ export default async function DashboardPage() {
     getLatestLeadtableSyncRunAction(),
     getDashboardKpis(supabase),
   ])
-
-  // campaign_id -> client_id lookup
-  const campaignToClient = new Map<string, string>()
-  for (const c of campaigns ?? []) {
-    campaignToClient.set(c.id, c.client_id)
-  }
-
-  // client_id -> campaign ids
-  const clientCampaigns = new Map<string, Set<string>>()
-  // client_id -> { status -> count }
-  const clientStatusCounts = new Map<string, Record<string, number>>()
-
-  for (const c of clients ?? []) {
-    clientCampaigns.set(c.id, new Set())
-    clientStatusCounts.set(c.id, {})
-  }
-
-  for (const camp of campaigns ?? []) {
-    clientCampaigns.get(camp.client_id)?.add(camp.id)
-  }
-
-  for (const cand of candidates ?? []) {
-    const clientId = cand.campaign_id ? campaignToClient.get(cand.campaign_id) : undefined
-    if (!clientId) continue
-    const statuses = clientStatusCounts.get(clientId)
-    if (!statuses) continue
-    statuses[cand.status] = (statuses[cand.status] ?? 0) + 1
-  }
-
-  const clientCards = (clients ?? []).map((client) => {
-    const statuses = clientStatusCounts.get(client.id) ?? {}
-    const totalCandidates = Object.values(statuses).reduce((s, v) => s + v, 0)
-    const pipeline: PipelineSegment[] = Object.entries(statuses)
-      .filter(([s]) => VALID_STATUSES.has(s))
-      .map(([status, count]) => ({ status: status as PipelineSegment["status"], count }))
-
-    return {
-      id: client.id,
-      name: client.name,
-      active: client.active,
-      created_at: client.created_at,
-      tags: [] as string[],
-      stats: {
-        kandidaten: totalCandidates,
-        kampagnen: clientCampaigns.get(client.id)?.size ?? 0,
-        platzierungen: statuses["platziert"] ?? 0,
-      },
-      pipeline,
-    }
-  })
 
   const kpiData = [
     { icon: Users, label: "Kunden", value: clientCount ?? 0, iconColor: "#1e56a0", href: "/dashboard/clients" },
@@ -118,14 +57,6 @@ export default async function DashboardPage() {
       </div>
 
       <LeadtableSyncStatus initialRun={latestSyncRun} />
-
-      <div>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Kunden</h2>
-          <span className="text-sm text-gray-500">{clientCards.length} Einträge</span>
-        </div>
-        <ClientGrid clients={clientCards} />
-      </div>
     </div>
   )
 }
