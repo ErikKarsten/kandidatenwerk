@@ -393,13 +393,14 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
 
       {/* Header */}
       <div>
-        <Link
-          href="/dashboard/campaigns"
+        <button
+          type="button"
+          onClick={() => router.back()}
           className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
         >
           <ChevronLeft size={16} />
           Zurück zur Übersicht
-        </Link>
+        </button>
 
         <div className="flex items-start justify-between gap-4">
           <div className="flex flex-col gap-1">

@@ -272,12 +272,13 @@ export function ClientDetail({ client, campaigns, contacts, kpis }: ClientDetail
 
       {/* ── Header ── */}
       <div>
-        <Link
-          href="/dashboard/clients"
+        <button
+          type="button"
+          onClick={() => router.back()}
           className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
         >
           ← Zurück zur Übersicht
-        </Link>
+        </button>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           {displayLogoUrl && (
             <img

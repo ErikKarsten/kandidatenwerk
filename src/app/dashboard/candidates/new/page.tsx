@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ChevronLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { BackButton } from "@/components/ui/back-button"
 import { CandidateForm } from "./candidate-form"
 
 export default async function NewCandidatePage({
@@ -16,20 +17,23 @@ export default async function NewCandidatePage({
     .select("id, title, clients(name)")
     .order("title", { ascending: true })
 
-  const backHref = campaign_id
-    ? `/dashboard/campaigns/${campaign_id}`
-    : "/dashboard/candidates"
-
   return (
     <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
-        <Link
-          href={backHref}
-          className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-        >
-          <ChevronLeft size={16} />
-          Zurück
-        </Link>
+        {campaign_id ? (
+          <Link
+            href={`/dashboard/campaigns/${campaign_id}`}
+            className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+          >
+            <ChevronLeft size={16} />
+            Zurück
+          </Link>
+        ) : (
+          <BackButton className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+            <ChevronLeft size={16} />
+            Zurück
+          </BackButton>
+        )}
         <h1 className="text-2xl font-bold text-gray-900">Kandidat anlegen</h1>
       </div>
 

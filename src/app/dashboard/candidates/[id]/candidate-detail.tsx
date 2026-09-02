@@ -197,12 +197,13 @@ export function CandidateDetail({ candidate, history, files, matches, clientAssi
       )}
 
       <div>
-        <Link
-          href="/dashboard/candidates"
+        <button
+          type="button"
+          onClick={() => router.back()}
           className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
         >
           ← Zurück zur Übersicht
-        </Link>
+        </button>
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">
