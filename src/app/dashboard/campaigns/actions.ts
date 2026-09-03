@@ -19,7 +19,7 @@ export async function createCampaignAction(
   const status = (formData.get("status") as string) || "active"
   const meta_campaign_id = formData.get("meta_campaign_id") as string
   const berufsbildInput = formData.get("berufsbild") as string
-  const plz = formData.get("plz") as string
+  let plz = formData.get("plz") as string
   const radius_km_raw = formData.get("radius_km") as string
 
   if (!title) return { error: "Titel ist ein Pflichtfeld." }
@@ -29,6 +29,20 @@ export async function createCampaignAction(
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
+
+  // Kampagne ohne eigene PLZ übernimmt sofort die PLZ des Kunden (falls vorhanden) -
+  // analog zur Cascade-Logik in updateClientAction (clients/[id]/actions.ts), nur
+  // umgekehrte Richtung. Hat auch der Kunde keine PLZ, bleibt die Kampagne wie bisher
+  // ohne PLZ - kein Fehler.
+  if (!plz) {
+    const { data: client } = await supabase
+      .from("clients")
+      .select("plz")
+      .eq("id", client_id)
+      .single()
+
+    if (client?.plz) plz = client.plz
+  }
 
   const coords = plz ? geocodePlz(plz) : null
   const location_id = await getOrCreateLocationForPlz(supabase, plz)
