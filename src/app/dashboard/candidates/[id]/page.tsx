@@ -17,6 +17,7 @@ export default async function CandidateDetailPage({
     { data: matchRows },
     { data: assignmentRows },
     { data: clientRows },
+    { data: profileRows },
   ] = await Promise.all([
     supabase
       .from("candidates")
@@ -49,6 +50,8 @@ export default async function CandidateDetailPage({
       .from("clients")
       .select("id, name")
       .order("name", { ascending: true }),
+    // Für das "Aufgabe erstellen"-Popup direkt auf der Kandidatenseite (Zuweisen-an-Dropdown).
+    supabase.from("profiles").select("id, full_name").order("full_name", { ascending: true }),
   ])
 
   if (!candidate) notFound()
@@ -137,6 +140,7 @@ export default async function CandidateDetailPage({
   }))
 
   const clients = (clientRows ?? []).map((c) => ({ id: c.id, name: c.name }))
+  const profiles = (profileRows ?? []).map((p) => ({ id: p.id, full_name: p.full_name }))
 
   return (
     <CandidateDetail
@@ -146,6 +150,7 @@ export default async function CandidateDetailPage({
       matches={matches}
       activeAssignments={activeAssignments}
       clients={clients}
+      profiles={profiles}
     />
   )
 }

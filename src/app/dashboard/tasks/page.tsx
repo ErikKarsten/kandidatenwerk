@@ -14,7 +14,7 @@ export default async function TasksPage() {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const [{ data: taskRows }, { data: profileRows }, { data: candidateRows }] = await Promise.all([
+  const [{ data: taskRows }, { data: profileRows }] = await Promise.all([
     supabase
       .from("tasks")
       .select(
@@ -26,7 +26,6 @@ export default async function TasksPage() {
       )
       .order("created_at", { ascending: false }),
     supabase.from("profiles").select("id, full_name").order("full_name", { ascending: true }),
-    supabase.from("candidates").select("id, first_name, last_name").order("last_name", { ascending: true }),
   ])
 
   const tasks = (taskRows ?? []).map((t) => {
@@ -51,10 +50,6 @@ export default async function TasksPage() {
   })
 
   const profiles = (profileRows ?? []).map((p) => ({ id: p.id, full_name: p.full_name }))
-  const candidates = (candidateRows ?? []).map((c) => ({
-    id: c.id,
-    name: `${c.first_name} ${c.last_name}`,
-  }))
 
   return (
     <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
@@ -66,7 +61,6 @@ export default async function TasksPage() {
       <TasksList
         tasks={tasks}
         profiles={profiles}
-        candidates={candidates}
         currentUserId={user?.id ?? ""}
       />
     </div>

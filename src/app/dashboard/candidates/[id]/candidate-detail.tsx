@@ -19,6 +19,7 @@ import { type ClientOption } from "./client-assignment-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { MatchesSection, AssignmentControl, type ActiveAssignment } from "./matches-section"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
+import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -72,11 +73,12 @@ interface CandidateDetailProps {
   matches: CampaignMatch[]
   activeAssignments: ActiveAssignment[]
   clients: ClientOption[]
+  profiles: ProfileOption[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, matches, activeAssignments, clients }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, matches, activeAssignments, clients, profiles }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien">("profil")
@@ -86,6 +88,7 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
   const [deletePending, startDeleteTransition] = useTransition()
   const [refreshPending, startRefreshTransition] = useTransition()
   const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "warning" | "error"; text: string } | null>(null)
+  const [taskModalOpen, setTaskModalOpen] = useState(false)
 
   const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
 
@@ -305,7 +308,15 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
         {/* Rechte Spalte */}
         <div className="flex flex-col gap-4">
           <ContactChips email={candidate.email} phone={candidate.phone} />
-          <NewTaskLink candidateId={candidate.id} />
+          <button
+            type="button"
+            onClick={() => setTaskModalOpen(true)}
+            className="flex items-center justify-center gap-2 rounded-xl border border-dashed bg-white p-3 text-sm font-medium transition-colors hover:bg-gray-50"
+            style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+          >
+            <ListTodo size={16} />
+            Aufgabe erstellen
+          </button>
           <CampaignInfoCard campaignId={candidate.campaign_id} campaigns={candidate.campaigns} />
           <MatchesSection
             matches={matches}
@@ -326,6 +337,14 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
           />
         </div>
       </div>
+
+      {taskModalOpen && (
+        <TaskFormModal
+          profiles={profiles}
+          candidateId={candidate.id}
+          onClose={() => setTaskModalOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -435,22 +454,6 @@ function OtherAssignmentsSection({
         })}
       </ul>
     </div>
-  )
-}
-
-// Einfacher Link statt eigenem Mini-Formular hier - führt zur Aufgaben-Seite mit schon
-// vorausgefülltem Kandidaten (siehe ?new=1&candidate_id=... in tasks-list.tsx). Spart
-// ein zweites, dupliziertes "Neue Aufgabe"-Formular direkt auf der Kandidatenseite.
-function NewTaskLink({ candidateId }: { candidateId: string }) {
-  return (
-    <Link
-      href={`/dashboard/tasks?new=1&candidate_id=${candidateId}`}
-      className="flex items-center justify-center gap-2 rounded-xl border border-dashed bg-white p-3 text-sm font-medium transition-colors hover:bg-gray-50"
-      style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-    >
-      <ListTodo size={16} />
-      Aufgabe erstellen
-    </Link>
   )
 }
 
