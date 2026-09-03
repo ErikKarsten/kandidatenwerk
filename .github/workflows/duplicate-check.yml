@@ -1,0 +1,46 @@
+name: Duplettenprüfung
+on:
+  schedule:
+    # 7:00 Uhr deutscher Zeit - eine Stunde nach dem Leadtable-Sync (6 Uhr, siehe
+    # leadtable-full-sync.yml), damit beide Läufe sich nicht überschneiden. Gleicher
+    # Sommer-/Winterzeit-Ausgleich wie dort: GitHub Actions kennt nur UTC, daher zwei
+    # Cron-Einträge:
+    #   06:00 UTC = 07:00 MEZ (Winterzeit, UTC+1, ca. Ende Okt. - Ende März)
+    #   05:00 UTC = 07:00 MESZ (Sommerzeit, UTC+2, ca. Ende März - Ende Okt.)
+    # Der "7-Uhr-Check"-Schritt unten sorgt dafür, dass nur der jeweils gerade passende
+    # der beiden Läufe tatsächlich prüft - der andere überspringt sich selbst.
+    - cron: "0 6 * * *"
+    - cron: "0 5 * * *"
+  workflow_dispatch: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 7-Uhr-Check (Sommer-/Winterzeit-Ausgleich)
+        id: time_check
+        run: |
+          HOUR=$(TZ=Europe/Berlin date +%H)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$HOUR" = "07" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Aktuelle deutsche Stunde: $HOUR - kein 7-Uhr-Lauf, wird übersprungen."
+          fi
+      - name: Checkout
+        if: steps.time_check.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+      - name: Node einrichten
+        if: steps.time_check.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Abhängigkeiten installieren
+        if: steps.time_check.outputs.should_run == 'true'
+        run: npm ci
+      - name: Duplettenprüfung ausführen
+        if: steps.time_check.outputs.should_run == 'true'
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+        run: npx tsx scripts/duplicate-check.ts
