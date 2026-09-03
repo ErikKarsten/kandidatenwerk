@@ -198,7 +198,9 @@ function MatchRow({
 
 // Kompakte Status-/Entfernen-Steuerung für eine bereits bestehende aktive Zuordnung zu
 // genau diesem Kampagnen-Kunden - ersetzt an dieser Stelle den "Kanzlei zuordnen"-Knopf.
-function AssignmentControl({ assignment }: { assignment: ActiveAssignment }) {
+// Exportiert, damit "Weitere Zuordnungen" in candidate-detail.tsx dieselbe Steuerung für
+// Zuordnungen zu nicht-gematchten Kunden wiederverwenden kann, statt sie neu zu bauen.
+export function AssignmentControl({ assignment }: { assignment: ActiveAssignment }) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [removeConfirm, setRemoveConfirm] = useState(false)

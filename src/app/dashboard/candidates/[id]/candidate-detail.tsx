@@ -17,7 +17,7 @@ import { FilesTab } from "./files-tab"
 import { HistorySection, type HistoryEntry } from "./history-section"
 import { type ClientOption } from "./client-assignment-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
-import { MatchesSection, type ActiveAssignment } from "./matches-section"
+import { MatchesSection, AssignmentControl, type ActiveAssignment } from "./matches-section"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
@@ -88,6 +88,13 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
   const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "warning" | "error"; text: string } | null>(null)
 
   const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
+
+  // Zuordnungen zu Kunden, die NICHT unter den automatischen Matches auftauchen, haben
+  // keine Match-Zeile, in der ihre AssignmentControl angezeigt werden könnte (z.B. über
+  // "+ Weitere Kanzlei hinzufügen" angelegt). Ohne diesen Abschnitt wären sie nirgends
+  // einsehbar oder verwaltbar - siehe "Weitere Zuordnungen" unten.
+  const matchedClientIds = new Set(matches.map((m) => m.clientId).filter((id): id is string => id !== null))
+  const otherAssignments = activeAssignments.filter((a) => !matchedClientIds.has(a.clientId))
 
   function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const newStatus = e.target.value
@@ -309,6 +316,7 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
             selfLng={candidate.lng}
             selfLabel={`${candidate.first_name} ${candidate.last_name}`}
           />
+          <OtherAssignmentsSection assignments={otherAssignments} clients={clients} />
           <DescriptionSection candidateId={candidate.id} notes={candidate.notes} />
           <NoteSection candidateId={candidate.id} />
           <HistorySection
@@ -386,6 +394,46 @@ function CampaignInfoCard({
           </div>
         )}
       </dl>
+    </div>
+  )
+}
+
+// Zuordnungen zu Kunden ohne eigene Match-Zeile (z.B. über "+ Weitere Kanzlei
+// hinzufügen" angelegt) - sonst gäbe es keine UI, um Status zu ändern oder zu entfernen.
+// Wiederverwendet dieselbe AssignmentControl wie die Match-Zeilen in matches-section.tsx.
+function OtherAssignmentsSection({
+  assignments,
+  clients,
+}: {
+  assignments: ActiveAssignment[]
+  clients: ClientOption[]
+}) {
+  if (assignments.length === 0) return null
+
+  return (
+    <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+        Weitere Zuordnungen
+      </p>
+      <ul className="flex flex-col gap-3">
+        {assignments.map((a) => {
+          const client = clients.find((c) => c.id === a.clientId)
+          return (
+            <li key={a.id} className="rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Link
+                  href={`/dashboard/clients/${a.clientId}`}
+                  className="truncate text-sm font-medium hover:underline"
+                  style={{ color: "#1e56a0" }}
+                >
+                  {client?.name ?? "Unbekannter Kunde"}
+                </Link>
+                <AssignmentControl assignment={a} />
+              </div>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }
