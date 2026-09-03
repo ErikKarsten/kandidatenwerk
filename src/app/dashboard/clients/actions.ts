@@ -10,9 +10,6 @@ export async function createClientAction(
   formData: FormData
 ): Promise<CreateClientState> {
   const name = formData.get("name") as string
-  const contact_name = formData.get("contact_name") as string
-  const contact_email = formData.get("contact_email") as string
-  const phone = formData.get("phone") as string
 
   const supabase = await createSupabaseServerClient()
 
@@ -27,9 +24,9 @@ export async function createClientAction(
 
   const { error } = await supabase.from("clients").insert({
     name,
-    contact_name: contact_name || null,
-    contact_email: contact_email || null,
-    phone: phone || null,
+    contact_name: null,
+    contact_email: null,
+    phone: null,
     agency_id: profile?.agency_id ?? null,
   })
 

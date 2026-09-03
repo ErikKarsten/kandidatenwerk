@@ -12,9 +12,6 @@ import { createClientAction, type CreateClientState } from "../actions"
 
 const schema = z.object({
   name: z.string().min(1, "Pflichtfeld"),
-  contact_name: z.string().optional(),
-  contact_email: z.string().email("Ungültige E-Mail-Adresse").or(z.literal("")).optional(),
-  phone: z.string().optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -35,9 +32,6 @@ export function ClientForm() {
   function onSubmit(values: FormValues) {
     const fd = new FormData()
     fd.append("name", values.name)
-    if (values.contact_name) fd.append("contact_name", values.contact_name)
-    if (values.contact_email) fd.append("contact_email", values.contact_email)
-    if (values.phone) fd.append("phone", values.phone)
     startTransition(() => formAction(fd))
   }
 
@@ -45,24 +39,6 @@ export function ClientForm() {
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
       <Field label="Unternehmensname" required error={errors.name?.message}>
         <Input id="name" {...register("name")} placeholder="Muster GmbH" aria-invalid={!!errors.name} />
-      </Field>
-
-      <Field label="Kontaktperson" error={errors.contact_name?.message}>
-        <Input id="contact_name" {...register("contact_name")} placeholder="Max Mustermann" />
-      </Field>
-
-      <Field label="E-Mail" error={errors.contact_email?.message}>
-        <Input
-          id="contact_email"
-          type="email"
-          {...register("contact_email")}
-          placeholder="kontakt@muster.de"
-          aria-invalid={!!errors.contact_email}
-        />
-      </Field>
-
-      <Field label="Telefon" error={errors.phone?.message}>
-        <Input id="phone" type="tel" {...register("phone")} placeholder="+49 30 123456" />
       </Field>
 
       {state?.error && (
