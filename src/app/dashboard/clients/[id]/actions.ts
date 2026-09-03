@@ -318,3 +318,67 @@ export async function deleteContactAction(
   revalidatePath(`/dashboard/clients/${clientId}`)
   return null
 }
+
+// Exaktes Muster wie uploadFileAction/deleteFileAction für Kandidaten (siehe
+// candidates/[id]/actions.ts) - nur candidate_files/candidate-files durch
+// client_files/client-files ersetzt.
+export async function uploadClientFileAction(
+  clientId: string,
+  formData: FormData
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  const file = formData.get("file") as File | null
+  if (!file) return { error: "Keine Datei ausgewählt." }
+
+  const storagePath = `${clientId}/${Date.now()}-${file.name}`
+  const buffer = Buffer.from(await file.arrayBuffer())
+
+  const { error: uploadError } = await supabase.storage
+    .from("client-files")
+    .upload(storagePath, buffer, { contentType: file.type })
+
+  if (uploadError) return { error: uploadError.message }
+
+  const { error: insertError } = await supabase.from("client_files").insert({
+    client_id: clientId,
+    file_name: file.name,
+    file_path: storagePath,
+    file_size: file.size,
+    mime_type: file.type || null,
+  })
+
+  if (insertError) {
+    await supabase.storage.from("client-files").remove([storagePath])
+    return { error: insertError.message }
+  }
+
+  revalidatePath(`/dashboard/clients/${clientId}`)
+  return null
+}
+
+export async function deleteClientFileAction(
+  fileId: string,
+  storagePath: string,
+  clientId: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  await supabase.storage.from("client-files").remove([storagePath])
+
+  const { error } = await supabase
+    .from("client_files")
+    .delete()
+    .eq("id", fileId)
+
+  if (error) return { error: error.message }
+
+  revalidatePath(`/dashboard/clients/${clientId}`)
+  return null
+}

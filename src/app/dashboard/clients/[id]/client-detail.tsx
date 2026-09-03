@@ -13,6 +13,7 @@ import {
   refreshLeadtableClientAction,
 } from "./actions"
 import { ContactsSection, type Contact } from "./contacts-section"
+import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import type { DashboardKpis } from "@/lib/kpis"
 
@@ -49,14 +50,15 @@ interface ClientDetailProps {
   client: Client
   campaigns: Campaign[]
   contacts: Contact[]
+  files: ClientFileItem[]
   kpis: DashboardKpis
 }
 
 type ModalStep = null | "choice" | "delete_confirm"
 
-export function ClientDetail({ client, campaigns, contacts, kpis }: ClientDetailProps) {
+export function ClientDetail({ client, campaigns, contacts, files, kpis }: ClientDetailProps) {
   const router = useRouter()
-  const [tab, setTab] = useState<"kampagnen" | "stammdaten">("kampagnen")
+  const [tab, setTab] = useState<"kampagnen" | "stammdaten" | "dateien">("kampagnen")
   const [editMode, setEditMode] = useState(false)
   const [displayLogoUrl, setDisplayLogoUrl] = useState(client.logo_url)
 
@@ -376,6 +378,9 @@ export function ClientDetail({ client, campaigns, contacts, kpis }: ClientDetail
           <TabButton active={tab === "stammdaten"} onClick={() => setTab("stammdaten")}>
             Stammdaten
           </TabButton>
+          <TabButton active={tab === "dateien"} onClick={() => setTab("dateien")}>
+            Dateien ({files.length})
+          </TabButton>
         </div>
 
         <div className="mt-4">
@@ -390,6 +395,9 @@ export function ClientDetail({ client, campaigns, contacts, kpis }: ClientDetail
               contacts={contacts}
               onLogoUploaded={(url) => setDisplayLogoUrl(url)}
             />
+          )}
+          {tab === "dateien" && (
+            <ClientFilesTab clientId={client.id} files={files} />
           )}
         </div>
       </div>

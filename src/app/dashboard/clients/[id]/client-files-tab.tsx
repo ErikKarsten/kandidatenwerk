@@ -2,10 +2,10 @@
 
 import { useTransition, useState } from "react"
 import { useRouter } from "next/navigation"
-import { uploadFileAction, deleteFileAction } from "./actions"
+import { uploadClientFileAction, deleteClientFileAction } from "./actions"
 import { FileDropZone } from "@/components/ui/file-drop-zone"
 
-interface FileItem {
+export interface ClientFileItem {
   id: string
   name: string
   storage_path: string
@@ -15,9 +15,9 @@ interface FileItem {
   signedUrl: string | null
 }
 
-interface FilesTabProps {
-  candidateId: string
-  files: FileItem[]
+interface ClientFilesTabProps {
+  clientId: string
+  files: ClientFileItem[]
 }
 
 function formatSize(bytes: number | null): string {
@@ -27,7 +27,9 @@ function formatSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function FilesTab({ candidateId, files }: FilesTabProps) {
+// Exaktes Muster wie candidates/[id]/files-tab.tsx - nur candidateId/uploadFileAction/
+// deleteFileAction durch clientId/uploadClientFileAction/deleteClientFileAction ersetzt.
+export function ClientFilesTab({ clientId, files }: ClientFilesTabProps) {
   const router = useRouter()
   const [uploadPending, startUpload] = useTransition()
   const [deletePending, startDelete] = useTransition()
@@ -40,7 +42,7 @@ export function FilesTab({ candidateId, files }: FilesTabProps) {
     fd.append("file", file)
 
     startUpload(async () => {
-      const result = await uploadFileAction(candidateId, fd)
+      const result = await uploadClientFileAction(clientId, fd)
       if (result?.error) {
         setUploadError(result.error)
       } else {
@@ -52,7 +54,7 @@ export function FilesTab({ candidateId, files }: FilesTabProps) {
   function handleDelete(fileId: string, storagePath: string) {
     setDeleteError(null)
     startDelete(async () => {
-      const result = await deleteFileAction(fileId, storagePath, candidateId)
+      const result = await deleteClientFileAction(fileId, storagePath, clientId)
       if (result?.error) {
         setDeleteError(result.error)
       } else {
@@ -63,10 +65,6 @@ export function FilesTab({ candidateId, files }: FilesTabProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <span className="text-sm font-semibold uppercase tracking-wide text-gray-400">
-        Dateien
-      </span>
-
       <FileDropZone
         onUpload={handleUpload}
         disabled={uploadPending}

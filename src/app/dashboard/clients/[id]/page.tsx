@@ -11,7 +11,7 @@ export default async function ClientDetailPage({
   const { id } = await params
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: client }, { data: campaigns }, { data: contacts }, kpis] = await Promise.all([
+  const [{ data: client }, { data: campaigns }, { data: contacts }, { data: fileRows }, kpis] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
     supabase
       .from("campaigns")
@@ -23,10 +23,32 @@ export default async function ClientDetailPage({
       .select("id, name, email, phone, role")
       .eq("client_id", id)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("client_files")
+      .select("*")
+      .eq("client_id", id)
+      .order("created_at", { ascending: false }),
     getDashboardKpis(supabase, id),
   ])
 
   if (!client) notFound()
+
+  const files = await Promise.all(
+    (fileRows ?? []).map(async (f) => {
+      const { data: urlData } = await supabase.storage
+        .from("client-files")
+        .createSignedUrl(f.file_path, 3600)
+      return {
+        id: f.id,
+        name: f.file_name,
+        storage_path: f.file_path,
+        size: f.file_size,
+        mime_type: f.mime_type,
+        created_at: f.created_at,
+        signedUrl: urlData?.signedUrl ?? null,
+      }
+    })
+  )
 
   const campaignList = (campaigns ?? []).map((c) => {
     const countRow = Array.isArray(c.candidates) ? c.candidates[0] : null
@@ -64,6 +86,7 @@ export default async function ClientDetailPage({
         phone: c.phone ?? null,
         role: c.role ?? null,
       }))}
+      files={files}
       kpis={kpis}
     />
   )

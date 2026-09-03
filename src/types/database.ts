@@ -585,6 +585,44 @@ export type Database = {
           }
         ]
       }
+      client_files: {
+        Row: {
+          id: string
+          client_id: string
+          file_name: string
+          file_path: string
+          file_size: number | null
+          mime_type: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          mime_type?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          mime_type?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_files_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       candidate_campaign_matches: {
         Row: {
           id: string
