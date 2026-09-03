@@ -16,6 +16,7 @@ export async function updateClientAction(
   const phone = formData.get("phone") as string
   const active = formData.get("active") === "true"
   const plz = formData.get("plz") as string
+  const auto_forward_enabled = formData.get("auto_forward_enabled") === "true"
 
   if (!name) return { error: "Firmenname ist ein Pflichtfeld." }
 
@@ -44,6 +45,7 @@ export async function updateClientAction(
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
       ort,
+      auto_forward_enabled,
     })
     .eq("id", clientId)
 

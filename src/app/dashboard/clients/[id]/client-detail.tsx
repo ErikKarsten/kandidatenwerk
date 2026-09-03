@@ -44,6 +44,7 @@ interface Client {
   lat: number | null
   lng: number | null
   ort: string | null
+  auto_forward_enabled: boolean
 }
 
 interface ClientDetailProps {
@@ -514,6 +515,7 @@ function StammdatenTab({
   const [localPhone, setLocalPhone] = useState(client.phone ?? "")
   const [localActive, setLocalActive] = useState(client.active)
   const [localPlz, setLocalPlz] = useState(client.plz ?? "")
+  const [localAutoForward, setLocalAutoForward] = useState(client.auto_forward_enabled)
 
   const [localLogoUrl, setLocalLogoUrl] = useState(client.logo_url)
   const [logoUploading, setLogoUploading] = useState(false)
@@ -542,6 +544,7 @@ function StammdatenTab({
     setLocalPhone(client.phone ?? "")
     setLocalActive(client.active)
     setLocalPlz(client.plz ?? "")
+    setLocalAutoForward(client.auto_forward_enabled)
     setError(null)
     setEditMode(false)
   }
@@ -554,6 +557,7 @@ function StammdatenTab({
     fd.append("phone", localPhone)
     fd.append("active", String(localActive))
     fd.append("plz", localPlz)
+    fd.append("auto_forward_enabled", String(localAutoForward))
     startTransition(async () => {
       const result = await updateClientAction(client.id, fd)
       if (result?.error) { setError(result.error); return }
@@ -637,6 +641,21 @@ function StammdatenTab({
               )
             )}
           </div>
+        </FieldRow>
+
+        <FieldRow label="Automatisierung" editMode={editMode}>
+          {editMode ? (
+            <label className="flex items-center gap-2 text-sm text-gray-900">
+              <input
+                type="checkbox"
+                checked={localAutoForward}
+                onChange={(e) => setLocalAutoForward(e.target.checked)}
+              />
+              Automatisch bei Vorqualifizierung informieren
+            </label>
+          ) : (
+            client.auto_forward_enabled ? "Automatisch bei Vorqualifizierung informieren: aktiviert" : "—"
+          )}
         </FieldRow>
 
         {editMode && (

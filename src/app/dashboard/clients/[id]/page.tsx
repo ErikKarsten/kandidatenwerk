@@ -77,6 +77,7 @@ export default async function ClientDetailPage({
         lat: client.lat ?? null,
         lng: client.lng ?? null,
         ort: client.ort ?? null,
+        auto_forward_enabled: client.auto_forward_enabled ?? false,
       }}
       campaigns={campaignList}
       contacts={(contacts ?? []).map((c) => ({

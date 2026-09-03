@@ -15,7 +15,8 @@ import {
 } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import Link from "next/link"
-import { updateCandidateStatus } from "./actions"
+import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
+import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 
 export interface Candidate {
   id: string
@@ -27,14 +28,17 @@ export interface Candidate {
   created_at: string
 }
 
-const COLUMNS: { status: string; label: string; color: string; dot: string }[] = [
-  { status: "new",       label: "Neu",          color: "#0e7490", dot: "#4ba3c3" },
-  { status: "contacted", label: "Kontaktiert",   color: "#b45309", dot: "#f59e0b" },
-  { status: "interview", label: "Interview",     color: "#1e56a0", dot: "#1e56a0" },
-  { status: "offer",     label: "Angebot",       color: "#7c3aed", dot: "#8b5cf6" },
-  { status: "hired",     label: "Eingestellt",   color: "#1a9a6a", dot: "#1a9a6a" },
-  { status: "rejected",  label: "Abgelehnt",     color: "#6b7280", dot: "#9ca3af" },
-]
+// Aus der zentralen Status-Quelle abgeleitet (dieselbe, die auch der Status-Dropdown
+// auf der Kandidatenseite nutzt, siehe candidate-status.ts) - vorher hatte dieses Board
+// eigene, größtenteils ungültige Platzhalter-Status ("new"/"contacted"/"offer"/...),
+// die an der candidates_status_check-Constraint scheiterten und Drops still
+// fehlschlagen ließen. Jetzt garantiert konsistent mit den echten 10 Pipeline-Stufen.
+const COLUMNS = CANDIDATE_STATUS_OPTIONS.map((opt) => ({
+  status: opt.value as string,
+  label: opt.label,
+  color: opt.text,
+  dot: opt.dot,
+}))
 
 export function KanbanBoard({ initialCandidates }: { initialCandidates: Candidate[] }) {
   const [candidates, setCandidates] = useState(initialCandidates)
@@ -50,7 +54,7 @@ export function KanbanBoard({ initialCandidates }: { initialCandidates: Candidat
     setActiveId(event.active.id as string)
   }
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     setActiveId(null)
 
@@ -66,11 +70,18 @@ export function KanbanBoard({ initialCandidates }: { initialCandidates: Candidat
       prev.map((c) => (c.id === candidateId ? { ...c, status: newStatus } : c))
     )
 
-    updateCandidateStatus(candidateId, newStatus).catch(() => {
+    // Gleicher Weg wie die Status-Dropdowns (Kandidaten-Detailseite,
+    // Kampagnen-Kandidatentabelle) statt der früheren separaten, einfacheren
+    // updateCandidateStatus-Funktion - dadurch löst auch ein Drag-and-Drop-Wechsel auf
+    // "vorqualifiziert" die automatische Kunden-Benachrichtigung aus. Anders als die
+    // alte Funktion wirft diese Action bei Fehlern nicht, sondern gibt { error }
+    // zurück - daher hier auf result?.error statt .catch() prüfen.
+    const result = await updateCandidateStatusAction(candidateId, newStatus)
+    if (result?.error) {
       setCandidates((prev) =>
         prev.map((c) => (c.id === candidateId ? { ...c, status: oldStatus } : c))
       )
-    })
+    }
   }
 
   return (

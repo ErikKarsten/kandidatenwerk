@@ -5,6 +5,9 @@ import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
+import { autoForwardCandidateIfEnabled } from "@/lib/auto-forward-candidate"
+
+const VORQUALIFIZIERT_STATUS = "vorqualifiziert"
 
 export type CreateCandidateState = { error: string } | null
 
@@ -94,6 +97,18 @@ export async function updateCandidateStatusAction(
       content: `Status geändert: ${existing.status} → ${status}`,
       created_by: user.id,
     })
+  }
+
+  // Automatische Kunden-Benachrichtigung nur bei einem ECHTEN Wechsel AUF
+  // "vorqualifiziert" (nicht wenn der Status schon vorher "vorqualifiziert" war) - siehe
+  // auto-forward-candidate.ts. Darf den Status-Wechsel selbst nie zum Scheitern
+  // bringen, daher try/catch statt den Fehler nach oben durchzureichen.
+  if (existing && existing.status !== VORQUALIFIZIERT_STATUS && status === VORQUALIFIZIERT_STATUS) {
+    try {
+      await autoForwardCandidateIfEnabled(supabase, candidateId)
+    } catch (forwardError) {
+      console.error("Automatische Kunden-Benachrichtigung fehlgeschlagen für Kandidat", candidateId, forwardError)
+    }
   }
 
   if (campaignId) revalidatePath(`/dashboard/campaigns/${campaignId}`)

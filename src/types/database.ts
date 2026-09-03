@@ -50,6 +50,10 @@ export type Database = {
           }
         ]
       }
+      // auto_forward_enabled manuell ergänzt (nicht per gen-types.mjs generiert) - Spalte
+      // existiert erst nach Ausführen von
+      // supabase/migrations/20260904000000_add_client_auto_forward.sql. Nach dem
+      // Anwenden mit gen-types.mjs neu generieren, dann verschwindet dieser Kommentar.
       clients: {
         Row: {
           id: string
@@ -69,6 +73,7 @@ export type Database = {
           lat: number | null
           lng: number | null
           ort: string | null
+          auto_forward_enabled: boolean
         }
         Insert: {
           id?: string
@@ -88,6 +93,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           ort?: string | null
+          auto_forward_enabled?: boolean
         }
         Update: {
           id?: string
@@ -107,6 +113,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           ort?: string | null
+          auto_forward_enabled?: boolean
         }
         Relationships: [
           {
