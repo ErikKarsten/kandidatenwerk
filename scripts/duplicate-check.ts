@@ -174,6 +174,16 @@ function findCandidateNamePlzDuplicates(candidates: CandidateRow[]): CandidateRo
 }
 
 // ── HTML-Mail ────────────────────────────────────────────────────────────
+// Inline-CSS auf jedem Element (statt <style>-Block) - viele Mail-Clients (allen voran
+// Outlook/Gmail) ignorieren eingebettete/externe Stylesheets komplett, nur
+// element-style="..." kommt zuverlässig überall an.
+
+const BRAND_BLUE = "#1e56a0"
+const CARD_BG = "#f8fafc"
+const BORDER_GRAY = "#e5e7eb"
+const TEXT_GRAY = "#6b7280"
+const TEXT_LIGHT_GRAY = "#9ca3af"
+const FONT_STACK = "-apple-system, Helvetica, Arial, sans-serif"
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -187,6 +197,43 @@ function candidateLink(id: string): string {
   return `${APP_BASE_URL}/dashboard/candidates/${id}`
 }
 
+interface GroupCardItem {
+  name: string
+  href: string
+  id: string
+}
+
+// Eine Verdachtsgruppe als eigene, abgegrenzte Karte statt Aufzählungspunkt - reason
+// als kleine graue Überschrift der Karte, darunter jeder Kandidat/Kunde als klickbarer
+// Link in Markenblau mit grauer ID darunter. Von allen drei Abschnitten unten genutzt
+// (Kunden-PLZ-Gruppen, Kandidaten-E-Mail-Gruppen, Kandidaten-Name+PLZ-Gruppen), da sie
+// optisch identisch sind - nur reason-Text und Ziel-Links unterscheiden sich.
+function renderGroupCard(reason: string, items: GroupCardItem[]): string {
+  const rows = items
+    .map(
+      (item) => `
+        <div style="margin-bottom:8px;">
+          <a href="${item.href}" style="color:${BRAND_BLUE};text-decoration:none;font-size:14px;font-weight:500;">${escapeHtml(item.name)}</a>
+          <div style="font-size:11px;color:${TEXT_LIGHT_GRAY};margin-top:1px;">ID: ${item.id}</div>
+        </div>`
+    )
+    .join("")
+
+  return `
+      <div style="background-color:${CARD_BG};border-radius:8px;padding:14px 16px;margin-bottom:12px;">
+        <div style="font-size:12px;color:${TEXT_GRAY};margin-bottom:10px;">${reason}</div>${rows}
+      </div>`
+}
+
+// Abschnittsüberschrift mit dünner Trennlinie darüber - grenzt die drei
+// Fund-Kategorien optisch klar voneinander (und vom Intro-Text darüber) ab.
+function renderSection(title: string, cardsHtml: string): string {
+  return `
+    <div style="border-top:1px solid ${BORDER_GRAY};padding-top:20px;margin-top:20px;">
+      <h2 style="font-size:14px;font-weight:600;color:#111827;margin:0 0 14px;">${title}</h2>${cardsHtml}
+    </div>`
+}
+
 function buildEmailHtml(params: {
   clientGroups: ClientDuplicateGroup[]
   candidateEmailGroups: CandidateRow[][]
@@ -195,65 +242,77 @@ function buildEmailHtml(params: {
   const sections: string[] = []
 
   if (params.clientGroups.length > 0) {
-    const items = params.clientGroups
+    const cards = params.clientGroups
       .map((g) => {
         const reason =
           g.commonTerms.length > 0
             ? `Gleiche PLZ ${escapeHtml(g.plz)}, gemeinsame Begriffe: ${escapeHtml(g.commonTerms.join(", "))}`
             : `Gleiche PLZ ${escapeHtml(g.plz)}, hohe Namens-Ähnlichkeit`
-        const clientItems = g.clients
-          .map((c) => `<li><a href="${clientLink(c.id)}">${escapeHtml(c.name)}</a> (ID: ${c.id})</li>`)
-          .join("")
-        return `<li style="margin-bottom:14px;"><strong>${reason}</strong><ul>${clientItems}</ul></li>`
+        const items = g.clients.map((c) => ({ name: c.name, href: clientLink(c.id), id: c.id }))
+        return renderGroupCard(reason, items)
       })
       .join("")
-    sections.push(
-      `<h2>Mögliche Kunden-Dubletten (${params.clientGroups.length})</h2><ul>${items}</ul>`
-    )
+    sections.push(renderSection(`Mögliche Kunden-Dubletten (${params.clientGroups.length})`, cards))
   }
 
   if (params.candidateEmailGroups.length > 0) {
-    const items = params.candidateEmailGroups
+    const cards = params.candidateEmailGroups
       .map((group) => {
-        const candidateItems = group
-          .map(
-            (c) =>
-              `<li><a href="${candidateLink(c.id)}">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</a> (ID: ${c.id})</li>`
-          )
-          .join("")
-        return `<li style="margin-bottom:14px;"><strong>Gleiche E-Mail-Adresse: ${escapeHtml(group[0].email ?? "")}</strong><ul>${candidateItems}</ul></li>`
+        const reason = `Gleiche E-Mail-Adresse: ${escapeHtml(group[0].email ?? "")}`
+        const items = group.map((c) => ({
+          name: `${c.first_name} ${c.last_name}`,
+          href: candidateLink(c.id),
+          id: c.id,
+        }))
+        return renderGroupCard(reason, items)
       })
       .join("")
     sections.push(
-      `<h2>Mögliche Kandidaten-Dubletten – gleiche E-Mail (${params.candidateEmailGroups.length})</h2><ul>${items}</ul>`
+      renderSection(`Mögliche Kandidaten-Dubletten – gleiche E-Mail (${params.candidateEmailGroups.length})`, cards)
     )
   }
 
   if (params.candidateNamePlzGroups.length > 0) {
-    const items = params.candidateNamePlzGroups
+    const cards = params.candidateNamePlzGroups
       .map((group) => {
-        const candidateItems = group
-          .map(
-            (c) =>
-              `<li><a href="${candidateLink(c.id)}">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</a> (ID: ${c.id})</li>`
-          )
-          .join("")
-        return `<li style="margin-bottom:14px;"><strong>Gleicher Name + PLZ ${escapeHtml(group[0].plz ?? "")}</strong><ul>${candidateItems}</ul></li>`
+        const reason = `Gleicher Name + PLZ ${escapeHtml(group[0].plz ?? "")}`
+        const items = group.map((c) => ({
+          name: `${c.first_name} ${c.last_name}`,
+          href: candidateLink(c.id),
+          id: c.id,
+        }))
+        return renderGroupCard(reason, items)
       })
       .join("")
     sections.push(
-      `<h2>Mögliche Kandidaten-Dubletten – gleicher Name &amp; PLZ (${params.candidateNamePlzGroups.length})</h2><ul>${items}</ul>`
+      renderSection(
+        `Mögliche Kandidaten-Dubletten – gleicher Name &amp; PLZ (${params.candidateNamePlzGroups.length})`,
+        cards
+      )
     )
   }
 
+  const generatedDate = new Date().toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
+
   return `
-<div style="font-family: -apple-system, Arial, sans-serif; color: #111; max-width: 640px;">
-  <h1 style="font-size: 18px;">Tägliche Duplettenprüfung</h1>
-  <p style="color: #555;">
-    Automatisch gefundene Verdachtsfälle bei Kandidatenwerk. Rein heuristisch - bitte
-    einzeln prüfen, es wird nichts automatisch zusammengeführt.
-  </p>
-  ${sections.join("\n  ")}
+<div style="max-width:600px;margin:0 auto;background-color:#ffffff;border:1px solid ${BORDER_GRAY};border-radius:8px;font-family:${FONT_STACK};overflow:hidden;">
+  <div style="padding:28px 28px 4px;">
+    <div style="font-size:20px;font-weight:700;color:${BRAND_BLUE};">Kandidatenwerk</div>
+    <div style="font-size:16px;font-weight:600;color:#111827;margin-top:6px;">Tägliche Duplettenprüfung</div>
+    <div style="font-size:13px;color:${TEXT_GRAY};margin-top:10px;line-height:1.5;">
+      Rein heuristisch gefundene Verdachtsfälle - bitte einzeln prüfen, es wird nichts
+      automatisch zusammengeführt.
+    </div>
+  </div>
+  <div style="padding:0 28px;">${sections.join("")}
+  </div>
+  <div style="padding:20px 28px 24px;margin-top:8px;border-top:1px solid ${BORDER_GRAY};">
+    <div style="font-size:11px;color:${TEXT_LIGHT_GRAY};">Automatisch generiert von Kandidatenwerk am ${generatedDate}</div>
+  </div>
 </div>
 `.trim()
 }
