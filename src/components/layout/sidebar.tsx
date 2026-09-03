@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   Users,
-  Building2,
   UserSearch,
   GitCompare,
   MapPin,
@@ -26,13 +25,11 @@ function buildNavItems(
   matchesCount: number,
   candidatesCount: number,
   clientsCount: number,
-  locationsCount: number,
   myOpenTasksCount: number
 ) {
   return [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/dashboard/clients", label: "Kunden", icon: Users, badge: String(clientsCount) },
-    { href: "/dashboard/locations", label: "Standorte", icon: Building2, badge: String(locationsCount) },
     { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: String(candidatesCount) },
     { href: "/dashboard/matches", label: "Matching", icon: GitCompare, badge: String(matchesCount) },
     { href: "/dashboard/tasks", label: "Aufgaben", icon: ListTodo, badge: String(myOpenTasksCount) },
@@ -97,17 +94,15 @@ export function Sidebar({
   matchesCount = 0,
   candidatesCount = 0,
   clientsCount = 0,
-  locationsCount = 0,
   myOpenTasksCount = 0,
 }: {
   matchesCount?: number
   candidatesCount?: number
   clientsCount?: number
-  locationsCount?: number
   myOpenTasksCount?: number
 }) {
   const pathname = usePathname()
-  const navItems = buildNavItems(matchesCount, candidatesCount, clientsCount, locationsCount, myOpenTasksCount)
+  const navItems = buildNavItems(matchesCount, candidatesCount, clientsCount, myOpenTasksCount)
 
   // Start bewusst ausgeklappt (= Server-/Erstrender-Zustand), der localStorage-Wert wird
   // erst nach dem Mount übernommen - sonst Hydration-Mismatch, da localStorage auf dem

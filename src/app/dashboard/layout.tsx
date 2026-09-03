@@ -12,9 +12,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { count: clientsCount } = await supabase
     .from("clients")
     .select("id", { count: "exact", head: true })
-  const { count: locationsCount } = await supabase
-    .from("locations")
-    .select("id", { count: "exact", head: true })
 
   const { data: { user } } = await supabase.auth.getUser()
   const { count: myOpenTasksCount } = user
@@ -31,7 +28,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
         matchesCount={matchesCount ?? 0}
         candidatesCount={candidatesCount ?? 0}
         clientsCount={clientsCount ?? 0}
-        locationsCount={locationsCount ?? 0}
         myOpenTasksCount={myOpenTasksCount ?? 0}
       />
       <main className="flex-1 overflow-y-auto">{children}</main>
