@@ -3,34 +3,46 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Briefcase } from "lucide-react"
-import { createClient } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
+import { establishInviteSessionAction, setNewPasswordAction } from "./actions"
 
 const MIN_PASSWORD_LENGTH = 8
-// Falls überhaupt kein Hash-Fragment vorhanden ist (Seite ohne Einladungslink direkt
-// aufgerufen), bleibt die Session leer und die Seite würde ohne Timeout für immer im
-// "checking"-Zustand hängen bleiben.
-const NO_TOKEN_TIMEOUT_MS = 5000
 
 type PageState = "checking" | "ready" | "error" | "success"
+
+function readHash(): URLSearchParams | null {
+  if (typeof window === "undefined") return null
+  const raw = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash
+  if (!raw) return null
+  return new URLSearchParams(raw)
+}
 
 // auth-js verarbeitet abgelaufene/ungültige Einladungslinks NICHT über
 // onAuthStateChange - im Fehlerfall gibt GoTrueClient._initialize() nur {error}
 // zurück, ohne _notifyAllSubscribers("SIGNED_IN"/"PASSWORD_RECOVERY", ...) aufzurufen
 // (verifiziert im installierten @supabase/auth-js). Der Fehler steckt stattdessen
 // direkt im Hash-Fragment (#error=...&error_code=...&error_description=...) und muss
-// deshalb hier selbst ausgelesen werden, bevor der Supabase-Client ihn beim
-// Initialisieren verarbeitet.
-function readHashError(): string | null {
-  if (typeof window === "undefined") return null
-  const raw = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash
-  if (!raw) return null
-
-  const params = new URLSearchParams(raw)
+// deshalb hier selbst ausgelesen werden, bevor irgendein Supabase-Client ihn verarbeitet.
+function readHashError(params: URLSearchParams): string | null {
   const description = params.get("error_description")
   if (description) return description.replace(/\+/g, " ")
   const error = params.get("error")
   return error ? error : null
+}
+
+// Diagnose vom 2026-09-07 (siehe actions.ts für die volle Erklärung): der
+// browserseitige Supabase-Client kann diese Tokens NICHT selbst verarbeiten, da
+// @supabase/ssr's createBrowserClient() intern immer flowType "pkce" erzwingt, unsere
+// Einladungslinks aber klassische implizite Hash-Tokens liefern - GoTrueClient wirft
+// dabei intern AuthPKCEGrantCodeExchangeError, die Session bleibt leer. Die Tokens
+// werden deshalb hier selbst geparst und an einen Server Action übergeben (siehe
+// establishInviteSessionAction), der sie ohne URL-Erkennung direkt per setSession()
+// setzt - kein browserseitiger Supabase-Client mehr nötig auf dieser Seite.
+function readHashTokens(params: URLSearchParams): { accessToken: string; refreshToken: string } | null {
+  const accessToken = params.get("access_token")
+  const refreshToken = params.get("refresh_token")
+  if (!accessToken || !refreshToken) return null
+  return { accessToken, refreshToken }
 }
 
 export default function SetPasswordPage() {
@@ -43,42 +55,41 @@ export default function SetPasswordPage() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    // Hash-Fehler zuerst und synchron auslesen - bevor der Supabase-Client (dessen
-    // Initialisierung asynchron läuft) das Hash-Fragment bei Erfolg löscht.
-    const hashError = readHashError()
+    const params = readHash()
+    if (!params) {
+      setPageError("Kein gültiger Einladungslink gefunden.")
+      setPageState("error")
+      return
+    }
+
+    // Hash-Fehler zuerst prüfen (abgelaufener/ungültiger Link).
+    const hashError = readHashError(params)
     if (hashError) {
       setPageError(hashError)
       setPageState("error")
       return
     }
 
-    const supabase = createClient()
+    const tokens = readHashTokens(params)
+    if (!tokens) {
+      setPageError("Kein gültiger Einladungslink gefunden.")
+      setPageState("error")
+      return
+    }
 
-    // Ursache des ursprünglichen Bugs (Diagnose vom 08.09.2026, verifiziert per
-    // Konsolen-Log): beim Öffnen eines frischen Einladungslinks feuert auth-js NICHT
-    // SIGNED_IN oder PASSWORD_RECOVERY, sondern INITIAL_SESSION - das ist die
-    // dokumentierte Meldung, wenn beim Client-Start eine Session aus dem
-    // URL-Hash-Fragment erkannt wird. Ohne diesen Fall blieb die Seite bis zum
-    // 5-Sekunden-Timeout in "checking" haengen und zeigte faelschlich "kein gueltiger
-    // Einladungslink". INITIAL_SESSION kann aber auch mit session=null feuern (kein
-    // Hash-Fragment vorhanden) - deshalb zusaetzlich auf eine echte Session pruefen.
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if ((event === "SIGNED_IN" || event === "PASSWORD_RECOVERY" || event === "INITIAL_SESSION") && session) {
+    let cancelled = false
+    establishInviteSessionAction(tokens.accessToken, tokens.refreshToken).then((result) => {
+      if (cancelled) return
+      if (result?.error) {
+        setPageError(result.error)
+        setPageState("error")
+      } else {
         setPageState("ready")
       }
     })
 
-    const timeout = setTimeout(() => {
-      setPageState((current) => {
-        if (current !== "checking") return current
-        setPageError("Kein gültiger Einladungslink gefunden.")
-        return "error"
-      })
-    }, NO_TOKEN_TIMEOUT_MS)
-
     return () => {
-      listener.subscription.unsubscribe()
-      clearTimeout(timeout)
+      cancelled = true
     }
   }, [])
 
@@ -103,34 +114,24 @@ export default function SetPasswordPage() {
     }
 
     setSubmitting(true)
-    const supabase = createClient()
-    const { error } = await supabase.auth.updateUser({ password })
+    const result = await setNewPasswordAction(password)
     setSubmitting(false)
 
-    if (error) {
-      setFormError(error.message)
+    if ("error" in result) {
+      setFormError(result.error)
       return
     }
 
     setPageState("success")
 
-    // Ziel haengt von der Rolle ab - Kunden-Portal-Nutzer (role "client") landen im
-    // eingeschraenkten Portal statt im internen Dashboard, siehe login/actions.ts und
-    // middleware.ts fuer dieselbe Unterscheidung an den anderen Einstiegspunkten.
-    const { data: { user: newUser } } = await supabase.auth.getUser()
-    const { data: profile } = newUser
-      ? await supabase.from("profiles").select("role").eq("id", newUser.id).single()
-      : { data: null }
-    const destination = profile?.role === "client" ? "/portal" : "/dashboard"
-
-    // Voller Reload statt router.push(): der Browser-Client aus src/lib/supabase.ts
-    // nutzt createBrowserClient aus @supabase/ssr, der die Session per Cookie
-    // speichert (nicht nur localStorage) - genau dafür gedacht, dass die Middleware
-    // (middleware.ts) und createSupabaseServerClient() dieselbe Session sehen. Ein
-    // kompletter Seitenaufruf stellt sicher, dass die Middleware mit den aktuellen
-    // Cookies neu entscheidet, statt sich auf einen rein clientseitigen Router-State
-    // zu verlassen.
-    window.location.href = destination
+    // Voller Seitenaufruf statt router.push(): stellt sicher, dass die Middleware mit
+    // den aktuellen Cookies (von establishInviteSessionAction/setNewPasswordAction auf
+    // dem Server gesetzt) neu entscheidet, statt sich auf clientseitigen Router-State
+    // zu verlassen. Ziel haengt von der Rolle ab - Kunden-Portal-Nutzer (role "client")
+    // landen im eingeschraenkten Portal statt im internen Dashboard, siehe
+    // login/actions.ts und middleware.ts fuer dieselbe Unterscheidung an den anderen
+    // Einstiegspunkten.
+    window.location.href = result.redirectTo
   }
 
   return (
