@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils"
 
 const MIN_PASSWORD_LENGTH = 8
 // Falls überhaupt kein Hash-Fragment vorhanden ist (Seite ohne Einladungslink direkt
-// aufgerufen), feuert auth-js nie ein SIGNED_IN/PASSWORD_RECOVERY-Event - ohne Timeout
-// würde die Seite dann für immer im "checking"-Zustand hängen bleiben.
+// aufgerufen), bleibt die Session leer und die Seite würde ohne Timeout für immer im
+// "checking"-Zustand hängen bleiben.
 const NO_TOKEN_TIMEOUT_MS = 5000
 
 type PageState = "checking" | "ready" | "error" | "success"
@@ -43,14 +43,10 @@ export default function SetPasswordPage() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    // TEMP DEBUG - siehe Task "Diagnose-Ausgaben für set-password"
-    console.log("[set-password DEBUG] window.location.hash:", window.location.hash)
-
     // Hash-Fehler zuerst und synchron auslesen - bevor der Supabase-Client (dessen
     // Initialisierung asynchron läuft) das Hash-Fragment bei Erfolg löscht.
     const hashError = readHashError()
     if (hashError) {
-      console.log("[set-password DEBUG] readHashError() hat einen Fehler gefunden:", hashError)
       setPageError(hashError)
       setPageState("error")
       return
@@ -58,20 +54,18 @@ export default function SetPasswordPage() {
 
     const supabase = createClient()
 
-    // TEMP DEBUG
-    console.log("[set-password DEBUG] registriere onAuthStateChange-Listener…")
-
+    // Ursache des ursprünglichen Bugs (Diagnose vom 08.09.2026, verifiziert per
+    // Konsolen-Log): beim Öffnen eines frischen Einladungslinks feuert auth-js NICHT
+    // SIGNED_IN oder PASSWORD_RECOVERY, sondern INITIAL_SESSION - das ist die
+    // dokumentierte Meldung, wenn beim Client-Start eine Session aus dem
+    // URL-Hash-Fragment erkannt wird. Ohne diesen Fall blieb die Seite bis zum
+    // 5-Sekunden-Timeout in "checking" haengen und zeigte faelschlich "kein gueltiger
+    // Einladungslink". INITIAL_SESSION kann aber auch mit session=null feuern (kein
+    // Hash-Fragment vorhanden) - deshalb zusaetzlich auf eine echte Session pruefen.
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      // TEMP DEBUG - JEDES Event, unabhängig davon ob SIGNED_IN/PASSWORD_RECOVERY
-      console.log("[set-password DEBUG] onAuthStateChange event:", event, "session:", session)
-      if (event === "SIGNED_IN" || event === "PASSWORD_RECOVERY") {
+      if ((event === "SIGNED_IN" || event === "PASSWORD_RECOVERY" || event === "INITIAL_SESSION") && session) {
         setPageState("ready")
       }
-    })
-
-    // TEMP DEBUG
-    supabase.auth.getSession().then(({ data, error }) => {
-      console.log("[set-password DEBUG] getSession() Ergebnis - session:", data.session, "error:", error)
     })
 
     const timeout = setTimeout(() => {
@@ -120,6 +114,15 @@ export default function SetPasswordPage() {
 
     setPageState("success")
 
+    // Ziel haengt von der Rolle ab - Kunden-Portal-Nutzer (role "client") landen im
+    // eingeschraenkten Portal statt im internen Dashboard, siehe login/actions.ts und
+    // middleware.ts fuer dieselbe Unterscheidung an den anderen Einstiegspunkten.
+    const { data: { user: newUser } } = await supabase.auth.getUser()
+    const { data: profile } = newUser
+      ? await supabase.from("profiles").select("role").eq("id", newUser.id).single()
+      : { data: null }
+    const destination = profile?.role === "client" ? "/portal" : "/dashboard"
+
     // Voller Reload statt router.push(): der Browser-Client aus src/lib/supabase.ts
     // nutzt createBrowserClient aus @supabase/ssr, der die Session per Cookie
     // speichert (nicht nur localStorage) - genau dafür gedacht, dass die Middleware
@@ -127,7 +130,7 @@ export default function SetPasswordPage() {
     // kompletter Seitenaufruf stellt sicher, dass die Middleware mit den aktuellen
     // Cookies neu entscheidet, statt sich auf einen rein clientseitigen Router-State
     // zu verlassen.
-    window.location.href = "/dashboard"
+    window.location.href = destination
   }
 
   return (

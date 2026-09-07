@@ -33,15 +33,39 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const isProtected = pathname.startsWith("/dashboard")
+  const isDashboard = pathname.startsWith("/dashboard")
+  const isPortal = pathname.startsWith("/portal")
+  const isProtected = isDashboard || isPortal
   const isLoginPage = pathname === "/login"
 
   if (isProtected && !user) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  if (isLoginPage && user) {
-    return NextResponse.redirect(new URL("/dashboard", request.url))
+  // role wird erst NACH dem "eingeloggt?"-Check geladen (kein Grund, das fuer jede
+  // Anfrage zu tun) - Kunden-Portal-Nutzer (role "client") duerfen nur unter /portal,
+  // alle anderen nur unter /dashboard. Ohne diese Trennung wuerde ein Portal-Login
+  // z.B. per direktem Aufruf von /dashboard/candidates trotzdem die volle interne
+  // Oberflaeche sehen (auch wenn die Daten selbst durch RLS eingeschraenkt waeren -
+  // die UI-Beschraenkung ist ein zweites, unabhaengiges Sicherheitsnetz, siehe die
+  // Kunden-Portal-Spezifikation).
+  if (user && (isDashboard || isPortal || isLoginPage)) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+    const isClient = profile?.role === "client"
+
+    if (isDashboard && isClient) {
+      return NextResponse.redirect(new URL("/portal", request.url))
+    }
+    if (isPortal && !isClient) {
+      return NextResponse.redirect(new URL("/dashboard", request.url))
+    }
+    if (isLoginPage) {
+      return NextResponse.redirect(new URL(isClient ? "/portal" : "/dashboard", request.url))
+    }
   }
 
   return response

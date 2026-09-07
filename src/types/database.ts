@@ -50,10 +50,45 @@ export type Database = {
           }
         ]
       }
-      // auto_forward_enabled manuell ergänzt (nicht per gen-types.mjs generiert) - Spalte
-      // existiert erst nach Ausführen von
-      // supabase/migrations/20260904000000_add_client_auto_forward.sql. Nach dem
-      // Anwenden mit gen-types.mjs neu generieren, dann verschwindet dieser Kommentar.
+      client_assignment_notes: {
+        Row: {
+          id: string
+          client_assignment_id: string
+          author_id: string | null
+          content: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_assignment_id: string
+          author_id?: string | null
+          content: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_assignment_id?: string
+          author_id?: string | null
+          content?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_assignment_notes_client_assignment_id_fkey"
+            columns: ["client_assignment_id"]
+            isOneToOne: false
+            referencedRelation: "client_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_assignment_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       clients: {
         Row: {
           id: string
@@ -218,6 +253,7 @@ export type Database = {
           role: string
           full_name: string | null
           created_at: string
+          email: string | null
         }
         Insert: {
           id: string
@@ -226,6 +262,7 @@ export type Database = {
           role: string
           full_name?: string | null
           created_at?: string
+          email?: string | null
         }
         Update: {
           id?: string
@@ -234,6 +271,7 @@ export type Database = {
           role?: string
           full_name?: string | null
           created_at?: string
+          email?: string | null
         }
         Relationships: [
           {

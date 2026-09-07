@@ -217,6 +217,9 @@ async function main() {
           ort: nc.ort,
           status: "Aktiv",
           active: true,
+          // War hier vorher vergessen - siehe 20260907000003_fix_candidates_client_id_scope_and_backfill_agency.sql,
+          // die 8 dadurch entstandenen Kunden ohne agency_id nachtraeglich behoben hat.
+          agency_id: "00000000-0000-0000-0000-000000000001",
         })
         .select("id")
         .single()

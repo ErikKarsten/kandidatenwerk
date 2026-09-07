@@ -6,6 +6,7 @@ import { fetchAllCustomers, importNewLeadtableCampaignsForClient } from "@/lib/l
 import { geocodePlz } from "@/lib/geocode-plz"
 import { reverseGeocodeCity } from "@/lib/reverse-geocode"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
+import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 
 export async function updateClientAction(
   clientId: string,
@@ -380,6 +381,66 @@ export async function deleteClientFileAction(
     .eq("id", fileId)
 
   if (error) return { error: error.message }
+
+  revalidatePath(`/dashboard/clients/${clientId}`)
+  return null
+}
+
+
+// ============================================================
+// Kunden-Portal: Zugaenge fuer externe Kunden-Logins verwalten. Nutzt bewusst den
+// createSupabaseAdminClient() (Secret-Key/service_role) statt createSupabaseServerClient(),
+// weil das Einladen eines neuen Auth-Users + Anlegen der zugehoerigen profiles-Zeile
+// eine echte Admin-Operation ist, die nicht ueber die RLS-Rechte des aktuell
+// eingeloggten Agentur-Mitarbeiters laufen kann (der darf ja gerade NICHT beliebige
+// profiles-Zeilen mit fremder id anlegen).
+export async function inviteClientPortalUserAction(
+  clientId: string,
+  email: string
+): Promise<{ error: string } | null> {
+  const trimmedEmail = email.trim()
+  if (!trimmedEmail) return { error: "E-Mail-Adresse ist ein Pflichtfeld." }
+
+  const admin = createSupabaseAdminClient()
+
+  const { data, error } = await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
+    redirectTo: "https://kandidatenwerk.kanzleistelle24.de/set-password",
+  })
+
+  if (error) return { error: error.message }
+  if (!data.user) return { error: "Einladung konnte nicht erstellt werden." }
+
+  const { error: profileError } = await admin.from("profiles").insert({
+    id: data.user.id,
+    role: "client",
+    client_id: clientId,
+    email: trimmedEmail,
+  })
+
+  // Profil-Insert fehlgeschlagen (z.B. Constraint-Fehler) - den bereits eingeladenen
+  // Auth-User wieder entfernen, damit kein verwaister Login ohne Profil zurueckbleibt,
+  // der bei einem erneuten Einladungsversuch mit derselben Adresse einen verwirrenden
+  // "schon eingeladen"-Fehler werfen wuerde.
+  if (profileError) {
+    await admin.auth.admin.deleteUser(data.user.id)
+    return { error: profileError.message }
+  }
+
+  revalidatePath(`/dashboard/clients/${clientId}`)
+  return null
+}
+
+export async function removeClientPortalUserAction(
+  profileId: string,
+  clientId: string
+): Promise<{ error: string } | null> {
+  const admin = createSupabaseAdminClient()
+
+  const { error: profileError } = await admin.from("profiles").delete().eq("id", profileId)
+  if (profileError) return { error: profileError.message }
+
+  const { error: authError } = await admin.auth.admin.deleteUser(profileId)
+  if (authError) return { error: authError.message }
 
   revalidatePath(`/dashboard/clients/${clientId}`)
   return null

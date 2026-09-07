@@ -49,7 +49,25 @@ export async function autoForwardCandidateIfEnabled(
 
   if (!client) return
   if (!client.auto_forward_enabled) return
-  if (!client.contact_email) return
+
+  // Geht bevorzugt an die Portal-Login-Adressen dieses Kunden (siehe Kunden-Portal-
+  // Spezifikation), damit die Vorqualifizierungs-Mail direkt bei den Personen landet,
+  // die sich auch tatsaechlich einloggen. Kunden, die noch keinen Portal-Zugang haben,
+  // bekommen die Mail weiterhin an contact_email wie bisher - die Umstellung soll
+  // niemandem die Automatik wegnehmen, bevor er eingeladen wurde.
+  const { data: portalProfiles } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("client_id", campaign.client_id)
+    .eq("role", "client")
+
+  const portalEmails = (portalProfiles ?? [])
+    .map((p) => p.email)
+    .filter((e): e is string => Boolean(e))
+
+  const recipients = portalEmails.length > 0 ? portalEmails : client.contact_email ? [client.contact_email] : []
+
+  if (recipients.length === 0) return
 
   // Neuester PDF-Anhang (typischerweise der Lebenslauf) - falls vorhanden, als Link in
   // die Mail. Ohne passende Datei wird die Mail einfach ohne Anhangs-Link verschickt,
@@ -116,7 +134,7 @@ export async function autoForwardCandidateIfEnabled(
 `.trim()
 
   await sendEmail(
-    [client.contact_email],
+    recipients,
     `Neuer vorqualifizierter Kandidat: ${candidateName}`,
     html
   )

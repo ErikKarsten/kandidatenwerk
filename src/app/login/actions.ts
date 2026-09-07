@@ -38,7 +38,17 @@ export async function loginAction(_prevState: string | null, formData: FormData)
     return error.message
   }
 
+  // Kunden-Portal-Nutzer (role "client") landen im eingeschraenkten Portal statt im
+  // internen Dashboard - siehe middleware.ts, die dieselbe Unterscheidung nochmal
+  // serverseitig gegen direkte URL-Aufrufe absichert.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("role").eq("id", user.id).single()
+    : { data: null }
+
   // redirect() wirft intern einen NEXT_REDIRECT-Fehler und muss daher außerhalb
   // jedes try/catch aufgerufen werden, sonst wird der Redirect fälschlich abgefangen.
-  redirect("/dashboard")
+  redirect(profile?.role === "client" ? "/portal" : "/dashboard")
 }

@@ -13,6 +13,7 @@ import {
   refreshLeadtableClientAction,
 } from "./actions"
 import { ContactsSection, type Contact } from "./contacts-section"
+import { PortalAccessSection, type PortalUser } from "./portal-access-section"
 import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import type { DashboardKpis } from "@/lib/kpis"
@@ -52,12 +53,13 @@ interface ClientDetailProps {
   campaigns: Campaign[]
   contacts: Contact[]
   files: ClientFileItem[]
+  portalUsers: PortalUser[]
   kpis: DashboardKpis
 }
 
 type ModalStep = null | "choice" | "delete_confirm"
 
-export function ClientDetail({ client, campaigns, contacts, files, kpis }: ClientDetailProps) {
+export function ClientDetail({ client, campaigns, contacts, files, portalUsers, kpis }: ClientDetailProps) {
   const router = useRouter()
   const [tab, setTab] = useState<"kampagnen" | "stammdaten" | "dateien">("kampagnen")
   const [editMode, setEditMode] = useState(false)
@@ -394,6 +396,7 @@ export function ClientDetail({ client, campaigns, contacts, files, kpis }: Clien
               editMode={editMode}
               setEditMode={setEditMode}
               contacts={contacts}
+              portalUsers={portalUsers}
               onLogoUploaded={(url) => setDisplayLogoUrl(url)}
             />
           )}
@@ -498,12 +501,14 @@ function StammdatenTab({
   editMode,
   setEditMode,
   contacts,
+  portalUsers,
   onLogoUploaded,
 }: {
   client: Client
   editMode: boolean
   setEditMode: (v: boolean) => void
   contacts: Contact[]
+  portalUsers: PortalUser[]
   onLogoUploaded: (url: string) => void
 }) {
   const router = useRouter()
@@ -694,6 +699,10 @@ function StammdatenTab({
 
       <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
         <ContactsSection clientId={client.id} contacts={contacts} />
+      </div>
+
+      <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
+        <PortalAccessSection clientId={client.id} portalUsers={portalUsers} />
       </div>
     </div>
   )

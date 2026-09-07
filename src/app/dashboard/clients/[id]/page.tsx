@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { getDashboardKpis } from "@/lib/kpis"
 import { ClientDetail } from "./client-detail"
 
@@ -11,7 +12,7 @@ export default async function ClientDetailPage({
   const { id } = await params
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: client }, { data: campaigns }, { data: contacts }, { data: fileRows }, kpis] = await Promise.all([
+  const [{ data: client }, { data: campaigns }, { data: contacts }, { data: fileRows }, { data: portalProfiles }, kpis] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
     supabase
       .from("campaigns")
@@ -28,10 +29,31 @@ export default async function ClientDetailPage({
       .select("*")
       .eq("client_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("profiles")
+      .select("id, email")
+      .eq("client_id", id)
+      .eq("role", "client")
+      .order("created_at", { ascending: true }),
     getDashboardKpis(supabase, id),
   ])
 
   if (!client) notFound()
+
+  // Aktiv/eingeladen laesst sich nicht aus profiles ablesen (dort steht nur, DASS ein
+  // Portal-Profil existiert) - dafuer muss der zugehoerige Auth-User per Admin-API
+  // abgefragt werden (last_sign_in_at gesetzt => hat sich schon mal eingeloggt).
+  const admin = createSupabaseAdminClient()
+  const portalUsers = await Promise.all(
+    (portalProfiles ?? []).map(async (p) => {
+      const { data } = await admin.auth.admin.getUserById(p.id)
+      return {
+        id: p.id,
+        email: p.email,
+        status: data.user?.last_sign_in_at ? ("aktiv" as const) : ("eingeladen" as const),
+      }
+    })
+  )
 
   const files = await Promise.all(
     (fileRows ?? []).map(async (f) => {
@@ -64,6 +86,7 @@ export default async function ClientDetailPage({
 
   return (
     <ClientDetail
+      portalUsers={portalUsers}
       client={{
         id: client.id,
         name: client.name,
