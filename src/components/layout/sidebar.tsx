@@ -37,7 +37,11 @@ function buildNavItems(
   ] as const
 }
 
-const SETTINGS_ITEM = { href: "/einstellungen", label: "Einstellungen", icon: Settings }
+// Zeigte bisher auf "/einstellungen" - eine Route, die es nirgends gab (404). Jetzt
+// unter /dashboard/einstellungen gebaut, damit die Seite das bestehende
+// DashboardLayout (Sidebar-Zaehler, Auth-Check) automatisch mitbekommt statt eine
+// eigene Layout-Kopie zu brauchen.
+const SETTINGS_ITEM = { href: "/dashboard/einstellungen", label: "Einstellungen", icon: Settings }
 
 interface NavItemProps {
   href: string
