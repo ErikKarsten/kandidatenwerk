@@ -1,6 +1,7 @@
+import Link from "next/link"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 
-// Gleiche Label-Konvention wie portal/page.tsx (STATUS_LABELS) und
+// Gleiche Label-Konvention wie portal/candidates/page.tsx (STATUS_LABELS) und
 // clients/[id]/client-detail.tsx (CAMPAIGN_STATUS) - bewusst eigene Kopie, siehe
 // Begründung dort. "Archiviert" taucht hier bewusst nicht auf: archivierte Kampagnen
 // werden unten herausgefiltert, sind für den Kunden nicht "aktuell laufend".
@@ -16,7 +17,7 @@ export default async function PortalCampaignsPage() {
   // RLS ("Kunde sieht Kampagnen des eigenen Kunden", siehe
   // 20260908000003_client_portal_campaigns_read.sql) filtert automatisch auf die
   // eigene client_id - kein zusätzliches .eq() nötig oder möglich, gleiches Muster wie
-  // bei portal/page.tsx (client_assignments). candidates(count) respektiert dabei die
+  // bei portal/candidates/page.tsx (client_assignments). candidates(count) respektiert dabei die
   // bestehende candidates-RLS (nur aktiv zugeordnete Kandidaten zählen mit).
   const { data: campaigns } = await supabase
     .from("campaigns")
@@ -41,29 +42,30 @@ export default async function PortalCampaignsPage() {
         <p className="text-sm text-gray-400">Aktuell laufen keine Kampagnen für Sie.</p>
       )}
 
-      <div className="flex flex-col gap-2">
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
         {rows.map((c) => {
           const s = STATUS_LABEL[c.status] ?? STATUS_LABEL.completed
           return (
-            <div
+            <Link
               key={c.id}
-              className="flex items-center justify-between rounded-xl border bg-white p-4"
+              href={`/portal/campaigns/${c.id}`}
+              className="flex flex-col gap-3 rounded-xl border bg-white p-4 transition-shadow hover:shadow-md"
               style={{ borderColor: "#dde3ea" }}
             >
-              <div>
-                <p className="text-sm font-medium text-gray-900">{c.title}</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {c.leadsCount} Kandidat{c.leadsCount !== 1 ? "en" : ""}
-                </p>
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-sm font-medium leading-snug text-gray-900">{c.title}</h3>
+                <span
+                  className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                  style={{ backgroundColor: s.bg, color: s.text }}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: s.dot }} />
+                  {s.label}
+                </span>
               </div>
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
-                style={{ backgroundColor: s.bg, color: s.text }}
-              >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: s.dot }} />
-                {s.label}
+              <span className="text-xs font-medium" style={{ color: "#1e56a0" }}>
+                {c.leadsCount} Kandidat{c.leadsCount !== 1 ? "en" : ""}
               </span>
-            </div>
+            </Link>
           )
         })}
       </div>

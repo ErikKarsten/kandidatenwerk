@@ -2,14 +2,15 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Briefcase, Users, Megaphone, LogOut } from "lucide-react"
+import { Briefcase, LayoutDashboard, Users, Megaphone, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase"
 
 // Bewusst KEIN wiederverwendetes Sidebar-Component aus components/layout/sidebar.tsx -
 // das Kunden-Portal hat laut Spezifikation eine komplett eigene, stark reduzierte
-// Navigation (nur "Meine Kandidaten", kein Dashboard/Kunden/Alle Kandidaten/Matching/
-// Aufgaben/Karte) und darf niemals versehentlich interne Nav-Punkte erben.
+// Navigation (nur Dashboard/Meine Kandidaten/Meine Kampagnen, kein Kunden/Alle
+// Kandidaten/Matching/Aufgaben/Karte) und darf niemals versehentlich interne
+// Nav-Punkte erben.
 export function PortalSidebar({
   clientName,
   logoUrl,
@@ -19,13 +20,27 @@ export function PortalSidebar({
 }) {
   const pathname = usePathname()
   const router = useRouter()
-  const candidatesActive = pathname === "/portal" || pathname.startsWith("/portal/candidates")
+  // "/portal" ist jetzt das Dashboard (neue Startseite, siehe portal/page.tsx) - die
+  // Kandidatenliste ist nach /portal/candidates umgezogen, deshalb hier klar getrennt
+  // statt wie vorher gemeinsam auf "/portal" zu matchen.
+  const dashboardActive = pathname === "/portal"
+  const candidatesActive = pathname.startsWith("/portal/candidates")
   const campaignsActive = pathname.startsWith("/portal/campaigns")
 
   async function handleLogout() {
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push("/login")
+  }
+
+  function navLinkClass(active: boolean) {
+    return cn(
+      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+      active ? "text-white" : "text-blue-100/70 hover:bg-white/10 hover:text-white"
+    )
+  }
+  function navLinkStyle(active: boolean) {
+    return active ? { backgroundColor: "#1e56a0" } : undefined
   }
 
   return (
@@ -48,25 +63,15 @@ export function PortalSidebar({
       <div className="mx-3 mb-2 h-px" style={{ backgroundColor: "rgba(255,255,255,0.08)" }} />
 
       <nav className="flex flex-1 flex-col gap-1 px-3">
-        <Link
-          href="/portal"
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-            candidatesActive ? "text-white" : "text-blue-100/70 hover:bg-white/10 hover:text-white"
-          )}
-          style={candidatesActive ? { backgroundColor: "#1e56a0" } : undefined}
-        >
+        <Link href="/portal" className={navLinkClass(dashboardActive)} style={navLinkStyle(dashboardActive)}>
+          <LayoutDashboard size={18} className="shrink-0" />
+          <span>Dashboard</span>
+        </Link>
+        <Link href="/portal/candidates" className={navLinkClass(candidatesActive)} style={navLinkStyle(candidatesActive)}>
           <Users size={18} className="shrink-0" />
           <span>Meine Kandidaten</span>
         </Link>
-        <Link
-          href="/portal/campaigns"
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-            campaignsActive ? "text-white" : "text-blue-100/70 hover:bg-white/10 hover:text-white"
-          )}
-          style={campaignsActive ? { backgroundColor: "#1e56a0" } : undefined}
-        >
+        <Link href="/portal/campaigns" className={navLinkClass(campaignsActive)} style={navLinkStyle(campaignsActive)}>
           <Megaphone size={18} className="shrink-0" />
           <span>Meine Kampagnen</span>
         </Link>
