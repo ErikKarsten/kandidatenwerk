@@ -1,0 +1,81 @@
+<!--
+  Entwurf fuer Supabase Auth -> Authentication -> Email Templates -> "Invite user".
+  NOCH NICHT eingetragen/scharf geschaltet - siehe Bericht.
+
+  Verwendet Supabase-Template-Variablen (Go html/template):
+    {{ .ConfirmationURL }}  - der eigentliche Einladungslink (fuehrt zu /set-password)
+    {{ .Email }}            - Empfaenger-Adresse, fuer die Fusszeile
+
+  Vorgeschlagener Betreff (separates Feld in Supabase, nicht Teil dieser Datei):
+    Einladung zum Kandidatenwerk Kunden-Portal
+
+  Branding uebernommen von:
+    - src/lib/auto-forward-candidate.ts und scripts/duplicate-check.ts (bestehende
+      Brevo-Mails: Blauton #1e56a0, Font-Stack, Card-Aufbau, Fusszeile)
+    - src/app/set-password/page.tsx (Icon-Badge #0f2137/#4ba3c3, Seiten-Hintergrund
+      #f0f4f8, Card-Randfarbe #dde3ea) - das ist die Seite, auf die dieser Link fuehrt
+-->
+<div style="background-color:#f0f4f8;padding:32px 16px;font-family:-apple-system,Helvetica,Arial,sans-serif;">
+  <div style="max-width:520px;margin:0 auto;background-color:#ffffff;border:1px solid #dde3ea;border-radius:16px;overflow:hidden;">
+
+    <!-- Header: Icon-Badge + Wordmark, wie im App-Header von set-password/page.tsx -->
+    <div style="padding:32px 32px 0;text-align:center;">
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 16px;">
+        <tr>
+          <td style="width:44px;height:44px;background-color:#0f2137;border-radius:12px;text-align:center;vertical-align:middle;" align="center" valign="middle">
+            <!-- lucide "briefcase", gleiche Ikonografie wie set-password/page.tsx -->
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ba3c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:12px;">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+            </svg>
+          </td>
+        </tr>
+      </table>
+      <div style="font-size:20px;font-weight:700;color:#1e56a0;">Kandidatenwerk</div>
+      <div style="font-size:13px;color:#6b7280;margin-top:2px;">Kunden-Portal</div>
+    </div>
+
+    <!-- Inhalt -->
+    <div style="padding:28px 32px 4px;text-align:center;">
+      <div style="font-size:17px;font-weight:600;color:#111827;">Sie wurden zum Kunden-Portal eingeladen</div>
+      <div style="font-size:14px;color:#6b7280;margin-top:12px;line-height:1.6;text-align:left;">
+        Ihre Kanzlei arbeitet mit Kandidatenwerk zusammen, um passende Kandidat:innen für offene
+        Stellen zu finden. Über Ihr persönliches Kunden-Portal behalten Sie jederzeit den Überblick:
+      </div>
+      <ul style="font-size:14px;color:#6b7280;line-height:1.7;text-align:left;margin:14px 0 0;padding-left:20px;">
+        <li>Aktuelle Kandidat:innen und deren Status einsehen</li>
+        <li>Bewerbungsunterlagen direkt abrufen</li>
+        <li>Dateien mit uns austauschen</li>
+      </ul>
+    </div>
+
+    <!-- CTA-Button -->
+    <div style="padding:24px 32px 8px;text-align:center;">
+      <a href="{{ .ConfirmationURL }}"
+         style="display:inline-block;background-color:#1e56a0;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:8px;">
+        Zugang einrichten
+      </a>
+      <div style="font-size:12px;color:#9ca3af;margin-top:14px;">
+        Der Link ist aus Sicherheitsgründen zeitlich begrenzt gültig.
+      </div>
+    </div>
+
+    <!-- Fallback-Link -->
+    <div style="padding:8px 32px 24px;text-align:center;">
+      <div style="font-size:12px;color:#9ca3af;">
+        Falls der Button nicht funktioniert, diesen Link in den Browser kopieren:<br>
+        <a href="{{ .ConfirmationURL }}" style="color:#1e56a0;word-break:break-all;">{{ .ConfirmationURL }}</a>
+      </div>
+    </div>
+
+    <!-- Fusszeile -->
+    <div style="padding:20px 32px 24px;border-top:1px solid #e5e7eb;text-align:center;">
+      <div style="font-size:11px;color:#9ca3af;line-height:1.6;">
+        Diese Einladung wurde an {{ .Email }} gesendet. Falls Sie sie nicht erwartet haben,
+        können Sie diese E-Mail einfach ignorieren.<br>
+        Automatisch generiert von Kandidatenwerk
+      </div>
+    </div>
+
+  </div>
+</div>
