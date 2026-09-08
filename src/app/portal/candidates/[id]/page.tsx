@@ -82,7 +82,7 @@ export default async function PortalCandidateDetailPage({
 
   return (
     <div className="p-6 max-w-3xl">
-      <Link href="/portal" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
+      <Link href="/portal/candidates" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
         <ArrowLeft size={15} />
         Zurück zu meinen Kandidaten
       </Link>

@@ -28,6 +28,6 @@ export async function createNoteAction(
 
   if (error) return { error: error.message }
 
-  revalidatePath("/portal")
+  revalidatePath("/portal/candidates")
   return null
 }
