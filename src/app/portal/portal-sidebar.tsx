@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Briefcase, Users, LogOut } from "lucide-react"
+import { Briefcase, Users, Megaphone, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase"
 
@@ -19,7 +19,8 @@ export function PortalSidebar({
 }) {
   const pathname = usePathname()
   const router = useRouter()
-  const active = pathname === "/portal" || pathname.startsWith("/portal/candidates")
+  const candidatesActive = pathname === "/portal" || pathname.startsWith("/portal/candidates")
+  const campaignsActive = pathname.startsWith("/portal/campaigns")
 
   async function handleLogout() {
     const supabase = createClient()
@@ -51,12 +52,23 @@ export function PortalSidebar({
           href="/portal"
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-            active ? "text-white" : "text-blue-100/70 hover:bg-white/10 hover:text-white"
+            candidatesActive ? "text-white" : "text-blue-100/70 hover:bg-white/10 hover:text-white"
           )}
-          style={active ? { backgroundColor: "#1e56a0" } : undefined}
+          style={candidatesActive ? { backgroundColor: "#1e56a0" } : undefined}
         >
           <Users size={18} className="shrink-0" />
           <span>Meine Kandidaten</span>
+        </Link>
+        <Link
+          href="/portal/campaigns"
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+            campaignsActive ? "text-white" : "text-blue-100/70 hover:bg-white/10 hover:text-white"
+          )}
+          style={campaignsActive ? { backgroundColor: "#1e56a0" } : undefined}
+        >
+          <Megaphone size={18} className="shrink-0" />
+          <span>Meine Kampagnen</span>
         </Link>
       </nav>
 

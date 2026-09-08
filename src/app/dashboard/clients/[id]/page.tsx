@@ -12,7 +12,7 @@ export default async function ClientDetailPage({
   const { id } = await params
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: client }, { data: campaigns }, { data: contacts }, { data: fileRows }, { data: portalProfiles }, kpis] = await Promise.all([
+  const [{ data: client }, { data: campaigns }, { data: contacts }, { data: fileRows }, { data: portalProfiles }, { data: assignments }, kpis] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
     supabase
       .from("campaigns")
@@ -35,6 +35,15 @@ export default async function ClientDetailPage({
       .eq("client_id", id)
       .eq("role", "client")
       .order("created_at", { ascending: true }),
+    // Nur AKTIVE Zuordnungen (removed_at is null) - gleiche Definition wie im
+    // Kunden-Portal selbst (client_portal_rls_foundation.sql). Beendete Zuordnungen
+    // sollen hier nicht als "aktuell zugeordnete Kandidaten" auftauchen.
+    supabase
+      .from("client_assignments")
+      .select("id, status, created_at, candidates(id, first_name, last_name, berufsbild, campaigns(title))")
+      .eq("client_id", id)
+      .is("removed_at", null)
+      .order("created_at", { ascending: false }),
     getDashboardKpis(supabase, id),
   ])
 
@@ -84,6 +93,33 @@ export default async function ClientDetailPage({
     }
   })
 
+  // Supabase liefert eingebettete Many-to-one-Relationen (candidate_id -> candidates,
+  // campaign_id -> campaigns) je nach ermittelter Kardinalität als Objekt oder
+  // Einzel-Array - hier defensiv beides abfangen, gleiches Muster wie candidates(count)
+  // oben bei campaignList.
+  function firstOrSelf<T>(value: T | T[] | null | undefined): T | null {
+    if (Array.isArray(value)) return value[0] ?? null
+    return value ?? null
+  }
+
+  const assignedCandidates = (assignments ?? [])
+    .map((a) => {
+      const candidate = firstOrSelf(a.candidates)
+      if (!candidate) return null
+      const campaign = firstOrSelf(candidate.campaigns)
+      return {
+        assignmentId: a.id,
+        assignmentStatus: a.status,
+        assignedSince: a.created_at,
+        candidateId: candidate.id,
+        firstName: candidate.first_name,
+        lastName: candidate.last_name,
+        berufsbild: candidate.berufsbild,
+        campaignTitle: campaign?.title ?? null,
+      }
+    })
+    .filter((a): a is NonNullable<typeof a> => a !== null)
+
   return (
     <ClientDetail
       portalUsers={portalUsers}
@@ -111,6 +147,7 @@ export default async function ClientDetailPage({
         role: c.role ?? null,
       }))}
       files={files}
+      assignedCandidates={assignedCandidates}
       kpis={kpis}
     />
   )

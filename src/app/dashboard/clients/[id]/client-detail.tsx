@@ -17,6 +17,26 @@ import { PortalAccessSection, type PortalUser } from "./portal-access-section"
 import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import type { DashboardKpis } from "@/lib/kpis"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
+// Gleiche Labels wie candidates/[id]/matches-section.tsx (ASSIGNMENT_STATUS_OPTIONS) und
+// portal/page.tsx (STATUS_LABELS) - bewusst als eigene kleine Kopie statt geteiltem
+// Import, siehe Begründung dort.
+const ASSIGNMENT_STATUS_LABEL: Record<string, string> = {
+  inbox: "Unbearbeitet",
+  vq: "Vorqualifiziert",
+  vqk: "Vorqualifiziert beim Kunden",
+  vg: "Vorstellungsgespräch",
+  ja: "Ja",
+  nein: "Nein",
+}
 
 const CAMPAIGN_STATUS: Record<string, { label: string; bg: string; dot: string; text: string }> = {
   active: { label: "Aktiv", bg: "#1a9a6a18", dot: "#1a9a6a", text: "#1a9a6a" },
@@ -48,20 +68,32 @@ interface Client {
   auto_forward_enabled: boolean
 }
 
+interface AssignedCandidate {
+  assignmentId: string
+  assignmentStatus: string
+  assignedSince: string
+  candidateId: string
+  firstName: string
+  lastName: string
+  berufsbild: string | null
+  campaignTitle: string | null
+}
+
 interface ClientDetailProps {
   client: Client
   campaigns: Campaign[]
   contacts: Contact[]
   files: ClientFileItem[]
   portalUsers: PortalUser[]
+  assignedCandidates: AssignedCandidate[]
   kpis: DashboardKpis
 }
 
 type ModalStep = null | "choice" | "delete_confirm"
 
-export function ClientDetail({ client, campaigns, contacts, files, portalUsers, kpis }: ClientDetailProps) {
+export function ClientDetail({ client, campaigns, contacts, files, portalUsers, assignedCandidates, kpis }: ClientDetailProps) {
   const router = useRouter()
-  const [tab, setTab] = useState<"kampagnen" | "stammdaten" | "dateien">("kampagnen")
+  const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "dateien">("kampagnen")
   const [editMode, setEditMode] = useState(false)
   const [displayLogoUrl, setDisplayLogoUrl] = useState(client.logo_url)
 
@@ -378,6 +410,9 @@ export function ClientDetail({ client, campaigns, contacts, files, portalUsers, 
           <TabButton active={tab === "kampagnen"} onClick={() => setTab("kampagnen")}>
             Kampagnen ({campaigns.length})
           </TabButton>
+          <TabButton active={tab === "kandidaten"} onClick={() => setTab("kandidaten")}>
+            Kandidaten ({assignedCandidates.length})
+          </TabButton>
           <TabButton active={tab === "stammdaten"} onClick={() => setTab("stammdaten")}>
             Stammdaten
           </TabButton>
@@ -389,6 +424,9 @@ export function ClientDetail({ client, campaigns, contacts, files, portalUsers, 
         <div className="mt-4">
           {tab === "kampagnen" && (
             <KampagnenTab clientId={client.id} campaigns={campaigns} />
+          )}
+          {tab === "kandidaten" && (
+            <KandidatenTab candidates={assignedCandidates} />
           )}
           {tab === "stammdaten" && (
             <StammdatenTab
@@ -490,6 +528,66 @@ function KampagnenTab({ clientId, campaigns }: { clientId: string; campaigns: Ca
               </Link>
             )
           })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function KandidatenTab({ candidates }: { candidates: AssignedCandidate[] }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-gray-500">
+        {candidates.length} zugeordnete{candidates.length === 1 ? "r" : ""} Kandidat{candidates.length !== 1 ? "en" : ""}
+      </p>
+
+      {candidates.length === 0 ? (
+        <div className="rounded-xl border bg-white py-12 text-center text-sm text-gray-400" style={{ borderColor: "#dde3ea" }}>
+          Noch keine Kandidaten zugeordnet.
+        </div>
+      ) : (
+        <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#dde3ea" }}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Berufsbild</TableHead>
+                <TableHead>Kampagne</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Zugeordnet seit</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {candidates.map((c) => (
+                <TableRow key={c.assignmentId}>
+                  <TableCell>
+                    <Link
+                      href={`/dashboard/candidates/${c.candidateId}`}
+                      className="font-medium hover:underline"
+                      style={{ color: "#1e56a0" }}
+                    >
+                      {c.firstName} {c.lastName}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-gray-600">{c.berufsbild || "—"}</TableCell>
+                  <TableCell className="text-gray-600">{c.campaignTitle || "—"}</TableCell>
+                  <TableCell>
+                    <span
+                      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                      style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}
+                    >
+                      {ASSIGNMENT_STATUS_LABEL[c.assignmentStatus] ?? c.assignmentStatus}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-gray-500">
+                    {new Date(c.assignedSince).toLocaleDateString("de-DE", {
+                      day: "2-digit", month: "2-digit", year: "numeric",
+                    })}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>
