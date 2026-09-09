@@ -83,17 +83,32 @@ export async function getNewCandidatesTodayCount(
   return count ?? 0
 }
 
+// database.ts kennt "count_distinct_forwarded_candidates" erst, nachdem die Migration
+// (20260909000003_forwarded_count_function.sql) gelaufen ist und scripts/gen-types.mjs
+// neu generiert wurde (Functions: Record<string, never> bis dahin) - deshalb hier ein
+// eng gefasster Cast statt eines pauschalen `any`, der Aufruf selbst bleibt typsicher.
+type SupabaseWithForwardedCountRpc = Supabase & {
+  rpc(
+    fn: "count_distinct_forwarded_candidates",
+    args: { p_client_id: string | null }
+  ): PromiseLike<{ data: number | null; error: { message: string } | null }>
+}
+
 // Anzahl eindeutiger Kandidaten mit mindestens einem client_assignments-Eintrag (egal
 // ob aktiv oder bereits entfernt) - ein Kandidat mit mehreren Zuordnungen zählt nur
 // einmal. clientId filtert direkt auf client_assignments.client_id.
+//
+// Vorher: alle candidate_id-Zeilen laden und mit new Set(...).size in JS zaehlen - reine
+// In-Memory-Zaehlung statt echter SQL-Aggregation (siehe Performance-Review 09.09.2026).
+// PostgREST bietet kein natives COUNT(DISTINCT ...) über den REST-Endpunkt, daher jetzt
+// eine SQL-Funktion (count_distinct_forwarded_candidates) statt einer PostgREST-Query.
 export async function getForwardedCount(supabase: Supabase, clientId?: string): Promise<number> {
-  let query = supabase.from("client_assignments").select("candidate_id")
-  if (clientId) query = query.eq("client_id", clientId)
-
-  const { data, error } = await query
+  const { data, error } = await (supabase as SupabaseWithForwardedCountRpc).rpc(
+    "count_distinct_forwarded_candidates",
+    { p_client_id: clientId ?? null }
+  )
   if (error) throw new Error(error.message)
-
-  return new Set((data ?? []).map((row) => row.candidate_id)).size
+  return data ?? 0
 }
 
 // Anzahl Kandidaten mit einem Status ungleich "neu" (unbearbeiteter Status). clientId
