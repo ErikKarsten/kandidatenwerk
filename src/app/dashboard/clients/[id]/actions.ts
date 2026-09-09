@@ -8,6 +8,31 @@ import { reverseGeocodeCity } from "@/lib/reverse-geocode"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 
+// Server Actions verlassen sich nach dem Security-Review vom 09.09.2026 nicht mehr
+// ausschliesslich auf RLS als einzige Schutzschicht - dieser Check laeuft VOR jedem
+// DB-Zugriff und blockt Portal-Kunden (role "client") explizit. client_contacts und
+// client_files sind reine Staff-Funktionen (Kontaktverwaltung/Dateiablage der
+// Agentur) - im Kunden-Portal gibt es dafuer keine UI, ein Kunde soll hier also
+// grundsaetzlich nie ankommen, unabhaengig davon, ob die RLS-Policy gerade korrekt
+// gescoped ist.
+async function requireStaffUser(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>
+): Promise<{ error: string } | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+  if (profile?.role === "client") return { error: "Nicht berechtigt." }
+
+  return null
+}
+
 export async function updateClientAction(
   clientId: string,
   formData: FormData
@@ -273,6 +298,9 @@ export async function createContactAction(
     return { error: "Name und E-Mail sind Pflichtfelder." }
 
   const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+
   const { error } = await supabase.from("client_contacts").insert({
     client_id: clientId,
     name: data.name.trim(),
@@ -295,6 +323,9 @@ export async function updateContactAction(
     return { error: "Name und E-Mail sind Pflichtfelder." }
 
   const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+
   const { error } = await supabase
     .from("client_contacts")
     .update({
@@ -315,6 +346,9 @@ export async function deleteContactAction(
   clientId: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+
   const { error } = await supabase.from("client_contacts").delete().eq("id", contactId)
 
   if (error) return { error: error.message }
@@ -330,9 +364,8 @@ export async function uploadClientFileAction(
   formData: FormData
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Nicht eingeloggt." }
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const file = formData.get("file") as File | null
   if (!file) return { error: "Keine Datei ausgewählt." }
@@ -369,9 +402,8 @@ export async function deleteClientFileAction(
   clientId: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Nicht eingeloggt." }
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   await supabase.storage.from("client-files").remove([storagePath])
 
