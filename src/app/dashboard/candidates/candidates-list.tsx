@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Search } from "lucide-react"
 import {
@@ -11,30 +12,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
+import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
+import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 
 const STATUS_LABEL = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o.label]))
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
 
-// Tatsächliche Werte aus candidates.source (siehe candidates_source_check-Constraint
-// bzw. Live-Daten-Check). "meta_ads" ist zwar als Constraint-Wert erlaubt, kommt aktuell
-// aber in keinem Datensatz vor - taucht er künftig auf, hier ergänzen.
-const SOURCE_OPTIONS: { value: string; label: string }[] = [
-  { value: "leadtable", label: "Leadtable" },
-  { value: "kanzleistelle24", label: "Kanzleistelle24" },
-  { value: "manual", label: "Manuell" },
-]
+export type CandidatesSortOption = "newest" | "oldest" | "name-asc" | "name-desc"
 
-type SortOption = "newest" | "oldest" | "name-asc" | "name-desc"
-
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+const SORT_OPTIONS: { value: CandidatesSortOption; label: string }[] = [
   { value: "newest", label: "Neueste zuerst" },
   { value: "oldest", label: "Älteste zuerst" },
   { value: "name-asc", label: "Name (A-Z)" },
   { value: "name-desc", label: "Name (Z-A)" },
 ]
+
+const SEARCH_DEBOUNCE_MS = 300
 
 export interface CandidateListItem {
   id: string
@@ -49,83 +44,116 @@ export interface CandidateListItem {
   campaigns: {
     id: string
     title: string
-    clients: { id: string; name: string } | { id: string; name: string }[] | null
-  } | {
-    id: string
-    title: string
-    clients: { id: string; name: string } | { id: string; name: string }[] | null
-  }[] | null
+    clients: { id: string; name: string } | null
+  } | null
 }
 
-export function CandidatesList({ candidates, showArchived = false }: { candidates: CandidateListItem[]; showArchived?: boolean }) {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("alle")
-  const [berufsbildFilter, setBerufsbildFilter] = useState("alle")
-  const [sourceFilter, setSourceFilter] = useState("alle")
-  const [sortBy, setSortBy] = useState<SortOption>("newest")
+interface CandidatesListProps {
+  candidates: CandidateListItem[]
+  showArchived?: boolean
+  trulyEmpty: boolean
+  totalCount: number
+  page: number
+  totalPages: number
+  pageSize: PageSize
+  search: string
+  statusFilter: string
+  berufsbildFilter: string
+  sourceFilter: string
+  sort: CandidatesSortOption
+}
 
-  const filteredCandidates = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
-    const filtered = candidates.filter((c) => {
-      if (statusFilter !== "alle" && c.status !== statusFilter) return false
-      if (berufsbildFilter !== "alle" && c.berufsbild !== berufsbildFilter) return false
-      if (sourceFilter !== "alle" && c.source !== sourceFilter) return false
-      if (query) {
-        const name = `${c.first_name} ${c.last_name}`.toLowerCase()
-        const email = (c.email ?? "").toLowerCase()
-        if (!name.includes(query) && !email.includes(query)) return false
-      }
-      return true
-    })
+// Suche/Filter/Sortierung/Pagination laufen über URL-Suchparameter statt lokalem
+// Client-State (siehe Performance-Review 09.09.2026, Punkt 3 - gleiches Muster wie bei
+// der Kunden-Übersicht). Die Suchbox bleibt bewusst mit einem lokalen State entkoppelt
+// (debounced), damit Tippen nicht bei jedem Zeichen eine Navigation auslöst.
+export function CandidatesList({
+  candidates,
+  showArchived = false,
+  trulyEmpty,
+  totalCount,
+  page,
+  totalPages,
+  pageSize,
+  search,
+  statusFilter,
+  berufsbildFilter,
+  sourceFilter,
+  sort,
+}: CandidatesListProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
 
-    const sorted = [...filtered]
-    sorted.sort((a, b) => {
-      switch (sortBy) {
-        case "name-asc":
-          return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`, "de")
-        case "name-desc":
-          return `${b.first_name} ${b.last_name}`.localeCompare(`${a.first_name} ${a.last_name}`, "de")
-        case "oldest":
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        case "newest":
-        default:
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      }
-    })
-    return sorted
-  }, [candidates, searchQuery, statusFilter, berufsbildFilter, sourceFilter, sortBy])
-
-  const { visible, page, totalPages, pageSize, setPage, handlePageSize } = usePaginatedList(
-    filteredCandidates,
-    "candidates_page_size"
-  )
-
-  function handleSearchChange(value: string) {
-    setSearchQuery(value)
-    setPage(1)
+  // "Zustand waehrend des Renderns anpassen"-Muster statt useEffect (siehe React-Doku)
+  // - synchronisiert searchInput nur bei EXTERNEN Aenderungen von `search` (z.B.
+  // Browser-Zurueck), ohne den fuer setState-in-Effect ueblichen Extra-Render-Zyklus.
+  const [prevSearch, setPrevSearch] = useState(search)
+  const [searchInput, setSearchInput] = useState(search)
+  if (search !== prevSearch) {
+    setPrevSearch(search)
+    setSearchInput(search)
   }
 
+  function updateParams(next: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [key, value] of Object.entries(next)) {
+      if (value === null || value === "") params.delete(key)
+      else params.set(key, value)
+    }
+    const query = params.toString()
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }
+
+  // Erster Seitenaufruf ohne pageSize-Parameter in der URL -> gespeicherte
+  // Präferenz aus localStorage übernehmen (gleiches Verhalten wie vorher über
+  // usePaginatedList/readStoredPageSize, jetzt als URL-Param statt reinem
+  // Client-State).
+  useEffect(() => {
+    if (searchParams.get("pageSize")) return
+    const stored = readStoredPageSize("candidates_page_size")
+    if (stored !== pageSize) {
+      updateParams({ pageSize: String(stored) })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      if (searchInput !== search) {
+        updateParams({ q: searchInput || null, page: null })
+      }
+    }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput])
+
   function handleStatusFilterChange(value: string) {
-    setStatusFilter(value)
-    setPage(1)
+    updateParams({ status: value === "alle" ? null : value, page: null })
   }
 
   function handleBerufsbildFilterChange(value: string) {
-    setBerufsbildFilter(value)
-    setPage(1)
+    updateParams({ berufsbild: value === "alle" ? null : value, page: null })
   }
 
   function handleSourceFilterChange(value: string) {
-    setSourceFilter(value)
-    setPage(1)
+    updateParams({ source: value === "alle" ? null : value, page: null })
   }
 
   function handleSortChange(value: string) {
-    setSortBy(value as SortOption)
-    setPage(1)
+    updateParams({ sort: value === "newest" ? null : value, page: null })
   }
 
-  if (candidates.length === 0) {
+  function handlePageChange(p: number) {
+    updateParams({ page: p === 1 ? null : String(p) })
+  }
+
+  function handlePageSizeChange(size: PageSize) {
+    window.localStorage.setItem("candidates_page_size", String(size))
+    updateParams({ pageSize: size === 10 ? null : String(size), page: null })
+  }
+
+  if (trulyEmpty) {
     return (
       <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#dde3ea" }}>
         <Table>
@@ -162,8 +190,8 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
           />
           <input
             type="text"
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Name oder E-Mail suchen…"
             className="rounded-md border py-1.5 pl-8 pr-3 text-sm focus:outline-none"
             style={{ borderColor: "#dde3ea", minWidth: "220px" }}
@@ -209,7 +237,7 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
           ))}
         </select>
         <select
-          value={sortBy}
+          value={sort}
           onChange={(e) => handleSortChange(e.target.value)}
           className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
           style={{ borderColor: "#dde3ea" }}
@@ -221,11 +249,11 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
           ))}
         </select>
         <span className="text-sm text-gray-500">
-          {filteredCandidates.length} von {candidates.length} Kandidat{candidates.length !== 1 ? "en" : ""}
+          {totalCount} Kandidat{totalCount !== 1 ? "en" : ""}
         </span>
       </div>
 
-      {filteredCandidates.length === 0 ? (
+      {candidates.length === 0 ? (
         <div className="rounded-xl border bg-white py-12 text-center text-sm text-gray-400" style={{ borderColor: "#dde3ea" }}>
           Keine Kandidaten entsprechen den aktuellen Filtern.
         </div>
@@ -245,10 +273,10 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visible.map((c) => {
+                {candidates.map((c) => {
                   const colors = STATUS_COLORS[c.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
-                  const campaign = Array.isArray(c.campaigns) ? c.campaigns[0] : c.campaigns as { id: string; title: string; clients: { id: string; name: string } | null } | null
-                  const client = campaign ? (Array.isArray(campaign.clients) ? campaign.clients[0] : campaign.clients) : null
+                  const campaign = c.campaigns
+                  const client = campaign?.clients ?? null
                   return (
                     <TableRow key={c.id} style={{ borderColor: "#dde3ea" }}>
                       <TableCell className="font-medium">
@@ -303,8 +331,8 @@ export function CandidatesList({ candidates, showArchived = false }: { candidate
             page={page}
             totalPages={totalPages}
             pageSize={pageSize}
-            onPageChange={setPage}
-            onPageSizeChange={handlePageSize}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
           />
         </div>
       )}
