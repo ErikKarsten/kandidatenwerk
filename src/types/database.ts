@@ -356,6 +356,35 @@ export type Database = {
           }
         ]
       }
+      qualified_candidates: {
+        Row: {
+          id: string
+          candidate_id: string
+          added_at: string
+          criteria_reason: string | null
+        }
+        Insert: {
+          id?: string
+          candidate_id: string
+          added_at?: string
+          criteria_reason?: string | null
+        }
+        Update: {
+          id?: string
+          candidate_id?: string
+          added_at?: string
+          criteria_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qualified_candidates_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       candidates: {
         Row: {
           id: string
@@ -377,6 +406,7 @@ export type Database = {
           lng: number | null
           kanzleistelle_application_id: string | null
           leadtable_lead_id: string | null
+          meta_lead_id: string | null
         }
         Insert: {
           id?: string
@@ -398,6 +428,7 @@ export type Database = {
           lng?: number | null
           kanzleistelle_application_id?: string | null
           leadtable_lead_id?: string | null
+          meta_lead_id?: string | null
         }
         Update: {
           id?: string
@@ -419,6 +450,7 @@ export type Database = {
           lng?: number | null
           kanzleistelle_application_id?: string | null
           leadtable_lead_id?: string | null
+          meta_lead_id?: string | null
         }
         Relationships: [
           {
@@ -538,6 +570,51 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      }
+      client_list_stats: {
+        Row: {
+          id: string | null
+          name: string | null
+          contact_name: string | null
+          contact_email: string | null
+          active: boolean | null
+          status: string | null
+          logo_url: string | null
+          created_at: string | null
+          campaign_count: number | null
+          candidate_count: number | null
+          placement_count: number | null
+          pipeline: Json | null
+        }
+        Insert: {
+          id?: string | null
+          name?: string | null
+          contact_name?: string | null
+          contact_email?: string | null
+          active?: boolean | null
+          status?: string | null
+          logo_url?: string | null
+          created_at?: string | null
+          campaign_count?: number | null
+          candidate_count?: number | null
+          placement_count?: number | null
+          pipeline?: Json | null
+        }
+        Update: {
+          id?: string | null
+          name?: string | null
+          contact_name?: string | null
+          contact_email?: string | null
+          active?: boolean | null
+          status?: string | null
+          logo_url?: string | null
+          created_at?: string | null
+          campaign_count?: number | null
+          candidate_count?: number | null
+          placement_count?: number | null
+          pipeline?: Json | null
+        }
+        Relationships: []
       }
       campaign_automations: {
         Row: {
@@ -661,6 +738,72 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "client_files_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      candidate_list_rows: {
+        Row: {
+          id: string | null
+          first_name: string | null
+          last_name: string | null
+          full_name: string | null
+          email: string | null
+          status: string | null
+          berufsbild: string | null
+          source: string | null
+          created_at: string | null
+          custom_fields: Json | null
+          campaign_id: string | null
+          campaign_title: string | null
+          client_id: string | null
+          client_name: string | null
+        }
+        Insert: {
+          id?: string | null
+          first_name?: string | null
+          last_name?: string | null
+          full_name?: string | null
+          email?: string | null
+          status?: string | null
+          berufsbild?: string | null
+          source?: string | null
+          created_at?: string | null
+          custom_fields?: Json | null
+          campaign_id?: string | null
+          campaign_title?: string | null
+          client_id?: string | null
+          client_name?: string | null
+        }
+        Update: {
+          id?: string | null
+          first_name?: string | null
+          last_name?: string | null
+          full_name?: string | null
+          email?: string | null
+          status?: string | null
+          berufsbild?: string | null
+          source?: string | null
+          created_at?: string | null
+          custom_fields?: Json | null
+          campaign_id?: string | null
+          campaign_title?: string | null
+          client_id?: string | null
+          client_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_list_rows_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_list_rows_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"

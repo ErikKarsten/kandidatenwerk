@@ -1,99 +1,42 @@
 "use client"
 
-import { useState, useTransition, useEffect } from "react"
+import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { updateCampaignSettingsAction } from "./actions"
 
-const TEMPLATES: Record<string, { label: string; fields: string[] }> = {
-  steuerfachangestellte: {
-    label: "Steuerfachangestellte (Standard)",
-    fields: [
-      "full_name",
-      "email",
-      "phone_number",
-      "welche_ausbildung_hast_du_absolviert",
-      "wann_können_wir_dich_erreichen",
-      "Startdatum",
-      "Wechselgrund",
-      "Was erwartest du vom neuen AG",
-      "Welchen Bereich machst du am liebsten",
-      "Wie viele AG in den letzten 5 Jahren",
-      "Aktuell in Steuerkanzlei",
-      "Wie groß ist diese",
-      "Welche Branchen werden dort betreut",
-      "Erfahrung mit DATEV",
-      "Alter & Wohnort",
-    ],
-  },
-}
-
-const DEFAULT_FIELDS = TEMPLATES.steuerfachangestellte.fields
-
-function buildInitialFields(saved: string[] | null): string[] {
-  if (Array.isArray(saved) && saved.length > 0) return saved
-  return [...DEFAULT_FIELDS]
-}
-
 interface SettingsTabProps {
   campaignId: string
   metaFormId: string | null
+  // Nicht mehr genutzt seit dem Umstieg auf die KI-gestützte Zusatzfelder-Extraktion
+  // (scripts/meta-leads-sync.ts, wie beim Leadtable-Sync) - Prop bleibt aus
+  // Kompatibilitätsgründen bestehen (campaign-detail.tsx reicht sie weiterhin durch),
+  // wird hier aber nicht mehr angezeigt oder gespeichert.
   metaFieldMapping: string[] | null
   berufsbild: string | null
   plz: string | null
   radiusKm: number | null
 }
 
-export function SettingsTab({ campaignId, metaFormId, metaFieldMapping, berufsbild, plz, radiusKm }: SettingsTabProps) {
+export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm }: SettingsTabProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [localFormId, setLocalFormId] = useState(metaFormId ?? "")
-  const [fields, setFields] = useState<string[]>(() => buildInitialFields(metaFieldMapping))
-  const [newField, setNewField] = useState("")
   const [localBerufsbild, setLocalBerufsbild] = useState(berufsbild ?? "")
   const [localPlz, setLocalPlz] = useState(plz ?? "")
   const [localRadiusKm, setLocalRadiusKm] = useState(String(radiusKm ?? 25))
-
-  // Auto-save default template on first load when no mapping is set yet
-  useEffect(() => {
-    const isEmpty = !Array.isArray(metaFieldMapping) || metaFieldMapping.length === 0
-    if (!isEmpty) return
-    const fd = new FormData()
-    fd.append("meta_form_id", metaFormId ?? "")
-    fd.append("meta_field_mapping_json", JSON.stringify(DEFAULT_FIELDS))
-    fd.append("berufsbild", berufsbild ?? "")
-    fd.append("plz", plz ?? "")
-    fd.append("radius_km", String(radiusKm ?? 25))
-    startTransition(async () => {
-      await updateCampaignSettingsAction(campaignId, fd)
-      router.refresh()
-    })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  function updateField(index: number, value: string) {
-    setFields((prev) => prev.map((f, i) => (i === index ? value : f)))
-  }
-
-  function removeField(index: number) {
-    setFields((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  function addField() {
-    const key = newField.trim()
-    if (!key) return
-    setFields((prev) => [...prev, key])
-    setNewField("")
-  }
 
   function handleSave() {
     setError(null)
     setSaved(false)
     const fd = new FormData()
     fd.append("meta_form_id", localFormId)
-    fd.append("meta_field_mapping_json", JSON.stringify(fields.filter(Boolean)))
+    // Zusatzfelder werden jetzt automatisch per KI aus den Meta-Formular-Antworten
+    // befüllt (siehe scripts/meta-leads-sync.ts) - keine manuelle Feldliste mehr nötig.
+    fd.append("meta_field_mapping_json", "[]")
     fd.append("berufsbild", localBerufsbild)
     fd.append("plz", localPlz)
     fd.append("radius_km", localRadiusKm)
@@ -183,7 +126,11 @@ export function SettingsTab({ campaignId, metaFormId, metaFieldMapping, berufsbi
       {/* Meta Form ID */}
       <section>
         <h3 className="mb-1 text-sm font-semibold text-gray-700">Meta Lead Form</h3>
-        <p className="mb-3 text-xs text-gray-400">ID des Meta-Formulars, aus dem Leads importiert werden</p>
+        <p className="mb-3 text-xs text-gray-400">
+          ID des Meta-Formulars, aus dem Leads importiert werden. Die Formular-Antworten
+          werden automatisch per KI den passenden Kandidaten-Zusatzfeldern zugeordnet -
+          keine manuelle Feldkonfiguration nötig.
+        </p>
         <div className="flex max-w-sm flex-col gap-1.5">
           <label className="text-xs font-medium text-gray-500">Meta Form ID</label>
           <input
@@ -193,92 +140,6 @@ export function SettingsTab({ campaignId, metaFormId, metaFieldMapping, berufsbi
             className="rounded-md border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1"
             style={{ borderColor: "#dde3ea" }}
           />
-        </div>
-      </section>
-
-      <div className="h-px" style={{ backgroundColor: "#dde3ea" }} />
-
-      {/* Field Mapping */}
-      <section>
-        <h3 className="mb-1 text-sm font-semibold text-gray-700">Felder</h3>
-        <p className="mb-3 text-xs text-gray-400">
-          Feldnamen aus dem Meta-Formular. Diese werden 1:1 als Keys in{" "}
-          <span className="font-mono">custom_fields</span> des Kandidaten gespeichert.
-        </p>
-
-        <div className="mb-3 flex items-center gap-2">
-          <label className="text-xs font-medium text-gray-500 shrink-0">Vorlage laden</label>
-          <select
-            defaultValue=""
-            onChange={(e) => {
-              const tpl = TEMPLATES[e.target.value]
-              if (tpl) setFields([...tpl.fields])
-              e.target.value = ""
-            }}
-            className="rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
-            style={{ borderColor: "#dde3ea" }}
-          >
-            <option value="" disabled>Vorlage auswählen…</option>
-            {Object.entries(TEMPLATES).map(([key, tpl]) => (
-              <option key={key} value={key}>{tpl.label}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="overflow-hidden rounded-xl border" style={{ borderColor: "#dde3ea" }}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #dde3ea" }}>
-                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500">Feldname</th>
-                <th className="w-10 px-2 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {fields.map((field, i) => (
-                <tr
-                  key={i}
-                  style={{ borderBottom: i < fields.length - 1 ? "1px solid #dde3ea" : undefined }}
-                >
-                  <td className="px-4 py-2">
-                    <input
-                      value={field}
-                      onChange={(e) => updateField(i, e.target.value)}
-                      placeholder="feldname"
-                      className="w-full rounded border px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1"
-                      style={{ borderColor: "#dde3ea" }}
-                    />
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <button
-                      onClick={() => removeField(i)}
-                      className="rounded px-1.5 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                      title="Feld entfernen"
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="border-t px-4 py-2.5 flex items-center gap-2" style={{ borderColor: "#dde3ea" }}>
-            <input
-              value={newField}
-              onChange={(e) => setNewField(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addField() } }}
-              placeholder="Neues Feld…"
-              className="flex-1 rounded border px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1"
-              style={{ borderColor: "#dde3ea" }}
-            />
-            <button
-              onClick={addField}
-              className="shrink-0 rounded px-2 py-1.5 text-xs font-medium text-white"
-              style={{ backgroundColor: "#4ba3c3" }}
-            >
-              + Hinzufügen
-            </button>
-          </div>
         </div>
       </section>
 

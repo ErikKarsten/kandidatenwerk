@@ -1,6 +1,5 @@
 import Link from "next/link"
 import { Plus } from "lucide-react"
-import type { SupabaseClient } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
@@ -18,22 +17,6 @@ const SORT_COLUMNS: Record<ClientsSortOption, { column: string; ascending: boole
   oldest: { column: "created_at", ascending: true },
   "name-asc": { column: "name", ascending: true },
   "name-desc": { column: "name", ascending: false },
-}
-
-// Row-Form der client_list_stats-View (siehe 20260910000000_client_list_stats_view.sql).
-interface ClientListStatsRow {
-  id: string
-  name: string
-  contact_name: string | null
-  contact_email: string | null
-  active: boolean
-  status: string
-  logo_url: string | null
-  created_at: string
-  campaign_count: number
-  candidate_count: number
-  placement_count: number
-  pipeline: { status: string; count: number }[]
 }
 
 export default async function ClientsPage({
@@ -61,14 +44,7 @@ export default async function ClientsPage({
 
   const supabase = await createSupabaseServerClient()
 
-  // database.ts kennt "client_list_stats" erst, nachdem die Migration
-  // (20260910000000_client_list_stats_view.sql) gelaufen ist und scripts/gen-types.mjs
-  // neu generiert wurde - deshalb hier ein lokal begrenzter Cast statt eines
-  // pauschalen `any` im gesamten Modul. Die Row-Form bleibt über ClientListStatsRow
-  // typsicher (siehe oben), nur der Query-Aufbau selbst ist bis dahin ungetypt.
-  const untypedSupabase = supabase as unknown as SupabaseClient
-
-  let query = untypedSupabase
+  let query = supabase
     .from("client_list_stats")
     .select(
       "id, name, contact_name, contact_email, active, status, logo_url, created_at, campaign_count, candidate_count, placement_count, pipeline",
@@ -87,30 +63,34 @@ export default async function ClientsPage({
   const to = from + pageSize - 1
   query = query.range(from, to)
 
-  const { data, count } = (await query) as { data: ClientListStatsRow[] | null; count: number | null }
+  const { data, count } = await query
 
   // Gleiche VALID_STATUSES-Filterung wie vorher (Archiviert/unbekannte Legacy-Status
   // fliegen aus der Pipeline-Anzeige raus) - nur jetzt auf dem Ergebnis der View statt
   // auf in-memory aggregierten Daten.
   const clientList: ClientListItem[] = (data ?? []).map((client) => {
-    const pipeline: PipelineSegment[] = client.pipeline
+    const pipeline: PipelineSegment[] = (client.pipeline as { status: string; count: number }[])
       .filter((seg) => VALID_STATUSES.has(seg.status))
       .map((seg) => ({ status: seg.status as PipelineSegment["status"], count: seg.count }))
 
     return {
-      id: client.id,
-      name: client.name,
+      // Generierte View-Spalten sind laut database.ts pauschal nullable (PostgREST
+      // gibt fuer Views keine NOT-NULL-Constraints ans OpenAPI-Schema weiter) - diese
+      // Felder sind ueber clients.<spalte> NOT NULL bzw. DEFAULT abgesichert, daher
+      // hier bewusste Fallbacks statt einer echten Null-Behandlung in der UI.
+      id: client.id ?? "",
+      name: client.name ?? "",
       contact_name: client.contact_name,
       contact_email: client.contact_email,
-      active: client.active,
-      status: client.status,
+      active: client.active ?? false,
+      status: client.status ?? "",
       logo_url: client.logo_url,
-      created_at: client.created_at,
+      created_at: client.created_at ?? "",
       tags: [],
       stats: {
-        kandidaten: client.candidate_count,
-        kampagnen: client.campaign_count,
-        platzierungen: client.placement_count,
+        kandidaten: client.candidate_count ?? 0,
+        kampagnen: client.campaign_count ?? 0,
+        platzierungen: client.placement_count ?? 0,
       },
       pipeline,
     }

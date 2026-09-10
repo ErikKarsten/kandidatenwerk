@@ -1,0 +1,26 @@
+name: Qualifizierte-Kandidaten-Abgleich
+
+on:
+  schedule:
+    # Alle 4 Stunden - reine interne Übersicht, keine Zeitkritik wie bei den
+    # Lead-Syncs, daher kein engeres Intervall nötig.
+    - cron: "0 */4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Abhängigkeiten installieren
+        run: npm ci
+      - name: Abgleich ausführen
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: npx tsx scripts/refresh-qualified-candidates.ts

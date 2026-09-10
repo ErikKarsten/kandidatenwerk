@@ -1,6 +1,5 @@
 import Link from "next/link"
 import { Plus } from "lucide-react"
-import type { SupabaseClient } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
@@ -21,24 +20,6 @@ const SORT_COLUMNS: Record<CandidatesSortOption, { column: string; ascending: bo
   oldest: { column: "created_at", ascending: true },
   "name-asc": { column: "full_name", ascending: true },
   "name-desc": { column: "full_name", ascending: false },
-}
-
-// Row-Form der candidate_list_rows-View (siehe 20260910000001_candidate_list_rows_view.sql).
-interface CandidateListRow {
-  id: string
-  first_name: string
-  last_name: string
-  full_name: string
-  email: string | null
-  status: string
-  berufsbild: string | null
-  source: string
-  created_at: string
-  custom_fields: unknown
-  campaign_id: string | null
-  campaign_title: string | null
-  client_id: string | null
-  client_name: string | null
 }
 
 export default async function CandidatesPage({
@@ -70,13 +51,7 @@ export default async function CandidatesPage({
 
   const supabase = await createSupabaseServerClient()
 
-  // database.ts kennt "candidate_list_rows" erst, nachdem die Migration
-  // (20260910000001_candidate_list_rows_view.sql) gelaufen ist und scripts/gen-types.mjs
-  // neu generiert wurde - deshalb hier ein lokal begrenzter Cast statt eines
-  // pauschalen `any` im gesamten Modul (gleiches Muster wie bei client_list_stats).
-  const untypedSupabase = supabase as unknown as SupabaseClient
-
-  let query = untypedSupabase
+  let query = supabase
     .from("candidate_list_rows")
     .select(
       "id, first_name, last_name, email, status, berufsbild, source, created_at, custom_fields, campaign_id, campaign_title, client_id, client_name",
@@ -112,17 +87,21 @@ export default async function CandidatesPage({
   const to = from + pageSize - 1
   query = query.range(from, to)
 
-  const { data, count } = (await query) as { data: CandidateListRow[] | null; count: number | null }
+  const { data, count } = await query
 
+  // Generierte View-Spalten sind laut database.ts pauschal nullable (PostgREST gibt
+  // fuer Views keine NOT-NULL-Constraints ans OpenAPI-Schema weiter) - diese Felder
+  // sind ueber candidates.<spalte> NOT NULL bzw. DEFAULT abgesichert, daher hier
+  // bewusste Fallbacks statt einer echten Null-Behandlung in der UI.
   const candidateList: CandidateListItem[] = (data ?? []).map((c) => ({
-    id: c.id,
-    first_name: c.first_name,
-    last_name: c.last_name,
+    id: c.id ?? "",
+    first_name: c.first_name ?? "",
+    last_name: c.last_name ?? "",
     email: c.email,
-    status: c.status,
+    status: c.status ?? "",
     berufsbild: c.berufsbild,
-    source: c.source,
-    created_at: c.created_at,
+    source: c.source ?? "",
+    created_at: c.created_at ?? "",
     custom_fields: (c.custom_fields as Record<string, string> | null) ?? null,
     campaigns: c.campaign_id
       ? {

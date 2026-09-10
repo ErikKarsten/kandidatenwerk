@@ -14,11 +14,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { count: matchesCount },
     { count: candidatesCount },
     { count: clientsCount },
+    { count: qualifiedCount },
     { data: { user } },
   ] = await Promise.all([
     supabase.from("candidate_campaign_matches").select("id", { count: "exact", head: true }),
     supabase.from("candidates").select("id", { count: "exact", head: true }),
     supabase.from("clients").select("id", { count: "exact", head: true }),
+    supabase.from("qualified_candidates").select("id", { count: "exact", head: true }),
     supabase.auth.getUser(),
   ])
 
@@ -37,6 +39,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         candidatesCount={candidatesCount ?? 0}
         clientsCount={clientsCount ?? 0}
         myOpenTasksCount={myOpenTasksCount ?? 0}
+        qualifiedCount={qualifiedCount ?? 0}
       />
       <main className="flex-1 overflow-y-auto">{children}</main>
     </div>
