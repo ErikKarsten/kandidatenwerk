@@ -1,78 +1,101 @@
 import Link from "next/link"
 import { Plus } from "lucide-react"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { type PipelineSegment } from "@/components/dashboard/client-card"
-import { ClientsList } from "./clients-list"
+import type { PageSize } from "@/components/ui/pagination-bar"
+import { ClientsList, type ClientListItem, type ClientsSortOption, type ClientsStatusFilter } from "./clients-list"
 
 const ARCHIVED_STATUS = "Archiviert"
 const VALID_STATUSES: Set<string> = new Set(CANDIDATE_STATUS_OPTIONS.map((o) => o.value))
+const PAGE_SIZES: readonly PageSize[] = [10, 20, 50]
+const DEFAULT_PAGE_SIZE: PageSize = 10
+
+const SORT_COLUMNS: Record<ClientsSortOption, { column: string; ascending: boolean }> = {
+  newest: { column: "created_at", ascending: false },
+  oldest: { column: "created_at", ascending: true },
+  "name-asc": { column: "name", ascending: true },
+  "name-desc": { column: "name", ascending: false },
+}
+
+// Row-Form der client_list_stats-View (siehe 20260910000000_client_list_stats_view.sql).
+interface ClientListStatsRow {
+  id: string
+  name: string
+  contact_name: string | null
+  contact_email: string | null
+  active: boolean
+  status: string
+  logo_url: string | null
+  created_at: string
+  campaign_count: number
+  candidate_count: number
+  placement_count: number
+  pipeline: { status: string; count: number }[]
+}
 
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show_archived?: string }>
+  searchParams: Promise<{
+    show_archived?: string
+    q?: string
+    status?: string
+    sort?: string
+    page?: string
+    pageSize?: string
+  }>
 }) {
-  const { show_archived } = await searchParams
-  const showArchived = show_archived === "1"
+  const sp = await searchParams
+  const showArchived = sp.show_archived === "1"
+  const search = (sp.q ?? "").trim()
+  const statusFilter: ClientsStatusFilter =
+    sp.status === "aktiv" || sp.status === "inaktiv" ? sp.status : "alle"
+  const sort: ClientsSortOption = sp.sort && sp.sort in SORT_COLUMNS ? (sp.sort as ClientsSortOption) : "newest"
+  const pageSize: PageSize = PAGE_SIZES.includes(Number(sp.pageSize) as PageSize)
+    ? (Number(sp.pageSize) as PageSize)
+    : DEFAULT_PAGE_SIZE
+  const page = Math.max(1, Number(sp.page) || 1)
 
   const supabase = await createSupabaseServerClient()
 
-  let clientsQuery = supabase
-    .from("clients")
-    .select("id, name, contact_name, contact_email, active, status, logo_url, created_at")
-    .order("created_at", { ascending: false })
+  // database.ts kennt "client_list_stats" erst, nachdem die Migration
+  // (20260910000000_client_list_stats_view.sql) gelaufen ist und scripts/gen-types.mjs
+  // neu generiert wurde - deshalb hier ein lokal begrenzter Cast statt eines
+  // pauschalen `any` im gesamten Modul. Die Row-Form bleibt über ClientListStatsRow
+  // typsicher (siehe oben), nur der Query-Aufbau selbst ist bis dahin ungetypt.
+  const untypedSupabase = supabase as unknown as SupabaseClient
 
-  clientsQuery = showArchived
-    ? clientsQuery.eq("status", ARCHIVED_STATUS)
-    : clientsQuery.neq("status", ARCHIVED_STATUS)
+  let query = untypedSupabase
+    .from("client_list_stats")
+    .select(
+      "id, name, contact_name, contact_email, active, status, logo_url, created_at, campaign_count, candidate_count, placement_count, pipeline",
+      { count: "exact" }
+    )
 
-  // Kampagnen/Kandidaten werden bewusst komplett geladen statt pro Kunde gefiltert
-  // abgefragt (gleiches Muster wie vormals in dashboard/page.tsx) - die drei
-  // Kennzahlen (Kandidaten/Kampagnen/Platzierungen) pro Kunde werden anschließend
-  // in-memory über campaign_id -> client_id aggregiert, da candidates keine direkte
-  // client_id-Verknüpfung über die Kampagne hinaus hat.
-  const [{ data: clients }, { data: campaigns }, { data: candidates }] = await Promise.all([
-    clientsQuery,
-    supabase.from("campaigns").select("id, client_id"),
-    supabase.from("candidates").select("campaign_id, status"),
-  ])
+  query = showArchived ? query.eq("status", ARCHIVED_STATUS) : query.neq("status", ARCHIVED_STATUS)
+  if (statusFilter === "aktiv") query = query.eq("active", true)
+  if (statusFilter === "inaktiv") query = query.eq("active", false)
+  if (search) query = query.ilike("name", `%${search}%`)
 
-  // campaign_id -> client_id lookup
-  const campaignToClient = new Map<string, string>()
-  for (const c of campaigns ?? []) {
-    campaignToClient.set(c.id, c.client_id)
-  }
+  const { column, ascending } = SORT_COLUMNS[sort]
+  query = query.order(column, { ascending })
 
-  // client_id -> campaign ids
-  const clientCampaigns = new Map<string, Set<string>>()
-  // client_id -> { status -> count }
-  const clientStatusCounts = new Map<string, Record<string, number>>()
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+  query = query.range(from, to)
 
-  for (const c of clients ?? []) {
-    clientCampaigns.set(c.id, new Set())
-    clientStatusCounts.set(c.id, {})
-  }
+  const { data, count } = (await query) as { data: ClientListStatsRow[] | null; count: number | null }
 
-  for (const camp of campaigns ?? []) {
-    clientCampaigns.get(camp.client_id)?.add(camp.id)
-  }
-
-  for (const cand of candidates ?? []) {
-    const clientId = cand.campaign_id ? campaignToClient.get(cand.campaign_id) : undefined
-    if (!clientId) continue
-    const statuses = clientStatusCounts.get(clientId)
-    if (!statuses) continue
-    statuses[cand.status] = (statuses[cand.status] ?? 0) + 1
-  }
-
-  const clientList = (clients ?? []).map((client) => {
-    const statuses = clientStatusCounts.get(client.id) ?? {}
-    const totalCandidates = Object.values(statuses).reduce((s, v) => s + v, 0)
-    const pipeline: PipelineSegment[] = Object.entries(statuses)
-      .filter(([s]) => VALID_STATUSES.has(s))
-      .map(([status, count]) => ({ status: status as PipelineSegment["status"], count }))
+  // Gleiche VALID_STATUSES-Filterung wie vorher (Archiviert/unbekannte Legacy-Status
+  // fliegen aus der Pipeline-Anzeige raus) - nur jetzt auf dem Ergebnis der View statt
+  // auf in-memory aggregierten Daten.
+  const clientList: ClientListItem[] = (data ?? []).map((client) => {
+    const pipeline: PipelineSegment[] = client.pipeline
+      .filter((seg) => VALID_STATUSES.has(seg.status))
+      .map((seg) => ({ status: seg.status as PipelineSegment["status"], count: seg.count }))
 
     return {
       id: client.id,
@@ -83,22 +106,30 @@ export default async function ClientsPage({
       status: client.status,
       logo_url: client.logo_url,
       created_at: client.created_at,
-      tags: [] as string[],
+      tags: [],
       stats: {
-        kandidaten: totalCandidates,
-        kampagnen: clientCampaigns.get(client.id)?.size ?? 0,
-        platzierungen: statuses["platziert"] ?? 0,
+        kandidaten: client.candidate_count,
+        kampagnen: client.campaign_count,
+        platzierungen: client.placement_count,
       },
       pipeline,
     }
   })
+
+  const totalCount = count ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+
+  // "Noch keine Kunden angelegt" nur im echten Leerfall (keine Filter aktiv) zeigen -
+  // eine Such-/Filterkombination ohne Treffer bekommt stattdessen die
+  // "Keine Kunden entsprechen den aktuellen Filtern"-Meldung in ClientsList.
+  const trulyEmpty = totalCount === 0 && !search && statusFilter === "alle" && !showArchived
 
   return (
     <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Kunden</h1>
-          <p className="mt-1 text-sm text-gray-500">{clientList.length} Einträge</p>
+          <p className="mt-1 text-sm text-gray-500">{totalCount} Einträge</p>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -122,7 +153,7 @@ export default async function ClientsPage({
         </div>
       </div>
 
-      {clientList.length === 0 ? (
+      {trulyEmpty ? (
         <div
           className="rounded-xl border bg-white py-16 text-center text-sm text-gray-400"
           style={{ borderColor: "#dde3ea" }}
@@ -139,7 +170,16 @@ export default async function ClientsPage({
           )}
         </div>
       ) : (
-        <ClientsList clients={clientList} />
+        <ClientsList
+          clients={clientList}
+          totalCount={totalCount}
+          page={page}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          search={search}
+          statusFilter={statusFilter}
+          sort={sort}
+        />
       )}
     </div>
   )

@@ -1,19 +1,23 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Search } from "lucide-react"
-import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
+import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import { ClientCard, type ClientCardProps } from "@/components/dashboard/client-card"
 
-type SortOption = "newest" | "oldest" | "name-asc" | "name-desc"
+export type ClientsSortOption = "newest" | "oldest" | "name-asc" | "name-desc"
+export type ClientsStatusFilter = "alle" | "aktiv" | "inaktiv"
 
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+const SORT_OPTIONS: { value: ClientsSortOption; label: string }[] = [
   { value: "newest", label: "Neueste zuerst" },
   { value: "oldest", label: "Älteste zuerst" },
   { value: "name-asc", label: "Name (A-Z)" },
   { value: "name-desc", label: "Name (Z-A)" },
 ]
+
+const SEARCH_DEBOUNCE_MS = 300
 
 // ClientCardProps liefert bereits id/name/active/tags/stats/pipeline - created_at wird
 // zusätzlich fürs Sortieren gebraucht, contact_name/contact_email/logo_url/status
@@ -27,55 +31,95 @@ export interface ClientListItem extends ClientCardProps {
   status: string
 }
 
-export function ClientsList({ clients }: { clients: ClientListItem[] }) {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("alle")
-  const [sortBy, setSortBy] = useState<SortOption>("newest")
+interface ClientsListProps {
+  clients: ClientListItem[]
+  totalCount: number
+  page: number
+  totalPages: number
+  pageSize: PageSize
+  search: string
+  statusFilter: ClientsStatusFilter
+  sort: ClientsSortOption
+}
 
-  const filteredClients = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
-    const filtered = clients.filter((c) => {
-      if (statusFilter === "aktiv" && !c.active) return false
-      if (statusFilter === "inaktiv" && c.active) return false
-      if (query && !c.name.toLowerCase().includes(query)) return false
-      return true
-    })
+// Suche/Filter/Sortierung/Pagination laufen jetzt über URL-Suchparameter statt über
+// lokalen Client-State (siehe Performance-Review 09.09.2026, Punkt 2/4) - jede
+// Änderung löst eine neue Anfrage an den Server aus (echtes serverseitiges Pagination
+// statt eines bereits komplett geladenen Arrays, das hier nur noch geslict wurde).
+// Die Suchbox bleibt bewusst mit einem lokalen State entkoppelt (debounced), damit
+// Tippen nicht bei jedem Zeichen eine Navigation auslöst.
+export function ClientsList({
+  clients,
+  totalCount,
+  page,
+  totalPages,
+  pageSize,
+  search,
+  statusFilter,
+  sort,
+}: ClientsListProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
 
-    const sorted = [...filtered]
-    sorted.sort((a, b) => {
-      switch (sortBy) {
-        case "name-asc":
-          return a.name.localeCompare(b.name, "de")
-        case "name-desc":
-          return b.name.localeCompare(a.name, "de")
-        case "oldest":
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        case "newest":
-        default:
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      }
-    })
-    return sorted
-  }, [clients, searchQuery, statusFilter, sortBy])
-
-  const { visible, page, totalPages, pageSize, setPage, handlePageSize } = usePaginatedList(
-    filteredClients,
-    "clients_page_size"
-  )
-
-  function handleSearchChange(value: string) {
-    setSearchQuery(value)
-    setPage(1)
+  // "Zustand waehrend des Renderns anpassen"-Muster statt useEffect (siehe React-Doku)
+  // - synchronisiert searchInput nur bei EXTERNEN Aenderungen von `search` (z.B.
+  // Browser-Zurueck), ohne den fuer setState-in-Effect ueblichen Extra-Render-Zyklus.
+  const [prevSearch, setPrevSearch] = useState(search)
+  const [searchInput, setSearchInput] = useState(search)
+  if (search !== prevSearch) {
+    setPrevSearch(search)
+    setSearchInput(search)
   }
 
+  function updateParams(next: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [key, value] of Object.entries(next)) {
+      if (value === null || value === "") params.delete(key)
+      else params.set(key, value)
+    }
+    const query = params.toString()
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }
+
+  // Erster Seitenaufruf ohne pageSize-Parameter in der URL -> gespeicherte
+  // Präferenz aus localStorage übernehmen (gleiches Verhalten wie vorher über
+  // usePaginatedList/readStoredPageSize, jetzt als URL-Param statt reinem
+  // Client-State, damit die Server-Query die richtige Seitengröße kennt).
+  useEffect(() => {
+    if (searchParams.get("pageSize")) return
+    const stored = readStoredPageSize("clients_page_size")
+    if (stored !== pageSize) {
+      updateParams({ pageSize: String(stored) })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      if (searchInput !== search) {
+        updateParams({ q: searchInput || null, page: null })
+      }
+    }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput])
+
   function handleStatusFilterChange(value: string) {
-    setStatusFilter(value)
-    setPage(1)
+    updateParams({ status: value === "alle" ? null : value, page: null })
   }
 
   function handleSortChange(value: string) {
-    setSortBy(value as SortOption)
-    setPage(1)
+    updateParams({ sort: value === "newest" ? null : value, page: null })
+  }
+
+  function handlePageChange(p: number) {
+    updateParams({ page: p === 1 ? null : String(p) })
+  }
+
+  function handlePageSizeChange(size: PageSize) {
+    window.localStorage.setItem("clients_page_size", String(size))
+    updateParams({ pageSize: size === 10 ? null : String(size), page: null })
   }
 
   return (
@@ -88,8 +132,8 @@ export function ClientsList({ clients }: { clients: ClientListItem[] }) {
           />
           <input
             type="text"
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Name suchen…"
             className="rounded-md border py-1.5 pl-8 pr-3 text-sm focus:outline-none"
             style={{ borderColor: "#dde3ea", minWidth: "220px" }}
@@ -106,7 +150,7 @@ export function ClientsList({ clients }: { clients: ClientListItem[] }) {
           <option value="inaktiv">Inaktiv</option>
         </select>
         <select
-          value={sortBy}
+          value={sort}
           onChange={(e) => handleSortChange(e.target.value)}
           className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
           style={{ borderColor: "#dde3ea" }}
@@ -118,18 +162,18 @@ export function ClientsList({ clients }: { clients: ClientListItem[] }) {
           ))}
         </select>
         <span className="text-sm text-gray-500">
-          {filteredClients.length} von {clients.length} Kunde{clients.length !== 1 ? "n" : ""}
+          {totalCount} Kunde{totalCount !== 1 ? "n" : ""}
         </span>
       </div>
 
-      {filteredClients.length === 0 ? (
+      {clients.length === 0 ? (
         <div className="rounded-xl border bg-white py-12 text-center text-sm text-gray-400" style={{ borderColor: "#dde3ea" }}>
           Keine Kunden entsprechen den aktuellen Filtern.
         </div>
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {visible.map((client) => (
+            {clients.map((client) => (
               <Link
                 key={client.id}
                 href={`/dashboard/clients/${client.id}`}
@@ -144,8 +188,8 @@ export function ClientsList({ clients }: { clients: ClientListItem[] }) {
             page={page}
             totalPages={totalPages}
             pageSize={pageSize}
-            onPageChange={setPage}
-            onPageSizeChange={handlePageSize}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
           />
         </>
       )}
