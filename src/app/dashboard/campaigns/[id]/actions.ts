@@ -10,7 +10,7 @@ import { fetchAllCampaigns } from "@/lib/leadtable-import-customers"
 import { importLeadtableCampaign } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { publishCampaignToKanzleistelle } from "@/lib/sync-kanzleistelle-jobs"
-import { fetchMetaPages, fetchMetaLeadForms, type MetaPage, type MetaLeadForm } from "@/lib/meta-ads-client"
+import { fetchMetaPages, fetchMetaLeadForms, createMetaTestLead, type MetaPage, type MetaLeadForm } from "@/lib/meta-ads-client"
 import type { TablesUpdate } from "@/types/database"
 
 // Siehe src/app/dashboard/candidates/page.tsx / clients-list.tsx / campaigns-list.tsx -
@@ -330,6 +330,31 @@ export async function listMetaLeadFormsAction(
     }
     const forms = await fetchMetaLeadForms(pageId, page.access_token)
     return { success: true, forms }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+// Fordert einen Test-Lead bei Meta an (siehe createMetaTestLead-Kommentar) - wird direkt
+// aus dem Seite-/Formular-Auswähler in settings-tab.tsx aufgerufen, solange Seite und
+// Formular dort noch als Auswahl im Browser-State vorliegen (deshalb pageId als
+// Parameter statt erneut aus allen Seiten herzuleiten).
+export async function requestMetaTestLeadAction(
+  pageId: string,
+  formId: string
+): Promise<{ success: true; leadId: string } | { success: false; error: string }> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return { success: false, error: staffError.error }
+
+  try {
+    const pages = await fetchMetaPages()
+    const page = pages.find((p) => p.id === pageId)
+    if (!page?.access_token) {
+      return { success: false, error: "Kein Zugriffstoken für diese Seite gefunden." }
+    }
+    const result = await createMetaTestLead(formId, page.access_token)
+    return { success: true, leadId: result.id }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) }
   }

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
-import { updateCampaignSettingsAction, listMetaPagesAction, listMetaLeadFormsAction } from "./actions"
+import { updateCampaignSettingsAction, listMetaPagesAction, listMetaLeadFormsAction, requestMetaTestLeadAction } from "./actions"
 import type { MetaPage, MetaLeadForm } from "@/lib/meta-ads-client"
 
 interface SettingsTabProps {
@@ -46,6 +46,11 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm 
   const [forms, setForms] = useState<MetaLeadForm[] | null>(null)
   const [formsPending, startFormsTransition] = useTransition()
   const [formsError, setFormsError] = useState<string | null>(null)
+  // Testlead-Button steht nur zur Verfügung, solange die Seiten-ID aus dieser
+  // Browser-Session bekannt ist (frisch über den Auswähler gewählt) - bei einem
+  // schon vorher gespeicherten Formular fehlt sie, siehe requestMetaTestLeadAction.
+  const [testLeadPending, startTestLeadTransition] = useTransition()
+  const [testLeadMessage, setTestLeadMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   function openPicker() {
     setPickerOpen(true)
@@ -76,6 +81,23 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm 
     setLocalFormId(form.id)
     setSelectedFormLabel(form.name)
     setPickerOpen(false)
+    setTestLeadMessage(null)
+  }
+
+  function handleRequestTestLead() {
+    if (!selectedPageId || !localFormId) return
+    setTestLeadMessage(null)
+    startTestLeadTransition(async () => {
+      const result = await requestMetaTestLeadAction(selectedPageId, localFormId)
+      if (result.success) {
+        setTestLeadMessage({
+          type: "success",
+          text: `Testlead angefordert (${result.leadId}). Kann jetzt per Sync-Skript abgerufen werden.`,
+        })
+      } else {
+        setTestLeadMessage({ type: "error", text: result.error })
+      }
+    })
   }
 
   function handleSave() {
@@ -208,7 +230,31 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm 
               >
                 ID manuell eingeben
               </button>
+              {selectedPageId && localFormId && (
+                <button
+                  type="button"
+                  onClick={handleRequestTestLead}
+                  disabled={testLeadPending}
+                  className="w-fit text-xs font-medium hover:underline disabled:opacity-50"
+                  style={{ color: "#1e56a0" }}
+                >
+                  {testLeadPending ? "Wird angefordert…" : "Testlead anfordern"}
+                </button>
+              )}
             </div>
+            {!selectedPageId && localFormId && (
+              <p className="text-xs text-gray-400">
+                Um einen Testlead anzufordern, Formular einmal über &quot;Formular ändern&quot; neu auswählen.
+              </p>
+            )}
+            {testLeadMessage && (
+              <p
+                className="text-xs"
+                style={{ color: testLeadMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
+              >
+                {testLeadMessage.text}
+              </p>
+            )}
           </div>
         )}
 

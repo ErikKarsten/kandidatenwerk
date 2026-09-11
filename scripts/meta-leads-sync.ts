@@ -26,11 +26,9 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import dotenv from "dotenv"
 import { createClient } from "@supabase/supabase-js"
-import type { Database, Json } from "../src/types/database"
-import { fetchMetaLeadsForForm, extractMetaContactFields, buildFormToPageAccessTokenMap, type MetaLead } from "../src/lib/meta-ads-client"
-import { extractCustomFieldsFromDescriptionAI } from "../src/lib/leadtable-sync-shared"
-import { extractCleanName } from "../src/lib/leadtable-import"
-import { mapKanzleistelleBerufsbild } from "../src/lib/sync-kanzleistelle"
+import type { Database } from "../src/types/database"
+import { fetchMetaLeadsForForm, buildFormToPageAccessTokenMap, type MetaLead } from "../src/lib/meta-ads-client"
+import { processMetaLead } from "../src/lib/meta-leads-sync-shared"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -38,7 +36,6 @@ dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
 type SupabaseClient = ReturnType<typeof createClient<Database>>
 
 const ARCHIVED_STATUS = "Archiviert"
-const FALLBACK_CANDIDATE_STATUS = "neu"
 const DELAY_MS = 250
 
 function sleep(ms: number): Promise<void> {
@@ -85,81 +82,20 @@ async function loadCampaigns(supabase: SupabaseClient, campaignId: string | null
   return (data ?? []).filter((c) => c.status !== ARCHIVED_STATUS)
 }
 
+// Ruft die gemeinsame Verarbeitungslogik (siehe meta-leads-sync-shared.ts, auch vom
+// Echtzeit-Webhook genutzt) auf und zählt das Ergebnis in die Lauf-Zusammenfassung ein.
 async function processLead(
   supabase: SupabaseClient,
   campaign: CampaignRow,
   lead: MetaLead,
   result: SyncResult
 ): Promise<void> {
-  // 1. Bereits per meta_lead_id bekannt (z.B. wiederholter Lauf) -> überspringen.
-  const { data: existingByMetaId, error: metaIdLookupError } = await supabase
-    .from("candidates")
-    .select("id")
-    .eq("meta_lead_id", lead.id)
-    .maybeSingle()
-  if (metaIdLookupError) throw new Error(metaIdLookupError.message)
-  if (existingByMetaId) return
-
-  const { name, email, phone, record } = extractMetaContactFields(lead.field_data)
-
-  if (!email) {
-    result.skippedNoEmail++
-    return
-  }
-
-  // 2. Per E-Mail bekannt (z.B. schon von Leadtable importiert) -> keinen zweiten
-  // Kandidaten anlegen, sondern nur die meta_lead_id nachtragen, damit künftige Läufe
-  // diesen Lead direkt per ID erkennen statt jedes Mal erneut per E-Mail zu suchen.
-  const { data: existingByEmail, error: emailLookupError } = await supabase
-    .from("candidates")
-    .select("id, meta_lead_id")
-    .eq("email", email)
-    .maybeSingle()
-  if (emailLookupError) throw new Error(emailLookupError.message)
-
-  if (existingByEmail) {
-    if (!existingByEmail.meta_lead_id) {
-      const { error: linkError } = await supabase
-        .from("candidates")
-        .update({ meta_lead_id: lead.id })
-        .eq("id", existingByEmail.id)
-      if (linkError) throw new Error(linkError.message)
-    }
-    result.linkedExisting++
-    return
-  }
-
-  // 3. Neuer Kandidat: Name bereinigen (gleiche Heuristik wie beim Leadtable-Import),
-  // Berufsbild aus dem Kampagnentitel ableiten, Zusatzfelder per KI aus den rohen
-  // Meta-Formular-Antworten befüllen (record dient hier als modifiedData-Ersatz).
-  const { firstName, lastName, usedLongNameHeuristic } = extractCleanName(name ?? "")
-  const berufsbild = mapKanzleistelleBerufsbild(campaign.title)
-
-  const aiResult = await extractCustomFieldsFromDescriptionAI(null, record, {})
-  if (aiResult.error) {
-    console.warn(`  [KI-Warnung] Lead ${lead.id}: ${aiResult.error}`)
-  }
-
-  const notePrefix = usedLongNameHeuristic ? "[Automatisch bereinigter Name, bitte prüfen] " : ""
-
-  const { error: insertError } = await supabase.from("candidates").insert({
-    first_name: firstName,
-    last_name: lastName,
-    email,
-    phone: phone ?? null,
-    berufsbild,
-    plz: null,
-    status: FALLBACK_CANDIDATE_STATUS,
-    source: "meta",
-    campaign_id: campaign.id,
-    client_id: campaign.client_id,
-    meta_lead_id: lead.id,
-    custom_fields: aiResult.fields as Json,
-    notes: `${notePrefix}Import direkt aus Meta, Kampagne "${campaign.title}"`,
-  })
-  if (insertError) throw new Error(insertError.message)
-
-  result.created++
+  const outcome = await processMetaLead(supabase, campaign, lead)
+  if (outcome.status === "created") result.created++
+  else if (outcome.status === "linked_existing") result.linkedExisting++
+  else if (outcome.status === "skipped_no_email") result.skippedNoEmail++
+  // "already_known" (per meta_lead_id) zählt bewusst nicht extra mit - entspricht dem
+  // bisherigen stillen "return" für diesen Fall.
 }
 
 async function main() {

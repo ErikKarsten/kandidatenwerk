@@ -32,6 +32,30 @@ export async function metaGraphFetch<T>(
   return response.json()
 }
 
+// POST-Variante von metaGraphFetch (z.B. für test_leads) - Meta akzeptiert Parameter
+// bei POST-Aufrufen sowohl im Body als auch im Query-String; hier einheitlich im
+// Query-String wie bei metaGraphFetch, um denselben Aufbau/dieselbe Fehlerbehandlung zu
+// teilen, statt einen zweiten URL-Konstruktionspfad zu pflegen.
+async function metaGraphPost<T>(
+  path: string,
+  params: Record<string, string | number> | undefined,
+  accessToken: string
+): Promise<T> {
+  const url = new URL(`${GRAPH_BASE_URL}${path}`)
+  for (const [key, value] of Object.entries(params ?? {})) {
+    url.searchParams.set(key, String(value))
+  }
+  url.searchParams.set("access_token", accessToken)
+
+  const response = await fetch(url, { method: "POST" })
+
+  if (!response.ok) {
+    throw new Error(`Meta-Graph-API-Fehler (${response.status}) bei ${path}: ${await response.text()}`)
+  }
+
+  return response.json()
+}
+
 export interface MetaPage {
   id: string
   name: string
@@ -186,4 +210,36 @@ export function extractMetaContactFields(fieldData: MetaLeadFieldData[]): {
     phone: firstMatchingValue(record, PHONE_KEYS),
     record,
   }
+}
+
+// Fordert bei Meta einen Test-Lead für ein Formular an (Platzhalter-Antworten, kein
+// echtes Anzeigenbudget nötig) - Pendant zum "Test Form"-Button im Ads Manager bzw. zum
+// offiziellen Lead-Ads-Testing-Tool (developers.facebook.com/tools/lead-ads-testing),
+// hier direkt aus der Kampagnen-Einrichtung nutzbar. Braucht den Page-Access-Token
+// derselben Seite wie leadgen_forms/leads (siehe metaGraphFetch-Kommentar). Meta erlaubt
+// laut Doku nur einen offenen Test-Lead pro Formular gleichzeitig - ein erneuter Aufruf
+// wirft dann einen Graph-API-Fehler, den der Aufrufer (requestMetaTestLeadAction) einfach
+// durchreicht, statt hier schon eine Sonderbehandlung zu bauen (noch nicht live
+// verifiziert, siehe PR-Beschreibung/Commit).
+export async function createMetaTestLead(formId: string, pageAccessToken: string): Promise<{ id: string }> {
+  return metaGraphPost<{ id: string }>(`/${formId}/test_leads`, undefined, pageAccessToken)
+}
+
+// Holt EINEN einzelnen Lead per ID - genutzt vom Echtzeit-Webhook (siehe
+// src/app/api/webhooks/meta-leadgen/route.ts), der von Meta nur die leadgen_id
+// zugeschickt bekommt (keine Formular-Antworten) und die vollen Daten separat
+// nachladen muss. fetchMetaLeadsForForm (Liste + Pagination) wäre hier überdimensioniert
+// für einen einzelnen bekannten Lead.
+export async function fetchMetaLead(leadgenId: string, pageAccessToken: string): Promise<MetaLead> {
+  return metaGraphFetch<MetaLead>(`/${leadgenId}`, { fields: "id,created_time,field_data" }, pageAccessToken)
+}
+
+// Abonniert eine Seite für Leadgen-Webhooks (damit Meta uns aktiv benachrichtigt, sobald
+// ein neuer Lead reinkommt, statt dass wir per Cron alle 30 Min. nachfragen müssen) -
+// setzt voraus, dass die Facebook-App bereits im Meta-App-Dashboard für das Webhook-Feld
+// "leadgen" konfiguriert ist (einmaliger manueller Schritt, nicht per API möglich). Wird
+// von scripts/meta-subscribe-pages-to-webhook.ts einmalig für alle Seiten aufgerufen,
+// statt das für jede der aktuell 54 Seiten einzeln im Business Manager anzuklicken.
+export async function subscribePageToLeadgenWebhook(pageId: string, pageAccessToken: string): Promise<void> {
+  await metaGraphPost(`/${pageId}/subscribed_apps`, { subscribed_fields: "leadgen" }, pageAccessToken)
 }
