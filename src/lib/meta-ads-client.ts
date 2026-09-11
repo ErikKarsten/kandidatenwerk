@@ -5,6 +5,18 @@
 const GRAPH_API_VERSION = process.env.META_GRAPH_API_VERSION || "v25.0"
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`
 
+// Ersetzt alles, was wie ein Meta-Access-Token aussieht (beginnt praktisch immer mit
+// "EAA", danach lang alphanumerisch), durch [REDACTED] - NICHT verlassen auf "Meta gibt
+// den Token in Fehlern nie zurück": bei einem fehlerhaften/abgelaufenen Token echot Meta
+// ihn im Fehlertext selbst zurück (z.B. "Malformed access token EAA...") - ohne diese
+// Funktion würde der volle Token in der an den Browser zurückgegebenen Fehlermeldung
+// landen (siehe listMetaPagesAction u.a. in campaigns/[id]/actions.ts, die err.message
+// direkt an den Client durchreichen). Wird auf JEDEN Fehlertext von metaGraphFetch/
+// metaGraphPost angewendet, bevor er geworfen (und damit potenziell angezeigt) wird.
+function redactAccessTokens(text: string): string {
+  return text.replace(/EAA[A-Za-z0-9]{15,}/g, "[REDACTED]")
+}
+
 export async function metaGraphFetch<T>(
   path: string,
   params?: Record<string, string | number>,
@@ -23,10 +35,10 @@ export async function metaGraphFetch<T>(
   const response = await fetch(url)
 
   if (!response.ok) {
-    // Access Token nie in Fehlermeldungen/Logs landen lassen - Query-String der Antwort
-    // enthält ihn nicht (Meta gibt ihn nicht zurück), aber sicherheitshalber wird hier
-    // nur response.text() (Fehlerbody von Meta) geloggt, nie die volle url.
-    throw new Error(`Meta-Graph-API-Fehler (${response.status}) bei ${path}: ${await response.text()}`)
+    // Access Token nie in Fehlermeldungen landen lassen, die bis zum Browser
+    // durchgereicht werden (siehe redactAccessTokens-Kommentar) - nie die volle url
+    // loggen, nur den (redigierten) Fehlerbody von Meta.
+    throw new Error(`Meta-Graph-API-Fehler (${response.status}) bei ${path}: ${redactAccessTokens(await response.text())}`)
   }
 
   return response.json()
@@ -50,7 +62,7 @@ async function metaGraphPost<T>(
   const response = await fetch(url, { method: "POST" })
 
   if (!response.ok) {
-    throw new Error(`Meta-Graph-API-Fehler (${response.status}) bei ${path}: ${await response.text()}`)
+    throw new Error(`Meta-Graph-API-Fehler (${response.status}) bei ${path}: ${redactAccessTokens(await response.text())}`)
   }
 
   return response.json()
