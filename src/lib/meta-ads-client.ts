@@ -7,13 +7,18 @@ const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`
 
 export async function metaGraphFetch<T>(
   path: string,
-  params?: Record<string, string | number>
+  params?: Record<string, string | number>,
+  accessTokenOverride?: string
 ): Promise<T> {
   const url = new URL(`${GRAPH_BASE_URL}${path}`)
   for (const [key, value] of Object.entries(params ?? {})) {
     url.searchParams.set(key, String(value))
   }
-  url.searchParams.set("access_token", process.env.META_ACCESS_TOKEN!)
+  // Seitengebundene Endpunkte (leadgen_forms, leads) verlangen zwingend den
+  // Page-Access-Token DIESER Seite statt des allgemeinen System-User-Tokens, sonst
+  // Fehler #190 "This method must be called with a Page Access Token" - daher hier
+  // überschreibbar, siehe fetchMetaLeadForms/fetchMetaLeadsForForm.
+  url.searchParams.set("access_token", accessTokenOverride ?? process.env.META_ACCESS_TOKEN!)
 
   const response = await fetch(url)
 
@@ -30,6 +35,10 @@ export async function metaGraphFetch<T>(
 export interface MetaPage {
   id: string
   name: string
+  // Eigener Page-Access-Token dieser Seite - nötig für leadgen_forms/leads-Aufrufe
+  // auf dieser Seite (siehe metaGraphFetch-Kommentar). NIE an den Browser
+  // durchreichen (siehe listMetaPagesAction in campaigns/[id]/actions.ts).
+  access_token?: string
 }
 
 export interface MetaLeadForm {
@@ -58,7 +67,7 @@ interface MetaPaging {
 // Manager -> "Seiten" bzw. für einen System-User die ihm zugewiesenen Assets).
 export async function fetchMetaPages(): Promise<MetaPage[]> {
   const resp = await metaGraphFetch<{ data: MetaPage[]; paging?: MetaPaging }>("/me/accounts", {
-    fields: "id,name",
+    fields: "id,name,access_token",
     limit: 100,
   })
   return resp.data
@@ -67,10 +76,11 @@ export async function fetchMetaPages(): Promise<MetaPage[]> {
 // Lead-Formulare einer Seite (nur die Basisdaten - Fragen/Feldnamen liest die KI-
 // Extraktion aus den tatsächlichen Leads mit, siehe meta-leads-sync.ts, statt hier
 // zusätzlich das Formular-Schema abzufragen).
-export async function fetchMetaLeadForms(pageId: string): Promise<MetaLeadForm[]> {
+export async function fetchMetaLeadForms(pageId: string, pageAccessToken?: string): Promise<MetaLeadForm[]> {
   const resp = await metaGraphFetch<{ data: MetaLeadForm[]; paging?: MetaPaging }>(
     `/${pageId}/leadgen_forms`,
-    { fields: "id,name,status", limit: 100 }
+    { fields: "id,name,status", limit: 100 },
+    pageAccessToken
   )
   return resp.data
 }
@@ -80,7 +90,8 @@ export async function fetchMetaLeadForms(pageId: string): Promise<MetaLeadForm[]
 // wiederholten Sync-Läufen nicht jedes Mal die komplette Formularhistorie neu zu holen.
 export async function fetchMetaLeadsForForm(
   formId: string,
-  options?: { sinceUnix?: number }
+  options?: { sinceUnix?: number },
+  pageAccessToken?: string
 ): Promise<MetaLead[]> {
   const leads: MetaLead[] = []
   let after: string | undefined
@@ -95,13 +106,42 @@ export async function fetchMetaLeadsForForm(
 
     const resp = await metaGraphFetch<{ data: MetaLead[]; paging?: MetaPaging }>(
       `/${formId}/leads`,
-      params
+      params,
+      pageAccessToken
     )
     leads.push(...resp.data)
     after = resp.paging?.cursors?.after && resp.paging?.next ? resp.paging.cursors.after : undefined
   } while (after)
 
   return leads
+}
+
+// Baut einmalig eine Formular-ID -> Seiten-Token-Zuordnung über ALLE dem Systemnutzer
+// zugewiesenen Seiten auf. Kampagnen speichern aktuell nur die Formular-ID (nicht die
+// Seiten-ID), daher lässt sich der passende Page-Access-Token nicht direkt ableiten -
+// wird u.a. vom Sync-Skript einmal pro Lauf genutzt (siehe scripts/meta-leads-sync.ts),
+// statt bei jeder Kampagne einzeln zu raten oder zu scheitern.
+export async function buildFormToPageAccessTokenMap(): Promise<Map<string, string>> {
+  const pages = await fetchMetaPages()
+  const map = new Map<string, string>()
+
+  for (const page of pages) {
+    if (!page.access_token) continue
+    try {
+      const forms = await fetchMetaLeadForms(page.id, page.access_token)
+      for (const form of forms) {
+        map.set(form.id, page.access_token)
+      }
+    } catch (err) {
+      console.warn(
+        `  [Warnung] Formulare der Seite "${page.name}" konnten nicht geladen werden: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      )
+    }
+  }
+
+  return map
 }
 
 // Wandelt Metas field_data-Array (Frage-Key + Antwort-Werte) in eine flache

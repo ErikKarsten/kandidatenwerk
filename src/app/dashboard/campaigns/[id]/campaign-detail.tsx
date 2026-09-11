@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronLeft, Plus, Pencil, LayoutGrid, List, Search, RefreshCw } from "lucide-react"
+import { ChevronLeft, Plus, Pencil, LayoutGrid, List, Search, RefreshCw, Globe } from "lucide-react"
 import {
   updateCampaignTitleAction,
   archiveCampaignAction,
@@ -11,6 +11,7 @@ import {
   deleteCampaignWithCandidatesAction,
   getCampaignCandidatesForExport,
   refreshLeadtableCampaignAction,
+  publishCampaignToKanzleistelleAction,
 } from "./actions"
 import { Button } from "@/components/ui/button"
 import {
@@ -80,6 +81,7 @@ interface Campaign {
   lng: number | null
   radius_km: number | null
   leadtable_campaign_id: string | null
+  kanzleistelle_job_id: string | null
   client: { name: string } | null
 }
 
@@ -139,6 +141,8 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
   const [finalDeletePending, setFinalDeletePending] = useState(false)
   const [refreshPending, startRefreshTransition] = useTransition()
   const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [publishPending, startPublishTransition] = useTransition()
+  const [publishMessage, setPublishMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const statusColors = CAMPAIGN_STATUS_COLORS[campaign.status] ?? CAMPAIGN_STATUS_COLORS.completed
   const router = useRouter()
 
@@ -225,6 +229,19 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
         router.refresh()
       } else {
         setRefreshMessage({ type: "error", text: result.error })
+      }
+    })
+  }
+
+  function handlePublishToKanzleistelle() {
+    setPublishMessage(null)
+    startPublishTransition(async () => {
+      const result = await publishCampaignToKanzleistelleAction(campaign.id)
+      if (result.success) {
+        setPublishMessage({ type: "success", text: "Auf Kanzleistelle24 veröffentlicht" })
+        router.refresh()
+      } else {
+        setPublishMessage({ type: "error", text: result.error })
       }
     })
   }
@@ -425,6 +442,26 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
                   {refreshPending ? "Wird aktualisiert…" : "Mit Leadtable aktualisieren"}
                 </button>
               )}
+              {campaign.kanzleistelle_job_id ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
+                  style={{ backgroundColor: "#1a9a6a18", color: "#1a9a6a" }}
+                >
+                  <Globe size={12} />
+                  Auf Kanzleistelle24 veröffentlicht
+                </span>
+              ) : campaign.status === "active" ? (
+                <button
+                  type="button"
+                  onClick={handlePublishToKanzleistelle}
+                  disabled={publishPending}
+                  className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+                  style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+                >
+                  <Globe size={12} className={publishPending ? "animate-spin" : undefined} />
+                  {publishPending ? "Wird veröffentlicht…" : "Auf Kanzleistelle24 veröffentlichen"}
+                </button>
+              ) : null}
             </div>
             <p className="text-sm text-gray-500">
               {campaign.client?.name ?? "Kein Kunde"}
@@ -439,6 +476,14 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
                 style={{ color: refreshMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
               >
                 {refreshMessage.text}
+              </p>
+            )}
+            {publishMessage && (
+              <p
+                className="mt-1 text-xs"
+                style={{ color: publishMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
+              >
+                {publishMessage.text}
               </p>
             )}
           </div>

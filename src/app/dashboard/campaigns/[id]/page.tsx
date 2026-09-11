@@ -79,6 +79,7 @@ export default async function CampaignDetailPage({
         lng: campaign.lng ?? null,
         radius_km: campaign.radius_km ?? null,
         leadtable_campaign_id: campaign.leadtable_campaign_id ?? null,
+        kanzleistelle_job_id: campaign.kanzleistelle_job_id ?? null,
         client,
       }}
       candidates={candidates ?? []}

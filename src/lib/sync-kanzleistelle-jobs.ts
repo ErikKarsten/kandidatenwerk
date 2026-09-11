@@ -100,6 +100,84 @@ async function countMatchingCandidates(
   return count ?? 0
 }
 
+// Veröffentlicht EINE einzelne Kampagne auf Kanzleistelle24 (legt bei Bedarf zuerst die
+// zugehörige Firma dort an) - wird sowohl vom manuellen "Veröffentlichen"-Button auf der
+// Kampagnen-Detailseite (siehe campaigns/[id]/actions.ts) als auch vom Batch-Sync
+// syncCampaignsToKanzleistelle weiter unten genutzt. Wirft bei Fehlern, statt ein
+// Error-Objekt zurückzugeben - der Aufrufer entscheidet, ob er einzeln fängt (Batch) oder
+// durchreicht (einzelne Server Action).
+export async function publishCampaignToKanzleistelle(campaignId: string): Promise<{ jobId: string }> {
+  const kandidatenwerk = createKandidatenwerkClient()
+  const kanzleistelle = createKanzleistelleClient()
+
+  const { data: campaign, error: fetchError } = await kandidatenwerk
+    .from("campaigns")
+    .select("id, title, plz, lat, lng, client_id, kanzleistelle_job_id, clients(id, name, kanzleistelle_company_id)")
+    .eq("id", campaignId)
+    .single()
+
+  if (fetchError || !campaign) throw new Error(fetchError?.message ?? "Kampagne nicht gefunden")
+  if (campaign.kanzleistelle_job_id) throw new Error("Kampagne wurde bereits auf Kanzleistelle24 veröffentlicht")
+
+  const client = campaign.clients
+  if (!client) throw new Error("Kampagne hat keinen zugehörigen Mandanten")
+
+  let companyId = client.kanzleistelle_company_id
+
+  if (!companyId) {
+    const { data: company, error: companyError } = await kanzleistelle
+      .from("companies")
+      .insert({
+        name: client.name,
+        is_active: true,
+        user_id: null,
+        admin_notes: "Automatisch aus Kandidatenwerk übernommen",
+      })
+      .select("id")
+      .single()
+
+    if (companyError) throw new Error(companyError.message)
+
+    companyId = company.id
+
+    const { error: clientUpdateError } = await kandidatenwerk
+      .from("clients")
+      .update({ kanzleistelle_company_id: companyId })
+      .eq("id", client.id)
+
+    if (clientUpdateError) throw new Error(clientUpdateError.message)
+  }
+
+  const matchingCandidatesCount = await countMatchingCandidates(kandidatenwerk, campaign.id)
+
+  const { data: job, error: jobError } = await kanzleistelle
+    .from("jobs")
+    .insert({
+      title: campaign.title,
+      company: client.name,
+      company_id: companyId,
+      postal_code: campaign.plz,
+      latitude: campaign.lat,
+      longitude: campaign.lng,
+      is_active: true,
+      status: "active",
+      matching_candidates_count: matchingCandidatesCount,
+    })
+    .select("id")
+    .single()
+
+  if (jobError) throw new Error(jobError.message)
+
+  const { error: campaignUpdateError } = await kandidatenwerk
+    .from("campaigns")
+    .update({ kanzleistelle_job_id: job.id })
+    .eq("id", campaign.id)
+
+  if (campaignUpdateError) throw new Error(campaignUpdateError.message)
+
+  return { jobId: job.id }
+}
+
 export type SyncCampaignsError = {
   campaignId: string
   message: string
@@ -110,13 +188,16 @@ export type SyncCampaignsResult = {
   errors: SyncCampaignsError[]
 }
 
+// Batch-Variante für einen künftigen Cron-Job: holt sich alle noch nicht veröffentlichten,
+// aktiven Kampagnen und ruft publishCampaignToKanzleistelle für jede einzeln auf (Fehler
+// pro Kampagne werden gesammelt statt den ganzen Lauf abzubrechen). Aktuell noch nirgends
+// verdrahtet - der manuelle Button auf der Kampagnen-Detailseite deckt den Bedarf bisher ab.
 export async function syncCampaignsToKanzleistelle(limit?: number): Promise<SyncCampaignsResult> {
   const kandidatenwerk = createKandidatenwerkClient()
-  const kanzleistelle = createKanzleistelleClient()
 
   let query = kandidatenwerk
     .from("campaigns")
-    .select("id, title, plz, lat, lng, client_id, clients(id, name, kanzleistelle_company_id)")
+    .select("id")
     .is("kanzleistelle_job_id", null)
     .eq("status", "active")
 
@@ -131,62 +212,7 @@ export async function syncCampaignsToKanzleistelle(limit?: number): Promise<Sync
 
   for (const campaign of campaigns ?? []) {
     try {
-      const client = campaign.clients
-      if (!client) throw new Error("Kampagne hat keinen zugehörigen Mandanten")
-
-      let companyId = client.kanzleistelle_company_id
-
-      if (!companyId) {
-        const { data: company, error: companyError } = await kanzleistelle
-          .from("companies")
-          .insert({
-            name: client.name,
-            is_active: true,
-            user_id: null,
-            admin_notes: "Automatisch aus Kandidatenwerk übernommen",
-          })
-          .select("id")
-          .single()
-
-        if (companyError) throw new Error(companyError.message)
-
-        companyId = company.id
-
-        const { error: clientUpdateError } = await kandidatenwerk
-          .from("clients")
-          .update({ kanzleistelle_company_id: companyId })
-          .eq("id", client.id)
-
-        if (clientUpdateError) throw new Error(clientUpdateError.message)
-      }
-
-      const matchingCandidatesCount = await countMatchingCandidates(kandidatenwerk, campaign.id)
-
-      const { data: job, error: jobError } = await kanzleistelle
-        .from("jobs")
-        .insert({
-          title: campaign.title,
-          company: client.name,
-          company_id: companyId,
-          postal_code: campaign.plz,
-          latitude: campaign.lat,
-          longitude: campaign.lng,
-          is_active: true,
-          status: "active",
-          matching_candidates_count: matchingCandidatesCount,
-        })
-        .select("id")
-        .single()
-
-      if (jobError) throw new Error(jobError.message)
-
-      const { error: campaignUpdateError } = await kandidatenwerk
-        .from("campaigns")
-        .update({ kanzleistelle_job_id: job.id })
-        .eq("id", campaign.id)
-
-      if (campaignUpdateError) throw new Error(campaignUpdateError.message)
-
+      await publishCampaignToKanzleistelle(campaign.id)
       created++
     } catch (err) {
       errors.push({

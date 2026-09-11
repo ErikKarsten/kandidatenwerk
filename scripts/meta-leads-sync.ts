@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url"
 import dotenv from "dotenv"
 import { createClient } from "@supabase/supabase-js"
 import type { Database, Json } from "../src/types/database"
-import { fetchMetaLeadsForForm, extractMetaContactFields, type MetaLead } from "../src/lib/meta-ads-client"
+import { fetchMetaLeadsForForm, extractMetaContactFields, buildFormToPageAccessTokenMap, type MetaLead } from "../src/lib/meta-ads-client"
 import { extractCustomFieldsFromDescriptionAI } from "../src/lib/leadtable-sync-shared"
 import { extractCleanName } from "../src/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "../src/lib/sync-kanzleistelle"
@@ -181,11 +181,24 @@ async function main() {
   const campaigns = await loadCampaigns(supabase, campaignId)
   console.log(`${campaigns.length} Kampagne(n) mit Meta-Formular gefunden.`)
 
+  // Seitengebundene Endpunkte (leads) verlangen zwingend den Page-Access-Token DIESER
+  // Seite statt des System-User-Tokens (siehe metaGraphFetch-Kommentar) - daher einmal
+  // pro Lauf die Formular-ID -> Seiten-Token-Zuordnung aufbauen, statt pro Kampagne
+  // erneut alle Seiten abzufragen.
+  const formToPageToken = await buildFormToPageAccessTokenMap()
+
   for (const campaign of campaigns) {
     console.log(`\n→ Kampagne "${campaign.title}" (Formular ${campaign.meta_form_id})`)
+    const pageAccessToken = formToPageToken.get(campaign.meta_form_id!)
+    if (!pageAccessToken) {
+      const message = `Kein Page-Access-Token für Formular ${campaign.meta_form_id} gefunden (Formular gehört zu keiner dem System-User zugewiesenen Seite).`
+      console.error(`  Fehler beim Laden der Leads: ${message}`)
+      result.errors.push({ campaignId: campaign.id, leadId: "-", message })
+      continue
+    }
     let leads: MetaLead[]
     try {
-      leads = await fetchMetaLeadsForForm(campaign.meta_form_id!)
+      leads = await fetchMetaLeadsForForm(campaign.meta_form_id!, undefined, pageAccessToken)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       console.error(`  Fehler beim Laden der Leads: ${message}`)

@@ -4,7 +4,8 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
-import { updateCampaignSettingsAction } from "./actions"
+import { updateCampaignSettingsAction, listMetaPagesAction, listMetaLeadFormsAction } from "./actions"
+import type { MetaPage, MetaLeadForm } from "@/lib/meta-ads-client"
 
 interface SettingsTabProps {
   campaignId: string
@@ -28,6 +29,54 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm 
   const [localBerufsbild, setLocalBerufsbild] = useState(berufsbild ?? "")
   const [localPlz, setLocalPlz] = useState(plz ?? "")
   const [localRadiusKm, setLocalRadiusKm] = useState(String(radiusKm ?? 25))
+
+  // Seite-/Formular-Auswähler fürs Meta-Lead-Form-Feld, analog zum
+  // Leadtable-Direktintegrations-Dialog (erst Seite, dann Formular dieser Seite
+  // wählen, statt eine rohe Formular-ID von Hand einzutippen). selectedFormLabel
+  // ist nur der schön lesbare Name des per Auswähler frisch gewählten Formulars -
+  // ein bereits vorher (z.B. manuell) gesetzter Wert hat den nicht und zeigt
+  // stattdessen nur die rohe ID, bis er über den Auswähler neu gesetzt wird.
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [manualEntry, setManualEntry] = useState(false)
+  const [selectedFormLabel, setSelectedFormLabel] = useState<string | null>(null)
+  const [pages, setPages] = useState<MetaPage[] | null>(null)
+  const [pagesPending, startPagesTransition] = useTransition()
+  const [pagesError, setPagesError] = useState<string | null>(null)
+  const [selectedPageId, setSelectedPageId] = useState("")
+  const [forms, setForms] = useState<MetaLeadForm[] | null>(null)
+  const [formsPending, startFormsTransition] = useTransition()
+  const [formsError, setFormsError] = useState<string | null>(null)
+
+  function openPicker() {
+    setPickerOpen(true)
+    setManualEntry(false)
+    if (pages === null) {
+      setPagesError(null)
+      startPagesTransition(async () => {
+        const result = await listMetaPagesAction()
+        if (result.success) setPages(result.pages)
+        else setPagesError(result.error)
+      })
+    }
+  }
+
+  function handlePageChange(pageId: string) {
+    setSelectedPageId(pageId)
+    setForms(null)
+    setFormsError(null)
+    if (!pageId) return
+    startFormsTransition(async () => {
+      const result = await listMetaLeadFormsAction(pageId)
+      if (result.success) setForms(result.forms)
+      else setFormsError(result.error)
+    })
+  }
+
+  function handleFormSelect(form: MetaLeadForm) {
+    setLocalFormId(form.id)
+    setSelectedFormLabel(form.name)
+    setPickerOpen(false)
+  }
 
   function handleSave() {
     setError(null)
@@ -127,20 +176,121 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm 
       <section>
         <h3 className="mb-1 text-sm font-semibold text-gray-700">Meta Lead Form</h3>
         <p className="mb-3 text-xs text-gray-400">
-          ID des Meta-Formulars, aus dem Leads importiert werden. Die Formular-Antworten
-          werden automatisch per KI den passenden Kandidaten-Zusatzfeldern zugeordnet -
-          keine manuelle Feldkonfiguration nötig.
+          Seite und Formular auswählen, aus dem Leads importiert werden. Die
+          Formular-Antworten werden automatisch per KI den passenden
+          Kandidaten-Zusatzfeldern zugeordnet - keine manuelle Feldkonfiguration nötig.
         </p>
-        <div className="flex max-w-sm flex-col gap-1.5">
-          <label className="text-xs font-medium text-gray-500">Meta Form ID</label>
-          <input
-            value={localFormId}
-            onChange={(e) => setLocalFormId(e.target.value)}
-            placeholder="z.B. 1234567890"
-            className="rounded-md border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1"
-            style={{ borderColor: "#dde3ea" }}
-          />
-        </div>
+
+        {!pickerOpen && !manualEntry && (
+          <div className="flex max-w-sm flex-col gap-2">
+            {localFormId ? (
+              <div className="flex flex-col gap-1.5 rounded-lg border px-3 py-2" style={{ borderColor: "#dde3ea" }}>
+                <span className="text-xs font-medium text-gray-500">Aktuelles Formular</span>
+                <span className="text-sm text-gray-700">{selectedFormLabel ?? "Bereits hinterlegt"}</span>
+                <code className="text-xs text-gray-400">{localFormId}</code>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">Noch kein Formular ausgewählt.</p>
+            )}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={openPicker}
+                className="w-fit text-xs font-medium hover:underline"
+                style={{ color: "#1e56a0" }}
+              >
+                {localFormId ? "Formular ändern" : "Formular auswählen"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setManualEntry(true)}
+                className="w-fit text-xs text-gray-400 hover:underline"
+              >
+                ID manuell eingeben
+              </button>
+            </div>
+          </div>
+        )}
+
+        {manualEntry && (
+          <div className="flex max-w-sm flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-500">Meta Form ID</label>
+            <input
+              value={localFormId}
+              onChange={(e) => { setLocalFormId(e.target.value); setSelectedFormLabel(null) }}
+              placeholder="z.B. 1234567890"
+              className="rounded-md border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1"
+              style={{ borderColor: "#dde3ea" }}
+            />
+            <button
+              type="button"
+              onClick={() => setManualEntry(false)}
+              className="w-fit text-xs font-medium hover:underline"
+              style={{ color: "#1e56a0" }}
+            >
+              Stattdessen aus Liste wählen
+            </button>
+          </div>
+        )}
+
+        {pickerOpen && (
+          <div className="flex max-w-sm flex-col gap-3 rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500">Seite</label>
+              <select
+                value={selectedPageId}
+                onChange={(e) => handlePageChange(e.target.value)}
+                disabled={pagesPending || pages === null}
+                className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+                style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
+              >
+                <option value="" disabled>
+                  {pagesPending ? "Seiten werden geladen…" : "Seite auswählen…"}
+                </option>
+                {pages?.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              {pagesError && <p className="text-xs text-red-600">{pagesError}</p>}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500">Formular</label>
+              <select
+                value=""
+                onChange={(e) => {
+                  const form = forms?.find((f) => f.id === e.target.value)
+                  if (form) handleFormSelect(form)
+                }}
+                disabled={!selectedPageId || formsPending || forms === null}
+                className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+                style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
+              >
+                <option value="" disabled>
+                  {!selectedPageId
+                    ? "Erst Seite wählen"
+                    : formsPending
+                      ? "Formulare werden geladen…"
+                      : forms?.length === 0
+                        ? "Keine Formulare gefunden"
+                        : "Formular auswählen…"}
+                </option>
+                {forms?.map((f) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+              {formsError && <p className="text-xs text-red-600">{formsError}</p>}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPickerOpen(false)}
+              className="w-fit text-xs text-gray-400 hover:underline"
+            >
+              Abbrechen
+            </button>
+          </div>
+        )}
       </section>
 
       {error && (

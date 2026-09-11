@@ -9,11 +9,35 @@ import { matchCampaignToCandidates, matchCandidateToCampaigns } from "@/lib/matc
 import { fetchAllCampaigns } from "@/lib/leadtable-import-customers"
 import { importLeadtableCampaign } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
+import { publishCampaignToKanzleistelle } from "@/lib/sync-kanzleistelle-jobs"
+import { fetchMetaPages, fetchMetaLeadForms, type MetaPage, type MetaLeadForm } from "@/lib/meta-ads-client"
 import type { TablesUpdate } from "@/types/database"
 
 // Siehe src/app/dashboard/candidates/page.tsx / clients-list.tsx / campaigns-list.tsx -
 // derselbe Wert wird dort für "isArchived"-Prüfungen genutzt.
 const ARCHIVED_STATUS = "Archiviert"
+
+// Analog zu requireStaffUser() in clients/[id]/actions.ts und
+// campaigns/[id]/automations-actions.ts (Security-Review 08./09.09.2026) - listet
+// Facebook-Seiten-/Formularnamen aller Mandanten, darf nie von einem Portal-Kunden
+// aufgerufen werden.
+async function requireStaffUser(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>
+): Promise<{ error: string } | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+  if (profile?.role === "client") return { error: "Nicht berechtigt." }
+
+  return null
+}
 
 export async function getCampaignCandidatesForExport(campaignId: string): Promise<
   { error: string } | { candidates: Array<{ first_name: string; last_name: string; email: string | null; phone: string | null; status: string; custom_fields: Record<string, string> | null }> }
@@ -167,6 +191,28 @@ export async function updateCampaignSettingsAction(
   return null
 }
 
+
+// Veröffentlicht eine Kampagne als Jobangebot auf Kanzleistelle24 (Direct-DB-Insert über
+// den Service-Key, siehe publishCampaignToKanzleistelle) - manuell ausgelöst über den
+// Button auf der Kampagnen-Detailseite, siehe campaign-detail.tsx.
+export async function publishCampaignToKanzleistelleAction(
+  campaignId: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Nicht eingeloggt." }
+
+  try {
+    await publishCampaignToKanzleistelle(campaignId)
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+
+  revalidatePath(`/dashboard/campaigns/${campaignId}`)
+  return { success: true }
+}
+
 export async function refreshLeadtableCampaignAction(
   campaignId: string
 ): Promise<
@@ -246,3 +292,46 @@ export async function refreshLeadtableCampaignAction(
 
   return { success: true, newCandidates: importResult.created, archived }
 }
+
+// Für den Seite-/Formular-Auswähler im Meta-Lead-Form-Feld (settings-tab.tsx) -
+// analog zum Leadtable-Direktintegrations-Dialog: erst Seite wählen, dann Formular
+// dieser Seite, statt eine rohe Formular-ID von Hand einzutippen.
+export async function listMetaPagesAction(): Promise<
+  { success: true; pages: MetaPage[] } | { success: false; error: string }
+> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return { success: false, error: staffError.error }
+
+  try {
+    const pages = await fetchMetaPages()
+    // access_token NIE an den Browser durchreichen (siehe Kommentar in meta-ads-client.ts) -
+    // wird serverseitig in listMetaLeadFormsAction erneut per fetchMetaPages() nachgeschlagen.
+    return { success: true, pages: pages.map(({ id, name }) => ({ id, name })) }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function listMetaLeadFormsAction(
+  pageId: string
+): Promise<{ success: true; forms: MetaLeadForm[] } | { success: false; error: string }> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return { success: false, error: staffError.error }
+
+  try {
+    // leadgen_forms verlangt den Page-Access-Token DIESER Seite statt des System-User-
+    // Tokens (siehe metaGraphFetch-Kommentar) - daher hier erst die Seite nachschlagen.
+    const pages = await fetchMetaPages()
+    const page = pages.find((p) => p.id === pageId)
+    if (!page?.access_token) {
+      return { success: false, error: "Kein Zugriffstoken für diese Seite gefunden." }
+    }
+    const forms = await fetchMetaLeadForms(pageId, page.access_token)
+    return { success: true, forms }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
