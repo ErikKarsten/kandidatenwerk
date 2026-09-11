@@ -68,6 +68,20 @@ async function metaGraphPost<T>(
   return response.json()
 }
 
+// DELETE-Variante - genutzt, um einen offenen Test-Lead zu entfernen (siehe
+// createMetaTestLead: Meta erlaubt immer nur EINEN offenen Test-Lead pro Formular
+// gleichzeitig, ein zweiter POST /test_leads scheitert sonst mit Fehler #1892058).
+async function metaGraphDelete(path: string, accessToken: string): Promise<void> {
+  const url = new URL(`${GRAPH_BASE_URL}${path}`)
+  url.searchParams.set("access_token", accessToken)
+
+  const response = await fetch(url, { method: "DELETE" })
+
+  if (!response.ok) {
+    throw new Error(`Meta-Graph-API-Fehler (${response.status}) bei ${path}: ${redactAccessTokens(await response.text())}`)
+  }
+}
+
 export interface MetaPage {
   id: string
   name: string
@@ -234,6 +248,14 @@ export function extractMetaContactFields(fieldData: MetaLeadFieldData[]): {
 // durchreicht, statt hier schon eine Sonderbehandlung zu bauen (noch nicht live
 // verifiziert, siehe PR-Beschreibung/Commit).
 export async function createMetaTestLead(formId: string, pageAccessToken: string): Promise<{ id: string }> {
+  // Meta erlaubt immer nur einen offenen Test-Lead pro Formular gleichzeitig (sonst
+  // Fehler #1892058 "Test-Lead ist für dieses Formular bereits vorhanden") - daher
+  // vorher aufräumen, statt den Nutzer zu zwingen, das manuell im Ads Manager zu tun.
+  const existing = await metaGraphFetch<{ data: { id: string }[] }>(`/${formId}/test_leads`, undefined, pageAccessToken)
+  for (const lead of existing.data) {
+    await metaGraphDelete(`/${lead.id}`, pageAccessToken)
+  }
+
   return metaGraphPost<{ id: string }>(`/${formId}/test_leads`, undefined, pageAccessToken)
 }
 
