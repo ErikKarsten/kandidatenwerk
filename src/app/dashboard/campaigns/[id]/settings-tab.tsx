@@ -6,6 +6,7 @@ import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { updateCampaignSettingsAction, listMetaPagesAction, listMetaLeadFormsAction, requestMetaTestLeadAction } from "./actions"
 import type { MetaPage, MetaLeadForm } from "@/lib/meta-ads-client"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 
 interface SettingsTabProps {
   campaignId: string
@@ -18,9 +19,14 @@ interface SettingsTabProps {
   berufsbild: string | null
   plz: string | null
   radiusKm: number | null
+  // Zeitpunkt der letzten per Webhook BESTAETIGTEN Verbindung (siehe
+  // isMetaTestLead/handleLeadgenEvent) - unabhaengig von testLeadMessage unten, die nur
+  // zeigt, dass die Anfrage bei Meta erfolgreich RAUSGEGANGEN ist, nicht dass sie
+  // tatsaechlich zugestellt wurde.
+  metaWebhookLastTestAt: string | null
 }
 
-export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm }: SettingsTabProps) {
+export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm, metaWebhookLastTestAt }: SettingsTabProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -46,9 +52,6 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm 
   const [forms, setForms] = useState<MetaLeadForm[] | null>(null)
   const [formsPending, startFormsTransition] = useTransition()
   const [formsError, setFormsError] = useState<string | null>(null)
-  // Testlead-Button steht nur zur Verfügung, solange die Seiten-ID aus dieser
-  // Browser-Session bekannt ist (frisch über den Auswähler gewählt) - bei einem
-  // schon vorher gespeicherten Formular fehlt sie, siehe requestMetaTestLeadAction.
   const [testLeadPending, startTestLeadTransition] = useTransition()
   const [testLeadMessage, setTestLeadMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
@@ -85,14 +88,14 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm 
   }
 
   function handleRequestTestLead() {
-    if (!selectedPageId || !localFormId) return
+    if (!localFormId) return
     setTestLeadMessage(null)
     startTestLeadTransition(async () => {
-      const result = await requestMetaTestLeadAction(selectedPageId, localFormId)
+      const result = await requestMetaTestLeadAction(localFormId)
       if (result.success) {
         setTestLeadMessage({
           type: "success",
-          text: `Testlead angefordert (${result.leadId}). Kann jetzt per Sync-Skript abgerufen werden.`,
+          text: `Testlead angefordert (${result.leadId}). Bestaetigung der Webhook-Zustellung erscheint hier in wenigen Sekunden nach Neuladen der Seite.`,
         })
       } else {
         setTestLeadMessage({ type: "error", text: result.error })
@@ -230,7 +233,7 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm 
               >
                 ID manuell eingeben
               </button>
-              {selectedPageId && localFormId && (
+              {localFormId && (
                 <button
                   type="button"
                   onClick={handleRequestTestLead}
@@ -242,17 +245,18 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm 
                 </button>
               )}
             </div>
-            {!selectedPageId && localFormId && (
-              <p className="text-xs text-gray-400">
-                Um einen Testlead anzufordern, Formular einmal über &quot;Formular ändern&quot; neu auswählen.
-              </p>
-            )}
             {testLeadMessage && (
               <p
                 className="text-xs"
                 style={{ color: testLeadMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
               >
                 {testLeadMessage.text}
+              </p>
+            )}
+            {metaWebhookLastTestAt && (
+              <p className="text-xs" style={{ color: "#1a9a6a" }}>
+                ✓ Verbindung zuletzt per Webhook bestaetigt:{" "}
+                {new Date(metaWebhookLastTestAt).toLocaleString("de-DE")}
               </p>
             )}
           </div>
@@ -283,48 +287,34 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm 
           <div className="flex max-w-sm flex-col gap-3 rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-gray-500">Seite</label>
-              <select
+              <SearchableSelect
+                options={(pages ?? []).map((p) => ({ id: p.id, label: p.name }))}
                 value={selectedPageId}
-                onChange={(e) => handlePageChange(e.target.value)}
+                onChange={handlePageChange}
                 disabled={pagesPending || pages === null}
-                className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
-                style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
-              >
-                <option value="" disabled>
-                  {pagesPending ? "Seiten werden geladen…" : "Seite auswählen…"}
-                </option>
-                {pages?.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+                loading={pagesPending || pages === null}
+                loadingLabel="Seiten werden geladen…"
+                placeholder="Seite suchen…"
+                emptyLabel="Keine Seite gefunden"
+              />
               {pagesError && <p className="text-xs text-red-600">{pagesError}</p>}
             </div>
 
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-gray-500">Formular</label>
-              <select
+              <SearchableSelect
+                options={(forms ?? []).map((f) => ({ id: f.id, label: f.name }))}
                 value=""
-                onChange={(e) => {
-                  const form = forms?.find((f) => f.id === e.target.value)
+                onChange={(formId) => {
+                  const form = forms?.find((f) => f.id === formId)
                   if (form) handleFormSelect(form)
                 }}
                 disabled={!selectedPageId || formsPending || forms === null}
-                className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
-                style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
-              >
-                <option value="" disabled>
-                  {!selectedPageId
-                    ? "Erst Seite wählen"
-                    : formsPending
-                      ? "Formulare werden geladen…"
-                      : forms?.length === 0
-                        ? "Keine Formulare gefunden"
-                        : "Formular auswählen…"}
-                </option>
-                {forms?.map((f) => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
+                loading={!!selectedPageId && (formsPending || forms === null)}
+                loadingLabel="Formulare werden geladen…"
+                placeholder={!selectedPageId ? "Erst Seite wählen" : "Formular suchen…"}
+                emptyLabel="Keine Formulare gefunden"
+              />
               {formsError && <p className="text-xs text-red-600">{formsError}</p>}
             </div>
 

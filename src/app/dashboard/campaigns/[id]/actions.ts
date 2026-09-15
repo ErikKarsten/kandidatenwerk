@@ -10,7 +10,7 @@ import { fetchAllCampaigns } from "@/lib/leadtable-import-customers"
 import { importLeadtableCampaign } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { publishCampaignToKanzleistelle } from "@/lib/sync-kanzleistelle-jobs"
-import { fetchMetaPages, fetchMetaLeadForms, createMetaTestLead, type MetaPage, type MetaLeadForm } from "@/lib/meta-ads-client"
+import { fetchMetaPages, fetchMetaLeadForms, createMetaTestLead, buildFormToPageAccessTokenMap, type MetaPage, type MetaLeadForm } from "@/lib/meta-ads-client"
 import type { TablesUpdate } from "@/types/database"
 
 // Siehe src/app/dashboard/candidates/page.tsx / clients-list.tsx / campaigns-list.tsx -
@@ -335,12 +335,15 @@ export async function listMetaLeadFormsAction(
   }
 }
 
-// Fordert einen Test-Lead bei Meta an (siehe createMetaTestLead-Kommentar) - wird direkt
-// aus dem Seite-/Formular-Auswähler in settings-tab.tsx aufgerufen, solange Seite und
-// Formular dort noch als Auswahl im Browser-State vorliegen (deshalb pageId als
-// Parameter statt erneut aus allen Seiten herzuleiten).
+// Fordert einen Test-Lead bei Meta an (siehe createMetaTestLead-Kommentar). Braucht nur
+// die Formular-ID - die passende Seite (und deren Access-Token) wird selbst über
+// buildFormToPageAccessTokenMap() nachgeschlagen (iteriert einmal alle Seiten/Formulare,
+// wie scripts/meta-leads-sync.ts es auch tut), statt eine zuvor im Browser-State
+// ausgewählte Seiten-ID vorauszusetzen (bis 14.09.2026 der Fall - Button war dadurch nach
+// jedem Neuladen/Speichern erst wieder nutzbar, nachdem man das Formular über "Formular
+// ändern" neu ausgewählt hatte, unnötig umständlich für ein bereits hinterlegtes
+// Formular).
 export async function requestMetaTestLeadAction(
-  pageId: string,
   formId: string
 ): Promise<{ success: true; leadId: string } | { success: false; error: string }> {
   const supabase = await createSupabaseServerClient()
@@ -348,12 +351,12 @@ export async function requestMetaTestLeadAction(
   if (staffError) return { success: false, error: staffError.error }
 
   try {
-    const pages = await fetchMetaPages()
-    const page = pages.find((p) => p.id === pageId)
-    if (!page?.access_token) {
-      return { success: false, error: "Kein Zugriffstoken für diese Seite gefunden." }
+    const tokenMap = await buildFormToPageAccessTokenMap()
+    const pageAccessToken = tokenMap.get(formId)
+    if (!pageAccessToken) {
+      return { success: false, error: "Kein Zugriffstoken für das Formular dieser Seite gefunden." }
     }
-    const result = await createMetaTestLead(formId, page.access_token)
+    const result = await createMetaTestLead(formId, pageAccessToken)
     return { success: true, leadId: result.id }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) }

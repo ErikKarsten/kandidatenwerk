@@ -82,6 +82,7 @@ interface Campaign {
   radius_km: number | null
   leadtable_campaign_id: string | null
   kanzleistelle_job_id: string | null
+  meta_webhook_last_test_at: string | null
   client: { name: string } | null
 }
 
@@ -771,6 +772,7 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
             berufsbild={campaign.berufsbild}
             plz={campaign.plz}
             radiusKm={campaign.radius_km}
+            metaWebhookLastTestAt={campaign.meta_webhook_last_test_at}
           />
         </div>
       )}

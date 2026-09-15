@@ -515,6 +515,7 @@ export type Database = {
           kanzleistelle_job_id: string | null
           leadtable_campaign_id: string | null
           location_id: string | null
+          meta_webhook_last_test_at: string | null
         }
         Insert: {
           id?: string
@@ -534,6 +535,7 @@ export type Database = {
           kanzleistelle_job_id?: string | null
           leadtable_campaign_id?: string | null
           location_id?: string | null
+          meta_webhook_last_test_at?: string | null
         }
         Update: {
           id?: string
@@ -553,6 +555,7 @@ export type Database = {
           kanzleistelle_job_id?: string | null
           leadtable_campaign_id?: string | null
           location_id?: string | null
+          meta_webhook_last_test_at?: string | null
         }
         Relationships: [
           {

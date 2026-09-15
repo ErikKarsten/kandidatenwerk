@@ -80,6 +80,7 @@ export default async function CampaignDetailPage({
         radius_km: campaign.radius_km ?? null,
         leadtable_campaign_id: campaign.leadtable_campaign_id ?? null,
         kanzleistelle_job_id: campaign.kanzleistelle_job_id ?? null,
+        meta_webhook_last_test_at: campaign.meta_webhook_last_test_at ?? null,
         client,
       }}
       candidates={candidates ?? []}

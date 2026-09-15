@@ -69,6 +69,39 @@ export async function processMetaLead(
         .eq("id", existingByEmail.id)
       if (linkError) throw new Error(linkError.message)
     }
+
+    // Bewirbt sich ein schon bekannter Kandidat ueber eine ANDERE Kampagne (z.B. eine
+    // zweite Anzeige einer anderen Kanzlei), soll diese neue Kanzlei ihn ebenfalls
+    // sehen koennen - ueber dieselbe Mehrfachzuordnung wie bei der manuellen Zuordnung
+    // (client_assignments, siehe assignToClientAction in
+    // dashboard/candidates/[id]/actions.ts, seit 20260902000000 ohne
+    // Unique-Beschraenkung mehr auf eine aktive Zuordnung pro Kandidat). Nur anlegen,
+    // wenn noch keine AKTIVE Zuordnung zu dieser Kanzlei besteht, sonst wuerden
+    // wiederholte Leads/Sync-Laeufe die Zuordnungsliste unnoetig aufblaehen.
+    if (campaign.client_id) {
+      const { data: existingAssignment, error: assignmentLookupError } = await supabase
+        .from("client_assignments")
+        .select("id")
+        .eq("candidate_id", existingByEmail.id)
+        .eq("client_id", campaign.client_id)
+        .is("removed_at", null)
+        .maybeSingle()
+      if (assignmentLookupError) throw new Error(assignmentLookupError.message)
+
+      if (!existingAssignment) {
+        const { error: assignmentInsertError } = await supabase
+          .from("client_assignments")
+          .insert({ candidate_id: existingByEmail.id, client_id: campaign.client_id })
+        if (assignmentInsertError) throw new Error(assignmentInsertError.message)
+
+        await supabase.from("candidate_history").insert({
+          candidate_id: existingByEmail.id,
+          type: "note",
+          content: `Erneut ueber Meta beworben, Kampagne "${campaign.title}" - neue Kanzlei-Zuordnung ergaenzt.`,
+        })
+      }
+    }
+
     return { status: "linked_existing", candidateId: existingByEmail.id }
   }
 

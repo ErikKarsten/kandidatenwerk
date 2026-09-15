@@ -26,7 +26,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
-import { fetchMetaPages, fetchMetaLead } from "@/lib/meta-ads-client"
+import { fetchMetaPages, fetchMetaLead, isMetaTestLead } from "@/lib/meta-ads-client"
 import { processMetaLead, type MetaSyncCampaign } from "@/lib/meta-leads-sync-shared"
 
 const ARCHIVED_STATUS = "Archiviert"
@@ -108,6 +108,23 @@ async function handleLeadgenEvent(value: LeadgenChangeValue) {
     }
 
     const lead = await fetchMetaLead(value.leadgen_id, page.access_token)
+
+    // Meta-Testleads (per "Testlead anfordern"-Button, ueber die Test-Leads-API
+    // erzeugt) sollen NICHT als echter Kandidat landen - alle Test-Leads teilen sich
+    // dieselbe Dummy-E-Mail, wuerden also unabhaengig von der Kampagne immer mit dem
+    // allerersten je erzeugten Testlead kollidieren (siehe Diagnose vom 15.09.2026).
+    // Stattdessen bestaetigen wir hier nur, dass die Webhook-Zustellung fuer GENAU
+    // diese Kampagne/dieses Formular funktioniert.
+    if (isMetaTestLead(lead)) {
+      const { error: testUpdateError } = await supabase
+        .from("campaigns")
+        .update({ meta_webhook_last_test_at: new Date().toISOString() })
+        .eq("id", campaign.id)
+      if (testUpdateError) throw new Error(testUpdateError.message)
+      console.log(`[meta-webhook] Test-Lead ${value.leadgen_id} (Kampagne "${campaign.title}"): Verbindung bestaetigt, kein Kandidat angelegt.`)
+      return
+    }
+
     const campaignForProcessing: MetaSyncCampaign = {
       id: campaign.id,
       title: campaign.title,

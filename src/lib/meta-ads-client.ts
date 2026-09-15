@@ -68,20 +68,6 @@ async function metaGraphPost<T>(
   return response.json()
 }
 
-// DELETE-Variante - genutzt, um einen offenen Test-Lead zu entfernen (siehe
-// createMetaTestLead: Meta erlaubt immer nur EINEN offenen Test-Lead pro Formular
-// gleichzeitig, ein zweiter POST /test_leads scheitert sonst mit Fehler #1892058).
-async function metaGraphDelete(path: string, accessToken: string): Promise<void> {
-  const url = new URL(`${GRAPH_BASE_URL}${path}`)
-  url.searchParams.set("access_token", accessToken)
-
-  const response = await fetch(url, { method: "DELETE" })
-
-  if (!response.ok) {
-    throw new Error(`Meta-Graph-API-Fehler (${response.status}) bei ${path}: ${redactAccessTokens(await response.text())}`)
-  }
-}
-
 export interface MetaPage {
   id: string
   name: string
@@ -106,6 +92,19 @@ export interface MetaLead {
   id: string
   created_time: string
   field_data: MetaLeadFieldData[]
+}
+
+// Meta befuellt Test-Leads (egal ob per POST .../test_leads erzeugt oder ueber den
+// "Testen"-Button im App-Dashboard) mit erkennbaren Platzhalterwerten wie
+// "<test lead: dummy data for full_name>" - das nutzen wir im Webhook
+// (handleLeadgenEvent), um solche Leads vom echten Kandidaten-Import auszunehmen und
+// stattdessen nur die Kampagne als "Verbindung getestet" zu markieren. Ein ueber
+// "Formular testen" im Ads Manager mit echten Werten ausgefuellter Lead greift hier
+// bewusst NICHT - der soll wie ein normaler Lead durchlaufen.
+export function isMetaTestLead(lead: MetaLead): boolean {
+  return lead.field_data.some((field) =>
+    field.values.some((value) => /dummy data for/i.test(value))
+  )
 }
 
 interface MetaPaging {
@@ -238,22 +237,49 @@ export function extractMetaContactFields(fieldData: MetaLeadFieldData[]): {
   }
 }
 
+// DELETE-Variante - genutzt, um einen offenen Test-Lead zu entfernen (siehe
+// createMetaTestLead: Meta erlaubt immer nur EINEN offenen Test-Lead pro Formular
+// gleichzeitig, ein zweiter POST /test_leads scheitert sonst mit Fehler #1892058).
+async function metaGraphDelete(path: string, accessToken: string): Promise<void> {
+  const url = new URL(`${GRAPH_BASE_URL}${path}`)
+  url.searchParams.set("access_token", accessToken)
+
+  const response = await fetch(url, { method: "DELETE" })
+
+  if (!response.ok) {
+    throw new Error(`Meta-Graph-API-Fehler (${response.status}) bei ${path}: ${redactAccessTokens(await response.text())}`)
+  }
+}
+
 // Fordert bei Meta einen Test-Lead für ein Formular an (Platzhalter-Antworten, kein
 // echtes Anzeigenbudget nötig) - Pendant zum "Test Form"-Button im Ads Manager bzw. zum
 // offiziellen Lead-Ads-Testing-Tool (developers.facebook.com/tools/lead-ads-testing),
 // hier direkt aus der Kampagnen-Einrichtung nutzbar. Braucht den Page-Access-Token
-// derselben Seite wie leadgen_forms/leads (siehe metaGraphFetch-Kommentar). Meta erlaubt
-// laut Doku nur einen offenen Test-Lead pro Formular gleichzeitig - ein erneuter Aufruf
-// wirft dann einen Graph-API-Fehler, den der Aufrufer (requestMetaTestLeadAction) einfach
-// durchreicht, statt hier schon eine Sonderbehandlung zu bauen (noch nicht live
-// verifiziert, siehe PR-Beschreibung/Commit).
+// derselben Seite wie leadgen_forms/leads (siehe metaGraphFetch-Kommentar).
+//
+// Vorab-Aufräumen eines evtl. noch offenen Test-Leads, aber NICHT blockierend (Stand
+// 14.09.2026, zweiter Anlauf): Der erste Versuch (bis 14.09.2026) hat das Löschen
+// blockierend gemacht - ein einzelner fehlgeschlagener Meta-seitiger Lösch-Versuch
+// ("Could Not Delete Lead", Subcode 1892035) hat dann das gesamte Anfordern verhindert.
+// Jetzt wird der Lösch-Versuch in try/catch gekapselt: schlägt er fehl, wird das nur
+// geloggt, und trotzdem weiter versucht, einen neuen Test-Lead anzufordern - klappt das
+// (weil der alte doch weg war oder Meta es diesmal zulässt), super; klappt es nicht,
+// bekommt requestMetaTestLeadAction wie gehabt Metas eigene, klare Fehlermeldung #1892058
+// "Test-Lead ist für dieses Formular bereits vorhanden" zum Durchreichen an die UI - der
+// Nutzer muss dann in dem seltenen Fall nur noch EINMAL manuell über Metas
+// Lead-Ads-Testing-Tool aufräumen, statt das bei jedem Anfordern zu tun.
 export async function createMetaTestLead(formId: string, pageAccessToken: string): Promise<{ id: string }> {
-  // Meta erlaubt immer nur einen offenen Test-Lead pro Formular gleichzeitig (sonst
-  // Fehler #1892058 "Test-Lead ist für dieses Formular bereits vorhanden") - daher
-  // vorher aufräumen, statt den Nutzer zu zwingen, das manuell im Ads Manager zu tun.
-  const existing = await metaGraphFetch<{ data: { id: string }[] }>(`/${formId}/test_leads`, undefined, pageAccessToken)
-  for (const lead of existing.data) {
-    await metaGraphDelete(`/${lead.id}`, pageAccessToken)
+  try {
+    const existing = await metaGraphFetch<{ data: { id: string }[] }>(`/${formId}/test_leads`, undefined, pageAccessToken)
+    for (const lead of existing.data) {
+      await metaGraphDelete(`/${lead.id}`, pageAccessToken)
+    }
+  } catch (err) {
+    console.warn(
+      `[meta-ads-client] Aufräumen des alten Test-Leads für Formular ${formId} fehlgeschlagen (nicht blockierend, wird trotzdem versucht): ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    )
   }
 
   return metaGraphPost<{ id: string }>(`/${formId}/test_leads`, undefined, pageAccessToken)
