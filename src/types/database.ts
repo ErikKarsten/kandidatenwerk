@@ -516,6 +516,7 @@ export type Database = {
           leadtable_campaign_id: string | null
           location_id: string | null
           meta_webhook_last_test_at: string | null
+          meta_form_name: string | null
         }
         Insert: {
           id?: string
@@ -536,6 +537,7 @@ export type Database = {
           leadtable_campaign_id?: string | null
           location_id?: string | null
           meta_webhook_last_test_at?: string | null
+          meta_form_name?: string | null
         }
         Update: {
           id?: string
@@ -556,6 +558,7 @@ export type Database = {
           leadtable_campaign_id?: string | null
           location_id?: string | null
           meta_webhook_last_test_at?: string | null
+          meta_form_name?: string | null
         }
         Relationships: [
           {

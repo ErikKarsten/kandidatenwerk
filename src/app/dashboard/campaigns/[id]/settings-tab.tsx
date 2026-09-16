@@ -11,6 +11,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 interface SettingsTabProps {
   campaignId: string
   metaFormId: string | null
+  metaFormName: string | null
   // Nicht mehr genutzt seit dem Umstieg auf die KI-gestützte Zusatzfelder-Extraktion
   // (scripts/meta-leads-sync.ts, wie beim Leadtable-Sync) - Prop bleibt aus
   // Kompatibilitätsgründen bestehen (campaign-detail.tsx reicht sie weiterhin durch),
@@ -26,7 +27,7 @@ interface SettingsTabProps {
   metaWebhookLastTestAt: string | null
 }
 
-export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm, metaWebhookLastTestAt }: SettingsTabProps) {
+export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, plz, radiusKm, metaWebhookLastTestAt }: SettingsTabProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -39,12 +40,14 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm,
   // Seite-/Formular-Auswähler fürs Meta-Lead-Form-Feld, analog zum
   // Leadtable-Direktintegrations-Dialog (erst Seite, dann Formular dieser Seite
   // wählen, statt eine rohe Formular-ID von Hand einzutippen). selectedFormLabel
-  // ist nur der schön lesbare Name des per Auswähler frisch gewählten Formulars -
-  // ein bereits vorher (z.B. manuell) gesetzter Wert hat den nicht und zeigt
-  // stattdessen nur die rohe ID, bis er über den Auswähler neu gesetzt wird.
+  // ist der lesbare Name des aktuell verknüpften Formulars - initial aus der DB
+  // (meta_form_name, bleibt so auch nach einem Seiten-Reload erhalten), wird beim
+  // frischen Auswählen im Picker überschrieben. Bei manueller ID-Eingabe explizit
+  // auf null gesetzt, damit nie ein (dann evtl. falscher) Name zu einer von Hand
+  // eingetragenen ID angezeigt wird.
   const [pickerOpen, setPickerOpen] = useState(false)
   const [manualEntry, setManualEntry] = useState(false)
-  const [selectedFormLabel, setSelectedFormLabel] = useState<string | null>(null)
+  const [selectedFormLabel, setSelectedFormLabel] = useState<string | null>(metaFormName ?? null)
   const [pages, setPages] = useState<MetaPage[] | null>(null)
   const [pagesPending, startPagesTransition] = useTransition()
   const [pagesError, setPagesError] = useState<string | null>(null)
@@ -108,6 +111,7 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm,
     setSaved(false)
     const fd = new FormData()
     fd.append("meta_form_id", localFormId)
+    fd.append("meta_form_name", selectedFormLabel ?? "")
     // Zusatzfelder werden jetzt automatisch per KI aus den Meta-Formular-Antworten
     // befüllt (siehe scripts/meta-leads-sync.ts) - keine manuelle Feldliste mehr nötig.
     fd.append("meta_field_mapping_json", "[]")
@@ -211,7 +215,9 @@ export function SettingsTab({ campaignId, metaFormId, berufsbild, plz, radiusKm,
             {localFormId ? (
               <div className="flex flex-col gap-1.5 rounded-lg border px-3 py-2" style={{ borderColor: "#dde3ea" }}>
                 <span className="text-xs font-medium text-gray-500">Aktuelles Formular</span>
-                <span className="text-sm text-gray-700">{selectedFormLabel ?? "Bereits hinterlegt"}</span>
+                <span className="text-sm text-gray-700">
+                  {selectedFormLabel ?? "Name unbekannt (manuell eingetragen oder vor Rollout dieser Änderung gespeichert)"}
+                </span>
                 <code className="text-xs text-gray-400">{localFormId}</code>
               </div>
             ) : (

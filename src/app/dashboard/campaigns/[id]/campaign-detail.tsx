@@ -74,6 +74,7 @@ interface Campaign {
   status: string
   meta_campaign_id: string | null
   meta_form_id: string | null
+  meta_form_name: string | null
   meta_field_mapping: string[] | null
   berufsbild: string | null
   plz: string | null
@@ -768,6 +769,7 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
           <SettingsTab
             campaignId={campaign.id}
             metaFormId={campaign.meta_form_id}
+            metaFormName={campaign.meta_form_name}
             metaFieldMapping={campaign.meta_field_mapping}
             berufsbild={campaign.berufsbild}
             plz={campaign.plz}

@@ -123,6 +123,7 @@ export async function updateCampaignSettingsAction(
   if (!user) return { error: "Nicht eingeloggt." }
 
   const meta_form_id = formData.get("meta_form_id") as string
+  const meta_form_name = formData.get("meta_form_name") as string
   const meta_field_mapping_json = formData.get("meta_field_mapping_json") as string
 
   let meta_field_mapping: string[] = []
@@ -141,6 +142,7 @@ export async function updateCampaignSettingsAction(
 
   const update: TablesUpdate<"campaigns"> = {
     meta_form_id: meta_form_id || null,
+    meta_form_name: meta_form_name || null,
     meta_field_mapping,
   }
 
