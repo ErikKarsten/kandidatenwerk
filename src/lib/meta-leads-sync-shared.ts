@@ -128,7 +128,7 @@ export async function processMetaLead(
       berufsbild,
       plz: null,
       status: META_FALLBACK_CANDIDATE_STATUS,
-      source: "meta",
+      source: "meta_ads",
       campaign_id: campaign.id,
       client_id: campaign.client_id,
       meta_lead_id: lead.id,
