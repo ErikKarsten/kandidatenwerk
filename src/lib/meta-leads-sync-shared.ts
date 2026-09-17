@@ -10,10 +10,41 @@ import { extractMetaContactFields, type MetaLead } from "@/lib/meta-ads-client"
 import { extractCustomFieldsFromDescriptionAI } from "@/lib/leadtable-sync-shared"
 import { extractCleanName } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
+import { FIXED_CUSTOM_FIELD_KEYS } from "@/lib/candidate-custom-fields"
 
 export type SupabaseClient = GenericSupabaseClient<Database>
 
 export const META_FALLBACK_CANDIDATE_STATUS = "neu"
+
+// Meta generiert die Feld-Keys eines Lead-Formulars automatisch aus dem Fragetext
+// (siehe Live-Verifikation vom 16.09.2026, field_data eines echten Testleads) - anders
+// als bei Leadtable (feste, opake question-IDs wie q_gy0zcd) sind sie hier also selbst-
+// sprechend, aber genau deshalb auch NICHT stabil: ändert sich der Fragetext in einem
+// künftigen Formular (andere Formulierung, andere Sprache), ändert sich auch der Key,
+// und diese feste Zuordnung greift dann nicht mehr für dieses Formular. Für unbekannte
+// Keys springt weiterhin die KI-Extraktion (extractCustomFieldsFromDescriptionAI) ein -
+// bei einem neuen Formular mit anders formulierten Fragen hier einfach ergänzen, sobald
+// die tatsächlichen Feld-Keys bekannt sind (z.B. wieder per Live-Testlead prüfen).
+export const META_CUSTOM_FIELD_MAP: Record<string, string> = {
+  "welche_ausbildung_hast_du_absolviert?": "ausbildung",
+  "wann_bist_du_am_besten_telefonisch_erreichbar?": "erreichbarkeit",
+}
+
+// Direkte, KI-freie Zuordnung für die oben bekannten Meta-Feld-Keys - Pendant zu
+// extractLeadtableCustomFields. Übernimmt einen Wert nur, wenn der zugeordnete
+// FIXED_CUSTOM_FIELDS-Key auch tatsächlich existiert (Tippfehler-Schutz) und der Wert
+// nicht leer ist.
+export function extractMetaCustomFields(record: Record<string, string>): Record<string, string> {
+  const fields: Record<string, string> = {}
+  for (const [metaKey, fieldName] of Object.entries(META_CUSTOM_FIELD_MAP)) {
+    if (!FIXED_CUSTOM_FIELD_KEYS.has(fieldName)) continue
+    const value = record[metaKey]
+    if (typeof value === "string" && value.trim() !== "") {
+      fields[fieldName] = value.trim()
+    }
+  }
+  return fields
+}
 
 export interface MetaSyncCampaign {
   id: string
@@ -115,6 +146,11 @@ export async function processMetaLead(
   if (aiResult.error) {
     console.warn(`  [KI-Warnung] Lead ${lead.id}: ${aiResult.error}`)
   }
+  // Direkt zugeordnete Werte (bekannte Meta-Feld-Keys, siehe META_CUSTOM_FIELD_MAP)
+  // haben Vorrang vor der KI-Vermutung - deshalb NACH aiResult.fields gespreadet, damit
+  // sie eine unsichere KI-Zuordnung überschreiben. Funktioniert auch, wenn die
+  // KI-Extraktion komplett fehlschlägt (aiResult.fields ist dann nur {}).
+  const customFields = { ...aiResult.fields, ...extractMetaCustomFields(record) }
 
   const notePrefix = usedLongNameHeuristic ? "[Automatisch bereinigter Name, bitte prüfen] " : ""
 
@@ -132,7 +168,7 @@ export async function processMetaLead(
       campaign_id: campaign.id,
       client_id: campaign.client_id,
       meta_lead_id: lead.id,
-      custom_fields: aiResult.fields as Json,
+      custom_fields: customFields as Json,
       notes: `${notePrefix}Import direkt aus Meta, Kampagne "${campaign.title}"`,
     })
     .select("id")
