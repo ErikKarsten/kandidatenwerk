@@ -1,0 +1,27 @@
+name: Kampagnen-Rematch
+
+on:
+  schedule:
+    # Einmal täglich - das Script ist idempotent (upsert mit ignoreDuplicates,
+    # überschreibt nie bestehende Matches) und günstig (~30s für ~100 Kampagnen,
+    # siehe manueller Testlauf vom 21.09.2026), tägliches Nachholen reicht völlig.
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  rematch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Abhängigkeiten installieren
+        run: npm ci
+      - name: Rematch ausführen
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: npx tsx scripts/rematch-campaigns.ts
