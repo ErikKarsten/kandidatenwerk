@@ -93,6 +93,7 @@ export type SyncApplicationsError = {
 
 export type SyncApplicationsResult = {
   created: number
+  linkedExisting: number
   errors: SyncApplicationsError[]
 }
 
@@ -120,9 +121,37 @@ export async function syncApplicationsFromKanzleistelle(limit?: number): Promise
 
   const errors: SyncApplicationsError[] = []
   let created = 0
+  let linkedExisting = 0
 
   for (const application of applications ?? []) {
     try {
+      // Dublettenschutz per E-Mail (gleiches Muster wie processMetaLead in
+      // meta-leads-sync-shared.ts, Abschnitt "2. Per E-Mail bekannt") - ohne diesen
+      // Check legt syncApplicationsFromKanzleistelle bei mehreren Bewerbungen derselben
+      // Person (z.B. drei Bewerbungen von Viktoriia Mamchur am 04.09.2026 innerhalb einer
+      // Stunde, Diagnose vom 21.09.2026) für jede Bewerbung einen eigenen, doppelten
+      // Kandidaten an. Ohne E-Mail (null/leer) ist kein Abgleich möglich - dann wie
+      // bisher immer neu anlegen.
+      if (application.email) {
+        const { data: existingByEmail, error: emailLookupError } = await kandidatenwerk
+          .from("candidates")
+          .select("id")
+          .eq("email", application.email)
+          .maybeSingle()
+        if (emailLookupError) throw new Error(emailLookupError.message)
+
+        if (existingByEmail) {
+          const { error: updateError } = await kanzleistelle
+            .from("applications")
+            .update({ kandidatenwerk_candidate_id: existingByEmail.id })
+            .eq("id", application.id)
+          if (updateError) throw new Error(updateError.message)
+
+          linkedExisting++
+          continue
+        }
+      }
+
       const berufsbild =
         (application.position && mapKanzleistelleBerufsbild(application.position)) ||
         (application.applicant_role && mapKanzleistelleBerufsbild(application.applicant_role)) ||
@@ -176,5 +205,5 @@ export async function syncApplicationsFromKanzleistelle(limit?: number): Promise
     }
   }
 
-  return { created, errors }
+  return { created, linkedExisting, errors }
 }
