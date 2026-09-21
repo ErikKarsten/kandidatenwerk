@@ -435,6 +435,29 @@ export async function inviteClientPortalUserAction(
 
   const admin = createSupabaseAdminClient()
 
+  // Vorab prüfen, ob diese E-Mail bereits als Portal-Zugang existiert (unabhängig vom
+  // Kunden) - Supabase Auth's inviteUserByEmail() ist pro E-Mail idempotent: ein
+  // zweiter Aufruf für eine schon bestehende (auch nur eingeladene, unbestätigte)
+  // E-Mail legt KEINEN neuen Auth-User an, sondern liefert die ID des bestehenden
+  // zurück und verschickt trotzdem einen neuen, echten Einladungslink dafür. Der
+  // anschließende profiles-Insert würde dann am Primary-Key scheitern (die ID hat ja
+  // schon eine profiles-Zeile vom ersten Zugang), und der Cleanup-Pfad unten würde
+  // diesen BESTEHENDEN Auth-User wieder löschen - nicht nur die neue Einladung wäre
+  // damit tot, der schon funktionierende erste Portal-Zugang würde rückwirkend
+  // zerstört (siehe Diagnose vom 21.09.2026, live reproduziert). Deshalb hier vorher
+  // abfangen, bevor überhaupt eine E-Mail verschickt wird.
+  const { data: existingProfile } = await admin
+    .from("profiles")
+    .select("id, client_id")
+    .eq("email", trimmedEmail)
+    .maybeSingle()
+
+  if (existingProfile) {
+    return {
+      error: `Diese E-Mail-Adresse ist bereits als Portal-Zugang hinterlegt (Kunde-ID ${existingProfile.client_id}). Bitte dort entfernen, bevor sie hier erneut eingeladen wird.`,
+    }
+  }
+
   const { data, error } = await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
     redirectTo: "https://kandidatenwerk.kanzleistelle24.de/set-password",
   })
