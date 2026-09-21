@@ -458,6 +458,19 @@ export async function inviteClientPortalUserAction(
     }
   }
 
+  // agency_id vom Kunden übernehmen - ohne das matcht die auf die eigene Agentur
+  // gescopte Staff-Policy "Staff sieht Profile der eigenen Agentur" (siehe
+  // 20260909000001_fix_medium_low_rls_findings.sql) dieses Profil nie, und
+  // Mitarbeiter sehen den gerade erfolgreich angelegten Portal-Zugang im Dashboard
+  // trotzdem dauerhaft als "0" an (Diagnose vom 21.09.2026, live bestätigt).
+  const { data: clientRecord, error: clientLookupError } = await admin
+    .from("clients")
+    .select("agency_id")
+    .eq("id", clientId)
+    .single()
+
+  if (clientLookupError) return { error: clientLookupError.message }
+
   const { data, error } = await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
     redirectTo: "https://kandidatenwerk.kanzleistelle24.de/set-password",
   })
@@ -469,6 +482,7 @@ export async function inviteClientPortalUserAction(
     id: data.user.id,
     role: "client",
     client_id: clientId,
+    agency_id: clientRecord.agency_id,
     email: trimmedEmail,
   })
 
