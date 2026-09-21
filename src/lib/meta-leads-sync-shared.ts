@@ -137,10 +137,9 @@ export async function processMetaLead(
   }
 
   // 3. Neuer Kandidat: Name bereinigen (gleiche Heuristik wie beim Leadtable-Import),
-  // Berufsbild aus dem Kampagnentitel ableiten, Zusatzfelder per KI aus den rohen
-  // Meta-Formular-Antworten befüllen (record dient hier als modifiedData-Ersatz).
+  // Zusatzfelder per KI aus den rohen Meta-Formular-Antworten befüllen (record dient
+  // hier als modifiedData-Ersatz).
   const { firstName, lastName, usedLongNameHeuristic } = extractCleanName(name ?? "")
-  const berufsbild = mapKanzleistelleBerufsbild(campaign.title)
 
   const aiResult = await extractCustomFieldsFromDescriptionAI(null, record, {})
   if (aiResult.error) {
@@ -151,6 +150,15 @@ export async function processMetaLead(
   // sie eine unsichere KI-Zuordnung überschreiben. Funktioniert auch, wenn die
   // KI-Extraktion komplett fehlschlägt (aiResult.fields ist dann nur {}).
   const customFields = { ...aiResult.fields, ...extractMetaCustomFields(record) }
+
+  // Berufsbild: zuerst aus der eigenen Ausbildungsantwort des Kandidaten ableiten
+  // (verlässlicher als der Kampagnentitel - siehe Diagnose 21.09.2026: vorher wurde
+  // IMMER der Kampagnentitel genutzt, unabhängig davon, was der Kandidat selbst als
+  // Ausbildung angegeben hat). Fallback auf den Kampagnentitel, wenn keine
+  // Ausbildungsantwort vorliegt oder sie sich keinem der vier Berufsbilder zuordnen lässt.
+  const berufsbild =
+    (customFields.ausbildung && mapKanzleistelleBerufsbild(customFields.ausbildung)) ||
+    mapKanzleistelleBerufsbild(campaign.title)
 
   const notePrefix = usedLongNameHeuristic ? "[Automatisch bereinigter Name, bitte prüfen] " : ""
 
