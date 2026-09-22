@@ -1,9 +1,10 @@
 // Versand von Transactional-E-Mails über die Brevo-API (POST /v3/smtp/email). Bewusst
 // getrennt von der SMTP-Konfiguration, die Supabase Auth für Login-/Bestätigungsmails
 // nutzt - anderer Schlüsseltyp (BREVO_API_KEY beginnt mit "xkeysib-", der SMTP-Key mit
-// "xsmtpsib-"). Absender ist dieselbe verifizierte Adresse wie bei den Supabase-Auth-
-// Mails, damit Zustellbarkeit/SPF-DKIM-Setup nicht doppelt gepflegt werden muss.
-const SENDER_EMAIL = "noreply@kanzleistelle24.de"
+// "xsmtpsib-"). Absender ist info@kanzleistelle24.de (Umstellung von noreply@ am
+// 22.09.2026, abgesprochen) - gleiche bei Brevo verifizierte Domain, SPF/DKIM gilt
+// dadurch unverändert weiter, keine erneute Domain-Verifizierung nötig.
+const SENDER_EMAIL = "info@kanzleistelle24.de"
 const SENDER_NAME = "Kandidatenwerk"
 
 export async function sendEmail(
