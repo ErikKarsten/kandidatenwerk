@@ -79,9 +79,6 @@ export default async function PortalCandidateDetailPage({
   }))
 
   const customFields = (candidate.custom_fields as Record<string, string> | null) ?? {}
-  const filledCustomFields = FIXED_CUSTOM_FIELDS
-    .map((f) => ({ ...f, value: customFields[f.key]?.trim() }))
-    .filter((f): f is typeof f & { value: string } => Boolean(f.value))
 
   return (
     <div className="p-6 max-w-3xl">
@@ -112,16 +109,17 @@ export default async function PortalCandidateDetailPage({
         </div>
       </div>
 
-      {filledCustomFields.length > 0 && (
-        <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
-          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Zusatzfelder</span>
-          <div className="mt-3 flex flex-col gap-2.5">
-            {filledCustomFields.map((f) => (
-              <FieldRow key={f.key} label={f.label}>{f.value}</FieldRow>
-            ))}
-          </div>
+      <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
+        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Zusatzfelder</span>
+        <div className="mt-3 flex flex-col gap-2.5">
+          {FIXED_CUSTOM_FIELDS.map((f) => {
+            const value = customFields[f.key]?.trim()
+            return (
+              <FieldRow key={f.key} label={f.label}>{value || "—"}</FieldRow>
+            )
+          })}
         </div>
-      )}
+      </div>
 
       {files.length > 0 && (
         <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
