@@ -29,7 +29,7 @@ import dotenv from "dotenv"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "../src/types/database"
 import { sendEmail } from "../src/lib/brevo-mail"
-import { substituteTemplateVars, resolveAutomationRecipients } from "../src/lib/automation-engine"
+import { substituteTemplateVars, resolveAutomationRecipients, wrapAutomationEmailHtml } from "../src/lib/automation-engine"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -186,14 +186,18 @@ async function main() {
         }
 
         const subject = substituteTemplateVars(automation.subject, vars)
-        const bodyHtml = substituteTemplateVars(automation.body_html, vars)
+        // automation.body_html ist trotz des Namens reiner Fließtext (\n\n-Absätze, siehe
+        // automations-tab.tsx) - wrapAutomationEmailHtml rendert das erst beim Versand in
+        // die gebrandete Kartenvorlage, der Editor selbst bleibt unverändert Klartext.
+        const bodyText = substituteTemplateVars(automation.body_html, vars)
+        const emailHtml = wrapAutomationEmailHtml(bodyText)
 
         if (dryRun) {
           console.log(
             `[DRY-RUN] "${automation.name}" | Kampagne "${campaign.title}" | Kandidat ${candidateName} <${candidate.email ?? "-"}> | Empfänger: ${recipients.join(", ")} | Betreff: "${subject}"`
           )
         } else {
-          await sendEmail(recipients, subject, bodyHtml)
+          await sendEmail(recipients, subject, emailHtml)
 
           await supabase.from("campaign_automation_runs").insert({
             automation_id: automation.id,
