@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { leadtableFetch } from "@/lib/leadtable-client"
+import { ensureClientAssignment } from "@/lib/client-assignment"
 
 interface LeadtableLeadsPages {
   totalLeads: number
@@ -240,6 +241,14 @@ export async function importLeadtableCampaign(
         .single()
 
       if (insertError) throw new Error(insertError.message)
+
+      if (clientRecordId) {
+        try {
+          await ensureClientAssignment(kandidatenwerk, insertedCandidate.id, clientRecordId)
+        } catch (assignmentError) {
+          console.error(`Kunden-Zuordnung fehlgeschlagen für Kandidat ${insertedCandidate.id}:`, assignmentError)
+        }
+      }
 
       result.created++
       result.createdCandidateIds.push(insertedCandidate.id)

@@ -11,6 +11,7 @@ import { extractCustomFieldsFromDescriptionAI } from "@/lib/leadtable-sync-share
 import { extractCleanName } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { FIXED_CUSTOM_FIELD_KEYS } from "@/lib/candidate-custom-fields"
+import { ensureClientAssignment } from "@/lib/client-assignment"
 
 export type SupabaseClient = GenericSupabaseClient<Database>
 
@@ -106,24 +107,22 @@ export async function processMetaLead(
     // sehen koennen - ueber dieselbe Mehrfachzuordnung wie bei der manuellen Zuordnung
     // (client_assignments, siehe assignToClientAction in
     // dashboard/candidates/[id]/actions.ts, seit 20260902000000 ohne
-    // Unique-Beschraenkung mehr auf eine aktive Zuordnung pro Kandidat). Nur anlegen,
-    // wenn noch keine AKTIVE Zuordnung zu dieser Kanzlei besteht, sonst wuerden
-    // wiederholte Leads/Sync-Laeufe die Zuordnungsliste unnoetig aufblaehen.
+    // Unique-Beschraenkung mehr auf eine aktive Zuordnung pro Kandidat). ensureClientAssignment
+    // legt nur an, wenn noch keine AKTIVE Zuordnung zu dieser Kanzlei besteht, sonst wuerden
+    // wiederholte Leads/Sync-Laeufe die Zuordnungsliste unnoetig aufblaehen - die History-
+    // Notiz braucht also ebenfalls die vorherige Existenzprüfung, um nicht bei jedem Lauf
+    // erneut zu schreiben.
     if (campaign.client_id) {
-      const { data: existingAssignment, error: assignmentLookupError } = await supabase
+      const { data: existingAssignment } = await supabase
         .from("client_assignments")
         .select("id")
         .eq("candidate_id", existingByEmail.id)
         .eq("client_id", campaign.client_id)
         .is("removed_at", null)
         .maybeSingle()
-      if (assignmentLookupError) throw new Error(assignmentLookupError.message)
 
       if (!existingAssignment) {
-        const { error: assignmentInsertError } = await supabase
-          .from("client_assignments")
-          .insert({ candidate_id: existingByEmail.id, client_id: campaign.client_id })
-        if (assignmentInsertError) throw new Error(assignmentInsertError.message)
+        await ensureClientAssignment(supabase, existingByEmail.id, campaign.client_id)
 
         await supabase.from("candidate_history").insert({
           candidate_id: existingByEmail.id,
@@ -182,6 +181,14 @@ export async function processMetaLead(
     .select("id")
     .single()
   if (insertError) throw new Error(insertError.message)
+
+  if (campaign.client_id) {
+    try {
+      await ensureClientAssignment(supabase, inserted.id, campaign.client_id)
+    } catch (assignmentError) {
+      console.error(`Kunden-Zuordnung fehlgeschlagen für Kandidat ${inserted.id}:`, assignmentError)
+    }
+  }
 
   return { status: "created", candidateId: inserted.id }
 }
