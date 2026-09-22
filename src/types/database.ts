@@ -862,6 +862,42 @@ export type Database = {
           }
         ]
       }
+      campaign_automation_runs: {
+        Row: {
+          id: string
+          automation_id: string
+          candidate_id: string
+          fired_at: string
+        }
+        Insert: {
+          id?: string
+          automation_id: string
+          candidate_id: string
+          fired_at?: string
+        }
+        Update: {
+          id?: string
+          automation_id?: string
+          candidate_id?: string
+          fired_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_automation_runs_automation_id_fkey"
+            columns: ["automation_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_automations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_automation_runs_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       candidate_files: {
         Row: {
           id: string

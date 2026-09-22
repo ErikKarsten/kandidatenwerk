@@ -1,0 +1,30 @@
+name: Kampagnen-Automatisierungen
+
+on:
+  schedule:
+    # 5 Minuten ist die von GitHub selbst empfohlene kürzeste Taktung für Scheduled
+    # Workflows (kürzere Intervalle werden nicht zuverlässig pünktlich ausgeführt).
+    # delay_seconds in der Automatisierungs-Konfiguration ist dadurch eine
+    # Mindestwartezeit, keine sekundengenaue Zusage - siehe Kommentar in
+    # scripts/run-automations.ts.
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  run-automations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Abhängigkeiten installieren
+        run: npm ci
+      - name: Automatisierungen ausführen
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+        run: npx tsx scripts/run-automations.ts

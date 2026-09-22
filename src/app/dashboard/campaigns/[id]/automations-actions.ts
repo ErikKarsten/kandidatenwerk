@@ -33,8 +33,6 @@ export interface AutomationData {
   delay_seconds: number
   active: boolean
   recipient: string
-  sender_email: string
-  sender_name: string
   subject: string
   body_html: string
 }

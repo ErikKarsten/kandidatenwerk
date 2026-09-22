@@ -21,8 +21,6 @@ export interface Automation {
   delay_seconds: number
   active: boolean
   recipient: string
-  sender_email: string
-  sender_name: string
   subject: string
   body_html: string
   created_at: string
@@ -108,8 +106,6 @@ const DEFAULT_FORM: AutomationData = {
   delay_seconds: 30,
   active: true,
   recipient: "candidate",
-  sender_email: "",
-  sender_name: "",
   subject: "",
   body_html: "",
 }
@@ -158,8 +154,6 @@ export function AutomationsTab({
       delay_seconds: a.delay_seconds,
       active: a.active,
       recipient: a.recipient,
-      sender_email: a.sender_email,
-      sender_name: a.sender_name,
       subject: a.subject,
       body_html: a.body_html,
     })
@@ -189,7 +183,6 @@ export function AutomationsTab({
   function handleSave() {
     if (!form.name.trim()) { setFormError("Name ist ein Pflichtfeld."); return }
     if (!form.subject.trim()) { setFormError("Betreff ist ein Pflichtfeld."); return }
-    if (!form.sender_email.trim()) { setFormError("Absender-E-Mail ist ein Pflichtfeld."); return }
     setFormError(null)
 
     startSaveTransition(async () => {
@@ -264,7 +257,6 @@ export function AutomationsTab({
               <tr style={{ borderBottom: "1px solid #dde3ea" }}>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Trigger</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Von</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">An</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Aktiv</th>
                 <th className="px-4 py-3" />
@@ -278,9 +270,6 @@ export function AutomationsTab({
                 >
                   <td className="px-4 py-3 font-medium text-gray-900">{a.name}</td>
                   <td className="px-4 py-3 text-gray-600 text-xs">{triggerLabel(a.trigger, a.trigger_status)}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[180px]">
-                    {a.sender_name ? `${a.sender_name} <${a.sender_email}>` : a.sender_email || "—"}
-                  </td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{recipientLabel(a.recipient)}</td>
                   <td className="px-4 py-3">
                     <button
@@ -426,31 +415,6 @@ export function AutomationsTab({
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                   </div>
-                </div>
-              </div>
-
-              {/* Sender */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-600">Absender-Name</label>
-                  <input
-                    className={inputClass}
-                    style={inputStyle}
-                    placeholder="z. B. Max Muster"
-                    value={form.sender_name}
-                    onChange={(e) => setForm((f) => ({ ...f, sender_name: e.target.value }))}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-600">Absender-E-Mail *</label>
-                  <input
-                    className={inputClass}
-                    style={inputStyle}
-                    type="email"
-                    placeholder="noreply@beispiel.de"
-                    value={form.sender_email}
-                    onChange={(e) => setForm((f) => ({ ...f, sender_email: e.target.value }))}
-                  />
                 </div>
               </div>
 

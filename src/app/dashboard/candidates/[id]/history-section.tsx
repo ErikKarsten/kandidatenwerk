@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowRightLeft, StickyNote, Circle, Trash2 } from "lucide-react"
+import { ArrowRightLeft, StickyNote, Circle, Trash2, Mail } from "lucide-react"
 import { deleteNoteAction } from "./actions"
 
 export interface HistoryEntry {
@@ -34,11 +34,13 @@ function dateKey(dateStr: string): string {
 const TYPE_ICON: Record<string, typeof ArrowRightLeft> = {
   status_change: ArrowRightLeft,
   note: StickyNote,
+  automation: Mail,
 }
 
 const TYPE_COLOR: Record<string, { bg: string; text: string }> = {
   status_change: { bg: "#1e56a018", text: "#1e56a0" },
   note: { bg: "#9ca3af18", text: "#6b7280" },
+  automation: { bg: "#1a9a6a18", text: "#1a9a6a" },
 }
 const FALLBACK_COLOR = { bg: "#9ca3af18", text: "#6b7280" }
 
