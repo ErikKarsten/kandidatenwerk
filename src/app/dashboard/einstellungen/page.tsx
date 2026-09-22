@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
-import { getTeamMembers } from "./actions"
+import { getTeamMembers, getEmailTemplates } from "./actions"
 import { EinstellungenDetail } from "./einstellungen-detail"
 
 export default async function EinstellungenPage() {
@@ -25,6 +25,7 @@ export default async function EinstellungenPage() {
     : { data: null }
 
   const team = ownProfile.agency_id ? await getTeamMembers(ownProfile.agency_id) : []
+  const emailTemplates = ownProfile.agency_id ? await getEmailTemplates(ownProfile.agency_id) : []
 
   return (
     <EinstellungenDetail
@@ -36,6 +37,8 @@ export default async function EinstellungenPage() {
       }}
       agencyName={agency?.name ?? ""}
       team={team}
+      agencyId={ownProfile.agency_id}
+      emailTemplates={emailTemplates}
     />
   )
 }

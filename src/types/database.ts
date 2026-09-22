@@ -678,6 +678,41 @@ export type Database = {
           }
         ]
       }
+      email_templates: {
+        Row: {
+          id: string
+          agency_id: string
+          name: string
+          subject: string
+          body_html: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          name: string
+          subject?: string
+          body_html?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          name?: string
+          subject?: string
+          body_html?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_templates_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       candidate_history: {
         Row: {
           id: string

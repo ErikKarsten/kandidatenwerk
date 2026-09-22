@@ -26,6 +26,7 @@ import { CandidateStatusSelect } from "./candidate-status-select"
 import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
 import { MatchesTab } from "./matches-tab"
+import type { EmailTemplate } from "../../einstellungen/actions"
 import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
@@ -105,6 +106,7 @@ interface CampaignDetailProps {
   candidates: Candidate[]
   automations: Automation[]
   matches: CandidateMatch[]
+  emailTemplates: EmailTemplate[]
 }
 
 type ModalStep = null | "choice" | "delete_options"
@@ -134,7 +136,7 @@ function triggerCSVDownload(csv: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function CampaignDetail({ campaign, candidates, automations, matches }: CampaignDetailProps) {
+export function CampaignDetail({ campaign, candidates, automations, matches, emailTemplates }: CampaignDetailProps) {
   const [tab, setTab] = useState<"kandidaten" | "matches" | "einrichtung" | "automatisierungen">("kandidaten")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [selectedOption, setSelectedOption] = useState<CandidateOption | null>(null)
@@ -760,7 +762,7 @@ export function CampaignDetail({ campaign, candidates, automations, matches }: C
 
       {/* Automatisierungen-Tab */}
       {tab === "automatisierungen" && (
-        <AutomationsTab campaignId={campaign.id} automations={automations} />
+        <AutomationsTab campaignId={campaign.id} automations={automations} emailTemplates={emailTemplates} />
       )}
 
       {/* Einrichtungs-Tab */}

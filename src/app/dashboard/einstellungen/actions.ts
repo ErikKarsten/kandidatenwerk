@@ -161,3 +161,57 @@ export async function updateAgencyNameAction(name: string): Promise<{ error: str
   revalidatePath("/dashboard/einstellungen")
   return null
 }
+
+export interface EmailTemplate {
+  id: string
+  name: string
+  subject: string
+  body_html: string
+}
+
+// Agenturweite E-Mail-Vorlagen - fuer die Seite selbst (page.tsx) und den
+// Automatisierungs-Editor (campaigns/[id]/page.tsx), analog zu getTeamMembers oben.
+// Kein Admin-Client noetig - RLS auf email_templates scoped automatisch korrekt auf die
+// eigene Agentur (siehe 20260922000004_email_templates.sql), gleiches Prinzip wie bei
+// den bestehenden Automatisierungs-Actions (automations-actions.ts).
+export async function getEmailTemplates(agencyId: string): Promise<EmailTemplate[]> {
+  const supabase = await createSupabaseServerClient()
+  const { data } = await supabase
+    .from("email_templates")
+    .select("id, name, subject, body_html")
+    .eq("agency_id", agencyId)
+    .order("created_at", { ascending: true })
+  return data ?? []
+}
+
+export async function createEmailTemplateAction(
+  agencyId: string,
+  data: { name: string; subject: string; body_html: string }
+): Promise<{ error: string } | null> {
+  if (!data.name.trim()) return { error: "Name ist ein Pflichtfeld." }
+  const supabase = await createSupabaseServerClient()
+  const { error } = await supabase.from("email_templates").insert({ agency_id: agencyId, ...data })
+  if (error) return { error: error.message }
+  revalidatePath("/dashboard/einstellungen")
+  return null
+}
+
+export async function updateEmailTemplateAction(
+  id: string,
+  data: { name: string; subject: string; body_html: string }
+): Promise<{ error: string } | null> {
+  if (!data.name.trim()) return { error: "Name ist ein Pflichtfeld." }
+  const supabase = await createSupabaseServerClient()
+  const { error } = await supabase.from("email_templates").update(data).eq("id", id)
+  if (error) return { error: error.message }
+  revalidatePath("/dashboard/einstellungen")
+  return null
+}
+
+export async function deleteEmailTemplateAction(id: string): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const { error } = await supabase.from("email_templates").delete().eq("id", id)
+  if (error) return { error: error.message }
+  revalidatePath("/dashboard/einstellungen")
+  return null
+}

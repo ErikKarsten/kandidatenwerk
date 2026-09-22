@@ -11,6 +11,7 @@ import {
   type AutomationData,
 } from "./automations-actions"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
+import type { EmailTemplate } from "../../einstellungen/actions"
 
 export interface Automation {
   id: string
@@ -127,9 +128,11 @@ function recipientLabel(r: string): string {
 export function AutomationsTab({
   campaignId,
   automations: initialAutomations,
+  emailTemplates,
 }: {
   campaignId: string
   automations: Automation[]
+  emailTemplates: EmailTemplate[]
 }) {
   const router = useRouter()
   const [automations, setAutomations] = useState(initialAutomations)
@@ -178,6 +181,22 @@ export function AutomationsTab({
       subject: tpl.subject,
       body_html: tpl.body_html,
     }))
+  }
+
+  // Eigene Vorlagen (Einstellungen -> "E-Mail-Vorlagen") bringen kein Trigger/Empfänger
+  // mit, nur Name/Betreff/Text - anders als applyTemplate oben für die 4
+  // Standard-Vorlagen, die zusätzlich Trigger/Empfänger vorbelegen. Trigger/Empfänger/
+  // Status bleiben hier bewusst unangetastet.
+  function applyCustomTemplate(id: string) {
+    const tpl = emailTemplates.find((t) => t.id === id)
+    if (!tpl) return
+    setForm((prev) => ({ ...prev, name: prev.name || tpl.name, subject: tpl.subject, body_html: tpl.body_html }))
+  }
+
+  function handleTemplateSelect(value: string) {
+    if (!value) return
+    if (value.startsWith("custom:")) applyCustomTemplate(value.slice("custom:".length))
+    else if (value.startsWith("builtin:")) applyTemplate(value.slice("builtin:".length))
   }
 
   function handleSave() {
@@ -351,12 +370,21 @@ export function AutomationsTab({
                       className={selectClass}
                       style={inputStyle}
                       defaultValue=""
-                      onChange={(e) => { if (e.target.value) applyTemplate(e.target.value) }}
+                      onChange={(e) => handleTemplateSelect(e.target.value)}
                     >
                       <option value="">— Vorlage auswählen —</option>
-                      {TEMPLATES.map((t) => (
-                        <option key={t.id} value={t.id}>{t.label}</option>
-                      ))}
+                      {emailTemplates.length > 0 && (
+                        <optgroup label="Eigene Vorlagen">
+                          {emailTemplates.map((t) => (
+                            <option key={t.id} value={`custom:${t.id}`}>{t.name}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="Standard-Vorlagen">
+                        {TEMPLATES.map((t) => (
+                          <option key={t.id} value={`builtin:${t.id}`}>{t.label}</option>
+                        ))}
+                      </optgroup>
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                   </div>

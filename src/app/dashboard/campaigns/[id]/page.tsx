@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { getEmailTemplates } from "../../einstellungen/actions"
 import { CampaignDetail } from "./campaign-detail"
 
 export default async function CampaignDetailPage({
@@ -9,6 +10,15 @@ export default async function CampaignDetailPage({
 }) {
   const { id } = await params
   const supabase = await createSupabaseServerClient()
+
+  // Eigene agency_id laden (gleiches Muster wie einstellungen/page.tsx), um die
+  // agenturweiten E-Mail-Vorlagen fuer die "Vorlage waehlen"-Dropdown im
+  // Automatisierungs-Editor zu laden (automations-tab.tsx).
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: ownProfile } = user
+    ? await supabase.from("profiles").select("agency_id").eq("id", user.id).single()
+    : { data: null }
+  const emailTemplates = ownProfile?.agency_id ? await getEmailTemplates(ownProfile.agency_id) : []
 
   const [{ data: campaign }, { data: candidates }, { data: automations }, { data: matchRows }] = await Promise.all([
     supabase
@@ -88,6 +98,7 @@ export default async function CampaignDetailPage({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       automations={(automations ?? []) as any}
       matches={matches}
+      emailTemplates={emailTemplates}
     />
   )
 }
