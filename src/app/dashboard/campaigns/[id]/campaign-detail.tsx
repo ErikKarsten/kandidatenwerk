@@ -12,6 +12,8 @@ import {
   getCampaignCandidatesForExport,
   refreshLeadtableCampaignAction,
   publishCampaignToKanzleistelleAction,
+  duplicateCampaignAction,
+  moveCampaignToClientAction,
 } from "./actions"
 import { Button } from "@/components/ui/button"
 import {
@@ -85,7 +87,12 @@ interface Campaign {
   leadtable_campaign_id: string | null
   kanzleistelle_job_id: string | null
   meta_webhook_last_test_at: string | null
-  client: { name: string } | null
+  client: { id: string; name: string } | null
+}
+
+interface ClientOption {
+  id: string
+  name: string
 }
 
 interface CandidateMatch {
@@ -107,6 +114,7 @@ interface CampaignDetailProps {
   automations: Automation[]
   matches: CandidateMatch[]
   emailTemplates: EmailTemplate[]
+  clients: ClientOption[]
 }
 
 type ModalStep = null | "choice" | "delete_options"
@@ -136,13 +144,25 @@ function triggerCSVDownload(csv: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function CampaignDetail({ campaign, candidates, automations, matches, emailTemplates }: CampaignDetailProps) {
+export function CampaignDetail({ campaign, candidates, automations, matches, emailTemplates, clients }: CampaignDetailProps) {
   const [tab, setTab] = useState<"kandidaten" | "matches" | "einrichtung" | "automatisierungen">("kandidaten")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [selectedOption, setSelectedOption] = useState<CandidateOption | null>(null)
   const [modalError, setModalError] = useState<string | null>(null)
   const [archivePending, startArchiveTransition] = useTransition()
   const [finalDeletePending, setFinalDeletePending] = useState(false)
+
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false)
+  const [duplicateClientId, setDuplicateClientId] = useState("")
+  const [duplicateIncludeLeads, setDuplicateIncludeLeads] = useState(false)
+  const [duplicateError, setDuplicateError] = useState<string | null>(null)
+  const [duplicatePending, startDuplicateTransition] = useTransition()
+
+  const [moveModalOpen, setMoveModalOpen] = useState(false)
+  const [moveClientId, setMoveClientId] = useState("")
+  const [moveIncludeLeads, setMoveIncludeLeads] = useState(false)
+  const [moveError, setMoveError] = useState<string | null>(null)
+  const [movePending, startMoveTransition] = useTransition()
   const [refreshPending, startRefreshTransition] = useTransition()
   const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [publishPending, startPublishTransition] = useTransition()
@@ -271,6 +291,51 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
     } catch {
       // redirect() throws NEXT_REDIRECT — expected on success
     }
+  }
+
+  function openDuplicateModal() {
+    setDuplicateClientId(campaign.client?.id ?? "")
+    setDuplicateIncludeLeads(false)
+    setDuplicateError(null)
+    setDuplicateModalOpen(true)
+  }
+
+  function closeDuplicateModal() {
+    setDuplicateModalOpen(false)
+    setDuplicateError(null)
+  }
+
+  function handleDuplicate() {
+    if (!duplicateClientId) return
+    setDuplicateError(null)
+    startDuplicateTransition(async () => {
+      const result = await duplicateCampaignAction(campaign.id, duplicateClientId, duplicateIncludeLeads)
+      if ("error" in result) { setDuplicateError(result.error); return }
+      router.push(`/dashboard/campaigns/${result.newCampaignId}`)
+    })
+  }
+
+  function openMoveModal() {
+    setMoveClientId("")
+    setMoveIncludeLeads(false)
+    setMoveError(null)
+    setMoveModalOpen(true)
+  }
+
+  function closeMoveModal() {
+    setMoveModalOpen(false)
+    setMoveError(null)
+  }
+
+  function handleMove() {
+    if (!moveClientId) return
+    setMoveError(null)
+    startMoveTransition(async () => {
+      const result = await moveCampaignToClientAction(campaign.id, moveClientId, moveIncludeLeads)
+      if (result?.error) { setMoveError(result.error); return }
+      closeMoveModal()
+      router.refresh()
+    })
   }
 
   const anyPending = archivePending || finalDeletePending
@@ -412,6 +477,145 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
         </div>
       )}
 
+      {/* Duplizieren-Modal */}
+      {duplicateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-white shadow-xl" style={{ borderColor: "#dde3ea" }}>
+            <div className="p-6 flex flex-col gap-4">
+              <h2 className="text-base font-semibold text-gray-900">Kampagne duplizieren</h2>
+              <p className="text-xs text-gray-500">
+                Legt eine neue Kampagne "{campaign.title} (Kopie)" an. Anderen Kunden wählen, um zu diesem zu
+                kopieren.
+              </p>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Kunde</label>
+                <select
+                  className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
+                  style={{ borderColor: "#dde3ea" }}
+                  value={duplicateClientId}
+                  onChange={(e) => setDuplicateClientId(e.target.value)}
+                >
+                  <option value="">— Kunde wählen —</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Leads mitnehmen?</label>
+                <div className="flex gap-2">
+                  {[{ value: true, label: "Ja" }, { value: false, label: "Nein" }].map((opt) => (
+                    <button
+                      key={String(opt.value)}
+                      onClick={() => setDuplicateIncludeLeads(opt.value)}
+                      className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
+                      style={{
+                        borderColor: duplicateIncludeLeads === opt.value ? "#1e56a0" : "#dde3ea",
+                        backgroundColor: duplicateIncludeLeads === opt.value ? "#1e56a018" : "white",
+                        color: duplicateIncludeLeads === opt.value ? "#1e56a0" : "#6b7280",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {duplicateError && <p className="text-xs text-red-600">{duplicateError}</p>}
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleDuplicate}
+                  disabled={!duplicateClientId || duplicatePending}
+                  className="rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                  style={{ backgroundColor: "#1e56a0" }}
+                >
+                  {duplicatePending ? "Wird dupliziert…" : "Duplizieren"}
+                </button>
+                <button
+                  onClick={closeDuplicateModal}
+                  disabled={duplicatePending}
+                  className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verschieben-Modal */}
+      {moveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-white shadow-xl" style={{ borderColor: "#dde3ea" }}>
+            <div className="p-6 flex flex-col gap-4">
+              <h2 className="text-base font-semibold text-gray-900">Kampagne zu anderem Kunden verschieben</h2>
+              <p className="text-xs text-gray-500">
+                Dieselbe Kampagne bekommt einen neuen Kunden zugewiesen - es wird keine Kopie angelegt.
+              </p>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Neuer Kunde</label>
+                <select
+                  className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
+                  style={{ borderColor: "#dde3ea" }}
+                  value={moveClientId}
+                  onChange={(e) => setMoveClientId(e.target.value)}
+                >
+                  <option value="">— Kunde wählen —</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Leads mitnehmen?</label>
+                <div className="flex gap-2">
+                  {[{ value: true, label: "Ja" }, { value: false, label: "Nein" }].map((opt) => (
+                    <button
+                      key={String(opt.value)}
+                      onClick={() => setMoveIncludeLeads(opt.value)}
+                      className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
+                      style={{
+                        borderColor: moveIncludeLeads === opt.value ? "#1e56a0" : "#dde3ea",
+                        backgroundColor: moveIncludeLeads === opt.value ? "#1e56a018" : "white",
+                        color: moveIncludeLeads === opt.value ? "#1e56a0" : "#6b7280",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {moveError && <p className="text-xs text-red-600">{moveError}</p>}
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleMove}
+                  disabled={!moveClientId || movePending}
+                  className="rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                  style={{ backgroundColor: "#1e56a0" }}
+                >
+                  {movePending ? "Wird verschoben…" : "Verschieben"}
+                </button>
+                <button
+                  onClick={closeMoveModal}
+                  disabled={movePending}
+                  className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <button
@@ -493,6 +697,20 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={openDuplicateModal}
+              className="rounded-md border px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              style={{ borderColor: "#dde3ea" }}
+            >
+              Duplizieren
+            </button>
+            <button
+              onClick={openMoveModal}
+              className="rounded-md border px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              style={{ borderColor: "#dde3ea" }}
+            >
+              Verschieben
+            </button>
             <button
               onClick={() => { setModalStep("choice"); setModalError(null) }}
               className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-red-50"

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { matchCampaignToCandidates, matchCandidateToCampaigns } from "@/lib/matching"
@@ -11,6 +12,7 @@ import { importLeadtableCampaign } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { publishCampaignToKanzleistelle } from "@/lib/sync-kanzleistelle-jobs"
 import { fetchMetaPages, fetchMetaLeadForms, createMetaTestLead, buildFormToPageAccessTokenMap, type MetaPage, type MetaLeadForm } from "@/lib/meta-ads-client"
+import { ensureClientAssignment } from "@/lib/client-assignment"
 import type { TablesUpdate } from "@/types/database"
 
 // Siehe src/app/dashboard/candidates/page.tsx / clients-list.tsx / campaigns-list.tsx -
@@ -363,5 +365,218 @@ export async function requestMetaTestLeadAction(
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+// Dupliziert eine Kampagne, optional zu einem anderen Kunden ("Kopieren zu anderem
+// Kunden" ist serverseitig exakt dieselbe Action wie ein "echtes" Duplikat, nur mit
+// targetClientId = aktueller Kunde). Externe Verknüpfungen (Meta-Formular,
+// Kanzleistelle24-Job, Leadtable-Kampagne) werden NIE mitkopiert - diese IDs müssen pro
+// echter externer Kampagne eindeutig sein, sonst würden zwei Kandidatenwerk-Kampagnen
+// denselben Meta-Webhook/Job verarbeiten.
+export async function duplicateCampaignAction(
+  campaignId: string,
+  targetClientId: string,
+  includeLeads: boolean
+): Promise<{ error: string } | { newCampaignId: string }> {
+  const supabase = await createSupabaseServerClient()
+  const guardError = await requireStaffUser(supabase)
+  if (guardError) return guardError
+  // Nur für den campaign_automation_runs-Dedup-Insert unten nötig (RLS dort bewusst
+  // ohne Policies, siehe Kommentar am Insert weiter unten) - alles andere in dieser
+  // Funktion läuft weiterhin über den normalen, RLS-gebundenen supabase-Client.
+  const admin = createSupabaseAdminClient()
+
+  const { data: original, error: fetchError } = await supabase
+    .from("campaigns")
+    .select("*")
+    .eq("id", campaignId)
+    .single()
+  if (fetchError || !original) return { error: fetchError?.message ?? "Kampagne nicht gefunden." }
+
+  const { data: newCampaign, error: insertError } = await supabase
+    .from("campaigns")
+    .insert({
+      client_id: targetClientId,
+      title: `${original.title} (Kopie)`,
+      description: original.description,
+      status: original.status,
+      berufsbild: original.berufsbild,
+      plz: original.plz,
+      lat: original.lat,
+      lng: original.lng,
+      radius_km: original.radius_km,
+      location_id: original.location_id,
+      meta_campaign_id: null,
+      meta_form_id: null,
+      meta_field_mapping: null,
+      meta_form_name: null,
+      meta_webhook_last_test_at: null,
+      kanzleistelle_job_id: null,
+      leadtable_campaign_id: null,
+    })
+    .select("id")
+    .single()
+  if (insertError || !newCampaign) return { error: insertError?.message ?? "Kampagne konnte nicht angelegt werden." }
+
+  // Automatisierungen immer mitkopieren (Kampagnen-Einstellung, unabhängig von Leads) -
+  // Dedup-Historie (campaign_automation_runs) bewusst NICHT mitkopiert, die neue Kampagne
+  // startet dafür frisch.
+  const { data: automations } = await supabase
+    .from("campaign_automations")
+    .select("*")
+    .eq("campaign_id", campaignId)
+
+  const newAutomationIds: string[] = []
+  if (automations && automations.length > 0) {
+    for (const a of automations) {
+      const { data: newAutomation, error: autoError } = await supabase
+        .from("campaign_automations")
+        .insert({
+          campaign_id: newCampaign.id,
+          name: a.name,
+          trigger: a.trigger,
+          trigger_status: a.trigger_status,
+          delay_seconds: a.delay_seconds,
+          active: a.active,
+          recipient: a.recipient,
+          subject: a.subject,
+          body_html: a.body_html,
+        })
+        .select("id")
+        .single()
+      if (autoError) return { error: autoError.message }
+      if (newAutomation) newAutomationIds.push(newAutomation.id)
+    }
+  }
+
+  if (includeLeads) {
+    const { data: candidates } = await supabase
+      .from("candidates")
+      .select("*")
+      .eq("campaign_id", campaignId)
+
+    for (const c of candidates ?? []) {
+      const { data: newCandidate, error: candError } = await supabase
+        .from("candidates")
+        .insert({
+          campaign_id: newCampaign.id,
+          client_id: targetClientId,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          email: c.email,
+          phone: c.phone,
+          status: c.status,
+          source: c.source,
+          notes: c.notes,
+          custom_fields: c.custom_fields,
+          description: c.description,
+          berufsbild: c.berufsbild,
+          plz: c.plz,
+          lat: c.lat,
+          lng: c.lng,
+          // meta_lead_id / leadtable-spezifische IDs bewusst NICHT mitkopiert - siehe
+          // gleiche Begründung wie bei den externen Kampagnen-Verknüpfungen oben.
+        })
+        .select("id")
+        .single()
+      if (candError) return { error: candError.message }
+      if (!newCandidate) continue
+
+      try {
+        await ensureClientAssignment(supabase, newCandidate.id, targetClientId)
+      } catch (assignError) {
+        console.error("Kunden-Zuordnung fehlgeschlagen für kopierten Kandidaten", newCandidate.id, assignError)
+      }
+
+      // Verhindert Doppel-Mails durch kopierte "Neuer Lead"-Automatisierungen: die Kopien
+      // bekommen ein frisches created_at, ohne diesen Dedup-Eintrag würde eine aktive
+      // "Neuer Lead"-Automatisierung beim nächsten Cron-Lauf sofort für alle kopierten
+      // (historischen) Kandidaten feuern, obwohl sie die Mail schon vom Original bekommen
+      // haben - für künftige NEUE Leads auf der neuen Kampagne bleibt sie ganz normal aktiv.
+      // campaign_automation_runs hat bewusst RLS ohne Policies (siehe Migration
+      // 20260922000001) - ein Insert über den normalen, an die Staff-Session gebundenen
+      // supabase-Client wird von RLS lautlos verworfen (0 statt der erwarteten Zeilen,
+      // Fehler wurde hier bisher auch gar nicht geprüft). Deshalb wie in
+      // inviteClientPortalUserAction/scripts/run-automations.ts über den
+      // Service-Role-Client schreiben.
+      for (const newAutomationId of newAutomationIds) {
+        const { error: dedupError } = await admin.from("campaign_automation_runs").insert({
+          automation_id: newAutomationId,
+          candidate_id: newCandidate.id,
+        })
+        if (dedupError) {
+          console.error(
+            "Dedup-Vorab-Eintrag fehlgeschlagen für kopierten Kandidaten",
+            newCandidate.id,
+            "Automatisierung",
+            newAutomationId,
+            dedupError
+          )
+        }
+      }
+    }
+  }
+
+  revalidatePath("/dashboard/campaigns")
+  return { newCampaignId: newCampaign.id }
+}
+
+// Verschiebt eine bestehende Kampagne zu einem anderen Kunden (Kampagne bleibt
+// dieselbe, bekommt nur eine neue client_id) - im Unterschied zu
+// duplicateCampaignAction, die eine neue Kampagne anlegt.
+export async function moveCampaignToClientAction(
+  campaignId: string,
+  targetClientId: string,
+  takeLeadsAlong: boolean
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const guardError = await requireStaffUser(supabase)
+  if (guardError) return guardError
+
+  const { error: updateError } = await supabase
+    .from("campaigns")
+    .update({ client_id: targetClientId })
+    .eq("id", campaignId)
+  if (updateError) return { error: updateError.message }
+
+  if (takeLeadsAlong) {
+    const { data: candidates } = await supabase
+      .from("candidates")
+      .select("id, client_id")
+      .eq("campaign_id", campaignId)
+
+    for (const c of candidates ?? []) {
+      const { error: candUpdateError } = await supabase
+        .from("candidates")
+        .update({ client_id: targetClientId })
+        .eq("id", c.id)
+      if (candUpdateError) return { error: candUpdateError.message }
+
+      // Alte aktive Zuordnung(en) zum bisherigen Kunden beenden (Soft-Delete, gleiches
+      // Prinzip wie removeClientAssignmentAction), neue zum Zielkunden sicherstellen -
+      // andere Zuordnungen des Kandidaten zu WEITEREN Kunden (aus anderen Kampagnen)
+      // bleiben unangetastet.
+      if (c.client_id) {
+        await supabase
+          .from("client_assignments")
+          .update({ removed_at: new Date().toISOString() })
+          .eq("candidate_id", c.id)
+          .eq("client_id", c.client_id)
+          .is("removed_at", null)
+      }
+      try {
+        await ensureClientAssignment(supabase, c.id, targetClientId)
+      } catch (assignError) {
+        console.error("Kunden-Zuordnung fehlgeschlagen beim Verschieben, Kandidat", c.id, assignError)
+      }
+    }
+  }
+  // Bei "nicht mitnehmen": campaigns.client_id ändert sich, candidates.client_id und
+  // ihre client_assignments bleiben bewusst unverändert beim bisherigen Kunden - die
+  // historischen Leads "gehören" weiter dorthin, nur die Kampagne selbst wandert.
+
+  revalidatePath(`/dashboard/campaigns/${campaignId}`)
+  revalidatePath("/dashboard/campaigns")
+  return null
 }
 

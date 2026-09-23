@@ -20,10 +20,10 @@ export default async function CampaignDetailPage({
     : { data: null }
   const emailTemplates = ownProfile?.agency_id ? await getEmailTemplates(ownProfile.agency_id) : []
 
-  const [{ data: campaign }, { data: candidates }, { data: automations }, { data: matchRows }] = await Promise.all([
+  const [{ data: campaign }, { data: candidates }, { data: automations }, { data: matchRows }, { data: clientRows }] = await Promise.all([
     supabase
       .from("campaigns")
-      .select("*, clients(name)")
+      .select("*, clients(id, name)")
       .eq("id", id)
       .single(),
     supabase
@@ -41,13 +41,15 @@ export default async function CampaignDetailPage({
       .select("id, distance_km, status, matched_at, candidates(id, first_name, last_name, berufsbild, lat, lng)")
       .eq("campaign_id", id)
       .order("matched_at", { ascending: false }),
+    // Für die "Duplizieren"/"Verschieben"-Kunde-Auswahl (campaign-detail.tsx).
+    supabase.from("clients").select("id, name").order("name", { ascending: true }),
   ])
 
   if (!campaign) notFound()
 
   const client = Array.isArray(campaign.clients)
     ? campaign.clients[0] ?? null
-    : (campaign.clients as { name: string } | null)
+    : (campaign.clients as { id: string; name: string } | null)
 
   type MatchCandidateJoin = {
     id: string
@@ -99,6 +101,7 @@ export default async function CampaignDetailPage({
       automations={(automations ?? []) as any}
       matches={matches}
       emailTemplates={emailTemplates}
+      clients={clientRows ?? []}
     />
   )
 }
