@@ -2,23 +2,58 @@ import { notFound } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { getDashboardKpis } from "@/lib/kpis"
+import type { PageSize } from "@/components/ui/pagination-bar"
 import { ClientDetail } from "./client-detail"
+
+const CAMPAIGN_STATUS_VALUES = new Set(["active", "paused", "completed", "Archiviert"])
+const PAGE_SIZES: readonly PageSize[] = [10, 20, 50]
+const DEFAULT_PAGE_SIZE: PageSize = 10
 
 export default async function ClientDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{
+    campaign_q?: string
+    campaign_status?: string
+    campaign_page?: string
+    campaign_pageSize?: string
+  }>
 }) {
   const { id } = await params
+  const sp = await searchParams
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: client }, { data: campaigns }, { data: contacts }, { data: fileRows }, { data: portalProfiles }, { data: assignments }, kpis] = await Promise.all([
+  // Suche/Filter/Pagination der Kampagnenliste dieses Kunden laufen serverseitig über
+  // URL-Parameter - gleiches Muster wie bei der Kunden-/Kandidatenliste (siehe
+  // clients/page.tsx, candidates/page.tsx). Keine eigene View nötig (anders als bei den
+  // Kandidaten): title/status sind echte Spalten auf campaigns, keine verknüpften/
+  // zusammengesetzten Felder.
+  const campaignSearch = (sp.campaign_q ?? "").trim()
+  const campaignStatusFilter = sp.campaign_status && CAMPAIGN_STATUS_VALUES.has(sp.campaign_status)
+    ? sp.campaign_status
+    : "alle"
+  const campaignPageSize: PageSize = PAGE_SIZES.includes(Number(sp.campaign_pageSize) as PageSize)
+    ? (Number(sp.campaign_pageSize) as PageSize)
+    : DEFAULT_PAGE_SIZE
+  const campaignPage = Math.max(1, Number(sp.campaign_page) || 1)
+
+  let campaignsQuery = supabase
+    .from("campaigns")
+    .select("id, title, status, created_at, candidates(count)", { count: "exact" })
+    .eq("client_id", id)
+  if (campaignSearch) campaignsQuery = campaignsQuery.ilike("title", `%${campaignSearch}%`)
+  if (campaignStatusFilter !== "alle") campaignsQuery = campaignsQuery.eq("status", campaignStatusFilter)
+  const campaignFrom = (campaignPage - 1) * campaignPageSize
+  campaignsQuery = campaignsQuery
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(campaignFrom, campaignFrom + campaignPageSize - 1)
+
+  const [{ data: client }, { data: campaigns, count: campaignTotalCount }, { data: contacts }, { data: fileRows }, { data: portalProfiles }, { data: assignments }, kpis] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
-    supabase
-      .from("campaigns")
-      .select("id, title, status, created_at, candidates(count)")
-      .eq("client_id", id)
-      .order("created_at", { ascending: false }),
+    campaignsQuery,
     supabase
       .from("client_contacts")
       .select("id, name, email, phone, role")
@@ -120,6 +155,9 @@ export default async function ClientDetailPage({
     })
     .filter((a): a is NonNullable<typeof a> => a !== null)
 
+  const campaignTotalCountSafe = campaignTotalCount ?? 0
+  const campaignTotalPages = Math.max(1, Math.ceil(campaignTotalCountSafe / campaignPageSize))
+
   return (
     <ClientDetail
       portalUsers={portalUsers}
@@ -139,6 +177,12 @@ export default async function ClientDetailPage({
         auto_forward_enabled: client.auto_forward_enabled ?? false,
       }}
       campaigns={campaignList}
+      campaignSearch={campaignSearch}
+      campaignStatusFilter={campaignStatusFilter}
+      campaignPage={campaignPage}
+      campaignTotalPages={campaignTotalPages}
+      campaignPageSize={campaignPageSize}
+      campaignTotalCount={campaignTotalCountSafe}
       contacts={(contacts ?? []).map((c) => ({
         id: c.id,
         name: c.name,

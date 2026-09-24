@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useTransition, useEffect } from "react"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { RefreshCw, Inbox, Send, ClipboardCheck } from "lucide-react"
+import { RefreshCw, Inbox, Send, ClipboardCheck, Search } from "lucide-react"
 import {
   updateClientAction,
   archiveClientAction,
@@ -17,6 +17,7 @@ import { PortalAccessSection, type PortalUser } from "./portal-access-section"
 import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import type { DashboardKpis } from "@/lib/kpis"
+import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import {
   Table,
   TableBody,
@@ -42,7 +43,18 @@ const CAMPAIGN_STATUS: Record<string, { label: string; bg: string; dot: string; 
   active: { label: "Aktiv", bg: "#1a9a6a18", dot: "#1a9a6a", text: "#1a9a6a" },
   paused: { label: "Pausiert", bg: "#f5990018", dot: "#f59900", text: "#d97706" },
   completed: { label: "Abgeschlossen", bg: "#9ca3af18", dot: "#9ca3af", text: "#6b7280" },
+  Archiviert: { label: "Archiviert", bg: "#f59e0b18", dot: "#f59e0b", text: "#b45309" },
 }
+
+const CAMPAIGN_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "alle", label: "Alle Status" },
+  { value: "active", label: "Aktiv" },
+  { value: "paused", label: "Pausiert" },
+  { value: "completed", label: "Abgeschlossen" },
+  { value: "Archiviert", label: "Archiviert" },
+]
+
+const CAMPAIGN_SEARCH_DEBOUNCE_MS = 300
 
 interface Campaign {
   id: string
@@ -82,6 +94,12 @@ interface AssignedCandidate {
 interface ClientDetailProps {
   client: Client
   campaigns: Campaign[]
+  campaignSearch: string
+  campaignStatusFilter: string
+  campaignPage: number
+  campaignTotalPages: number
+  campaignPageSize: PageSize
+  campaignTotalCount: number
   contacts: Contact[]
   files: ClientFileItem[]
   portalUsers: PortalUser[]
@@ -91,7 +109,21 @@ interface ClientDetailProps {
 
 type ModalStep = null | "choice" | "delete_confirm"
 
-export function ClientDetail({ client, campaigns, contacts, files, portalUsers, assignedCandidates, kpis }: ClientDetailProps) {
+export function ClientDetail({
+  client,
+  campaigns,
+  campaignSearch,
+  campaignStatusFilter,
+  campaignPage,
+  campaignTotalPages,
+  campaignPageSize,
+  campaignTotalCount,
+  contacts,
+  files,
+  portalUsers,
+  assignedCandidates,
+  kpis,
+}: ClientDetailProps) {
   const router = useRouter()
   const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "dateien">("kampagnen")
   const [editMode, setEditMode] = useState(false)
@@ -408,7 +440,7 @@ export function ClientDetail({ client, campaigns, contacts, files, portalUsers, 
       <div>
         <div className="flex gap-0 border-b" style={{ borderColor: "#dde3ea" }}>
           <TabButton active={tab === "kampagnen"} onClick={() => setTab("kampagnen")}>
-            Kampagnen ({campaigns.length})
+            Kampagnen ({campaignTotalCount})
           </TabButton>
           <TabButton active={tab === "kandidaten"} onClick={() => setTab("kandidaten")}>
             Kandidaten ({assignedCandidates.length})
@@ -423,7 +455,16 @@ export function ClientDetail({ client, campaigns, contacts, files, portalUsers, 
 
         <div className="mt-4">
           {tab === "kampagnen" && (
-            <KampagnenTab clientId={client.id} campaigns={campaigns} />
+            <KampagnenTab
+              clientId={client.id}
+              campaigns={campaigns}
+              search={campaignSearch}
+              statusFilter={campaignStatusFilter}
+              page={campaignPage}
+              totalPages={campaignTotalPages}
+              pageSize={campaignPageSize}
+              totalCount={campaignTotalCount}
+            />
           )}
           {tab === "kandidaten" && (
             <KandidatenTab candidates={assignedCandidates} />
@@ -471,13 +512,120 @@ function TabButton({
   )
 }
 
-function KampagnenTab({ clientId, campaigns }: { clientId: string; campaigns: Campaign[] }) {
+const CLIENT_CAMPAIGNS_PAGE_SIZE_KEY = "client_campaigns_page_size"
+
+// Suche/Filter/Pagination laufen serverseitig über URL-Parameter (campaign_q/
+// campaign_status/campaign_page/campaign_pageSize) statt In-Memory-Filterung - gleiches
+// Muster wie bei der Kunden-/Kandidatenliste (clients-list.tsx/candidates/page.tsx),
+// wichtig für Sammelkunden mit vielen Kampagnen (z.B. Kanzleistelle24.de mit 75). Anders
+// als bei den Kandidaten reicht hier eine Query direkt auf campaigns statt einer eigenen
+// View - title/status sind echte, direkt filterbare Spalten.
+function KampagnenTab({
+  clientId,
+  campaigns,
+  search,
+  statusFilter,
+  page,
+  totalPages,
+  pageSize,
+  totalCount,
+}: {
+  clientId: string
+  campaigns: Campaign[]
+  search: string
+  statusFilter: string
+  page: number
+  totalPages: number
+  pageSize: PageSize
+  totalCount: number
+}) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  const [prevSearch, setPrevSearch] = useState(search)
+  const [searchInput, setSearchInput] = useState(search)
+  if (search !== prevSearch) {
+    setPrevSearch(search)
+    setSearchInput(search)
+  }
+
+  function updateParams(next: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [key, value] of Object.entries(next)) {
+      if (value === null || value === "") params.delete(key)
+      else params.set(key, value)
+    }
+    const query = params.toString()
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }
+
+  useEffect(() => {
+    if (searchParams.get("campaign_pageSize")) return
+    const stored = readStoredPageSize(CLIENT_CAMPAIGNS_PAGE_SIZE_KEY)
+    if (stored !== pageSize) {
+      updateParams({ campaign_pageSize: String(stored) })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      if (searchInput !== search) {
+        updateParams({ campaign_q: searchInput || null, campaign_page: null })
+      }
+    }, CAMPAIGN_SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput])
+
+  function handleStatusFilterChange(value: string) {
+    updateParams({ campaign_status: value === "alle" ? null : value, campaign_page: null })
+  }
+
+  function handlePageChange(p: number) {
+    updateParams({ campaign_page: p === 1 ? null : String(p) })
+  }
+
+  function handlePageSizeChange(size: PageSize) {
+    window.localStorage.setItem(CLIENT_CAMPAIGNS_PAGE_SIZE_KEY, String(size))
+    updateParams({ campaign_pageSize: size === 10 ? null : String(size), campaign_page: null })
+  }
+
+  const filtersActive = search !== "" || statusFilter !== "alle"
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
-          {campaigns.length} Kampagne{campaigns.length !== 1 ? "n" : ""}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Kampagne suchen…"
+              className="rounded-md border py-1.5 pl-8 pr-3 text-sm focus:outline-none"
+              style={{ borderColor: "#dde3ea", minWidth: "200px" }}
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => handleStatusFilterChange(e.target.value)}
+            className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
+            style={{ borderColor: "#dde3ea" }}
+          >
+            {CAMPAIGN_STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <span className="text-sm text-gray-500">
+            {totalCount} Kampagne{totalCount !== 1 ? "n" : ""}
+          </span>
+        </div>
         <Link
           href={`/dashboard/campaigns/new?client_id=${clientId}`}
           className="rounded-md px-3 py-1.5 text-sm font-medium text-white"
@@ -489,46 +637,62 @@ function KampagnenTab({ clientId, campaigns }: { clientId: string; campaigns: Ca
 
       {campaigns.length === 0 ? (
         <div className="rounded-xl border bg-white py-12 text-center text-sm text-gray-400" style={{ borderColor: "#dde3ea" }}>
-          Noch keine Kampagnen.{" "}
-          <Link href={`/dashboard/campaigns/new?client_id=${clientId}`} className="hover:underline" style={{ color: "#1e56a0" }}>
-            Erste Kampagne anlegen
-          </Link>
+          {filtersActive ? (
+            "Keine Kampagnen entsprechen den aktuellen Filtern."
+          ) : (
+            <>
+              Noch keine Kampagnen.{" "}
+              <Link href={`/dashboard/campaigns/new?client_id=${clientId}`} className="hover:underline" style={{ color: "#1e56a0" }}>
+                Erste Kampagne anlegen
+              </Link>
+            </>
+          )}
         </div>
       ) : (
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-          {campaigns.map((c) => {
-            const s = CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.completed
-            return (
-              <Link
-                key={c.id}
-                href={`/dashboard/campaigns/${c.id}`}
-                className="flex flex-col gap-3 rounded-xl border bg-white p-4 transition-shadow hover:shadow-md"
-                style={{ borderColor: "#dde3ea" }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-sm font-medium leading-snug text-gray-900">{c.title}</h3>
-                  <span
-                    className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-                    style={{ backgroundColor: s.bg, color: s.text }}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: s.dot }} />
-                    {s.label}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
-                  <span className="font-medium" style={{ color: "#1e56a0" }}>
-                    {c.leads_count} Lead{c.leads_count !== 1 ? "s" : ""}
-                  </span>
-                  <span>
-                    {new Date(c.created_at).toLocaleDateString("de-DE", {
-                      day: "2-digit", month: "2-digit", year: "numeric",
-                    })}
-                  </span>
-                </div>
-              </Link>
-            )
-          })}
-        </div>
+        <>
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+            {campaigns.map((c) => {
+              const s = CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.completed
+              return (
+                <Link
+                  key={c.id}
+                  href={`/dashboard/campaigns/${c.id}`}
+                  className="flex flex-col gap-3 rounded-xl border bg-white p-4 transition-shadow hover:shadow-md"
+                  style={{ borderColor: "#dde3ea" }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-sm font-medium leading-snug text-gray-900">{c.title}</h3>
+                    <span
+                      className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                      style={{ backgroundColor: s.bg, color: s.text }}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: s.dot }} />
+                      {s.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <span className="font-medium" style={{ color: "#1e56a0" }}>
+                      {c.leads_count} Lead{c.leads_count !== 1 ? "s" : ""}
+                    </span>
+                    <span>
+                      {new Date(c.created_at).toLocaleDateString("de-DE", {
+                        day: "2-digit", month: "2-digit", year: "numeric",
+                      })}
+                    </span>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+
+          <PaginationBar
+            page={page}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
+          />
+        </>
       )}
     </div>
   )
