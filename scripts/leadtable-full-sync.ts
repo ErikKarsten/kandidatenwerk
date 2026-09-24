@@ -347,23 +347,34 @@ function deriveBerufsbildUpdate(
 }
 
 // ── Schritt 4: Zusatzfelder-Backfill (nur wo custom_fields noch leer ist) ──
+// "Leer" heißt hier bewusst NULL ODER {} (leeres JSON-Objekt), nicht nur NULL - Diagnose
+// vom 23./24.09.2026 ergab, dass praktisch alle Leadtable-Kandidaten längst ein nicht-
+// NULL custom_fields haben (u.a. durch den KI-Backfill unten, der auch bei leerem
+// Ergebnis nichts zurückschreibt, aber offenbar frühere Läufe/manuelle Eingaben {}
+// hinterlassen haben) - die reine IS NULL-Prüfung lief dadurch faktisch ins Leere.
+
+function hasNoCustomFields(customFields: unknown): boolean {
+  if (!customFields || typeof customFields !== "object") return true
+  return Object.keys(customFields as Record<string, unknown>).length === 0
+}
 
 async function backfillCustomFields(
   supabase: SupabaseClient,
   limit: number | null
 ): Promise<{ fieldsAdded: number; berufsbildUpdated: number; errors: number }> {
-  const { data: candidates, error } = await supabase
+  const { data: allLeadtableCandidates, error } = await supabase
     .from("candidates")
-    .select("id, email, berufsbild, campaigns(title)")
+    .select("id, email, berufsbild, custom_fields, campaigns(title)")
     .eq("source", "leadtable")
-    .is("custom_fields", null)
     .not("email", "is", null)
 
   if (error) throw new Error(error.message)
 
-  let list = candidates ?? []
+  const candidates = (allLeadtableCandidates ?? []).filter((c) => hasNoCustomFields(c.custom_fields))
+
+  let list = candidates
   if (limit) list = list.slice(0, limit)
-  console.log(`${list.length} Kandidaten ohne custom_fields` + (limit ? ` (Test-Limit)` : ""))
+  console.log(`${list.length} Kandidaten ohne custom_fields (NULL oder {})` + (limit ? ` (Test-Limit)` : ""))
 
   let fieldsAdded = 0
   let berufsbildUpdated = 0
