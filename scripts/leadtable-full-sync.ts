@@ -38,6 +38,7 @@ import {
   findLeadByEmailWithFallback,
 } from "../src/lib/leadtable-sync-shared"
 import { FIXED_CUSTOM_FIELDS } from "../src/lib/candidate-custom-fields"
+import { mapKanzleistelleBerufsbild } from "../src/lib/sync-kanzleistelle"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -317,15 +318,43 @@ async function importDescriptions(
   return { descriptionsAdded, errors }
 }
 
+// ── Berufsbild-Korrektur aus neu bekannter Ausbildungsantwort ──────────────
+// leadtable-import.ts leitet berufsbild beim Anlegen NUR aus dem Kampagnennamen ab
+// (per mapKanzleistelleBerufsbild) - zum Insert-Zeitpunkt ist noch keine
+// Ausbildungsantwort bekannt, die erst hier in Schritt 4 nachträglich befüllt wird
+// (anders als bei Meta-Leads, wo beides in einem Durchlauf passiert, siehe b99d0a5).
+// candidates.berufsbild ist im UI manuell editierbar (profile-tab.tsx) und hat KEIN
+// Flag, das eine manuelle von einer automatisch abgeleiteten Korrektur unterscheidet
+// (verifiziert: kein "manuell gesetzt"-Marker in candidates oder den Actions). Um eine
+// bewusste manuelle Korrektur nicht zu überschreiben, wird berufsbild deshalb NUR
+// aktualisiert, wenn es entweder noch leer ist, oder noch exakt dem ursprünglichen
+// Kampagnennamen-Rateversuch entspricht (also nachweislich seit der Anlage nie
+// verändert wurde) - alles andere gilt als bewusst gesetzt und bleibt unangetastet.
+function deriveBerufsbildUpdate(
+  currentBerufsbild: string | null,
+  campaignTitle: string | null,
+  ausbildungValue: string
+): string | null {
+  const derived = mapKanzleistelleBerufsbild(ausbildungValue)
+  if (!derived || derived === currentBerufsbild) return null
+
+  if (!currentBerufsbild) return derived
+
+  const campaignGuess = campaignTitle ? mapKanzleistelleBerufsbild(campaignTitle) : null
+  if (campaignGuess && currentBerufsbild === campaignGuess) return derived
+
+  return null
+}
+
 // ── Schritt 4: Zusatzfelder-Backfill (nur wo custom_fields noch leer ist) ──
 
 async function backfillCustomFields(
   supabase: SupabaseClient,
   limit: number | null
-): Promise<{ fieldsAdded: number; errors: number }> {
+): Promise<{ fieldsAdded: number; berufsbildUpdated: number; errors: number }> {
   const { data: candidates, error } = await supabase
     .from("candidates")
-    .select("id, email")
+    .select("id, email, berufsbild, campaigns(title)")
     .eq("source", "leadtable")
     .is("custom_fields", null)
     .not("email", "is", null)
@@ -337,11 +366,15 @@ async function backfillCustomFields(
   console.log(`${list.length} Kandidaten ohne custom_fields` + (limit ? ` (Test-Limit)` : ""))
 
   let fieldsAdded = 0
+  let berufsbildUpdated = 0
   let errors = 0
 
   for (let i = 0; i < list.length; i++) {
     const candidate = list[i]
     const email = (candidate.email ?? "").trim().split(/\s+/)[0]
+    const campaignTitle = Array.isArray(candidate.campaigns)
+      ? (candidate.campaigns[0]?.title ?? null)
+      : (candidate.campaigns?.title ?? null)
 
     try {
       await sleep(DELAY_MS)
@@ -354,9 +387,18 @@ async function backfillCustomFields(
       const newFields = extractLeadtableCustomFields(lead.modifiedData)
       if (Object.keys(newFields).length === 0) continue
 
+      const update: { custom_fields: Json; berufsbild?: string } = { custom_fields: newFields as Json }
+      if (newFields.ausbildung) {
+        const newBerufsbild = deriveBerufsbildUpdate(candidate.berufsbild, campaignTitle, newFields.ausbildung)
+        if (newBerufsbild) {
+          update.berufsbild = newBerufsbild
+          berufsbildUpdated++
+        }
+      }
+
       const { error: updateError } = await supabase
         .from("candidates")
-        .update({ custom_fields: newFields as Json })
+        .update(update)
         .eq("id", candidate.id)
       if (updateError) throw new Error(updateError.message)
 
@@ -367,11 +409,11 @@ async function backfillCustomFields(
     }
 
     if ((i + 1) % PROGRESS_EVERY === 0 || i === list.length - 1) {
-      console.log(`  [${i + 1}/${list.length}] Zusatzfelder ergänzt bisher: ${fieldsAdded}, Fehler: ${errors}`)
+      console.log(`  [${i + 1}/${list.length}] Zusatzfelder ergänzt bisher: ${fieldsAdded} (Berufsbild korrigiert: ${berufsbildUpdated}), Fehler: ${errors}`)
     }
   }
 
-  return { fieldsAdded, errors }
+  return { fieldsAdded, berufsbildUpdated, errors }
 }
 
 // ── Schritt 4 (Fortsetzung): KI-gestützte Extraktion aus modifiedData + Beschreibung ──
@@ -387,10 +429,10 @@ async function backfillCustomFields(
 async function backfillCustomFieldsWithAI(
   supabase: SupabaseClient,
   limit: number | null
-): Promise<{ fieldsAdded: number; candidatesUpdated: number; errors: number; aiWarnings: number }> {
+): Promise<{ fieldsAdded: number; candidatesUpdated: number; berufsbildUpdated: number; errors: number; aiWarnings: number }> {
   const { data: candidates, error } = await supabase
     .from("candidates")
-    .select("id, email, description, custom_fields, leadtable_lead_id, campaign_id")
+    .select("id, email, description, custom_fields, leadtable_lead_id, campaign_id, berufsbild, campaigns(title)")
     .eq("source", "leadtable")
     .not("description", "is", null)
 
@@ -420,12 +462,16 @@ async function backfillCustomFieldsWithAI(
 
   let fieldsAdded = 0
   let candidatesUpdated = 0
+  let berufsbildUpdated = 0
   let errors = 0
   let aiWarnings = 0
 
   for (let i = 0; i < list.length; i++) {
     const candidate = list[i]
     const existing = (candidate.custom_fields as Record<string, string> | null) ?? {}
+    const campaignTitle = Array.isArray(candidate.campaigns)
+      ? (candidate.campaigns[0]?.title ?? null)
+      : (candidate.campaigns?.title ?? null)
 
     try {
       await sleep(DELAY_MS)
@@ -453,9 +499,22 @@ async function backfillCustomFieldsWithAI(
       // gefiltert, hier zusätzlich als Sicherheitsnetz - gleiches Muster wie beim
       // regelbasierten Backfill/Merge an anderer Stelle).
       const merged = { ...result.fields, ...existing }
+
+      const update: { custom_fields: Json; berufsbild?: string } = { custom_fields: merged as Json }
+      // Nur aus einer NEU hinzugekommenen Ausbildungsantwort ableiten (result.fields),
+      // nicht aus einer bereits vorher bestehenden - die hätte beim vorigen Lauf schon
+      // die Chance auf eine Berufsbild-Korrektur gehabt.
+      if (result.fields.ausbildung) {
+        const newBerufsbild = deriveBerufsbildUpdate(candidate.berufsbild, campaignTitle, result.fields.ausbildung)
+        if (newBerufsbild) {
+          update.berufsbild = newBerufsbild
+          berufsbildUpdated++
+        }
+      }
+
       const { error: updateError } = await supabase
         .from("candidates")
-        .update({ custom_fields: merged as Json })
+        .update(update)
         .eq("id", candidate.id)
       if (updateError) throw new Error(updateError.message)
 
@@ -476,7 +535,7 @@ async function backfillCustomFieldsWithAI(
     }
   }
 
-  return { fieldsAdded, candidatesUpdated, errors, aiWarnings }
+  return { fieldsAdded, candidatesUpdated, berufsbildUpdated, errors, aiWarnings }
 }
 
 // ── main ──────────────────────────────────────────────────────────────────
@@ -524,13 +583,13 @@ async function main() {
 
     console.log("--- Schritt 4/4: Zusatzfelder-Backfill ---")
     const stepD = await backfillCustomFields(supabase, limit)
-    console.log(`=> Zusatzfelder ergänzt: ${stepD.fieldsAdded}, Fehler: ${stepD.errors}`)
+    console.log(`=> Zusatzfelder ergänzt: ${stepD.fieldsAdded} (Berufsbild korrigiert: ${stepD.berufsbildUpdated}), Fehler: ${stepD.errors}`)
     console.log("")
 
     console.log("--- Schritt 4/4 (Fortsetzung): KI-Extraktion aus modifiedData + Beschreibung ---")
     const stepD2 = await backfillCustomFieldsWithAI(supabase, limit)
     console.log(
-      `=> KI-Zusatzfelder ergänzt: ${stepD2.fieldsAdded} (${stepD2.candidatesUpdated} Kandidaten), Fehler: ${stepD2.errors}, KI-Warnungen: ${stepD2.aiWarnings}`
+      `=> KI-Zusatzfelder ergänzt: ${stepD2.fieldsAdded} (${stepD2.candidatesUpdated} Kandidaten, Berufsbild korrigiert: ${stepD2.berufsbildUpdated}), Fehler: ${stepD2.errors}, KI-Warnungen: ${stepD2.aiWarnings}`
     )
     console.log("")
 
@@ -539,6 +598,7 @@ async function main() {
       statusUpdated: stepB.statusUpdated,
       descriptionsAdded: stepC.descriptionsAdded,
       fieldsAdded: stepD.fieldsAdded,
+      berufsbildUpdated: stepD.berufsbildUpdated + stepD2.berufsbildUpdated,
       aiFieldsAdded: stepD2.fieldsAdded,
       errors: stepA.errors + stepB.errors + stepC.errors + stepD.errors + stepD2.errors,
     }
