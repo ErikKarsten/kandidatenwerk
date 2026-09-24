@@ -3,6 +3,7 @@ import type { Database } from "@/types/database"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { leadtableFetch } from "@/lib/leadtable-client"
 import { ensureClientAssignment } from "@/lib/client-assignment"
+import { notifyLeadRecipients } from "@/lib/lead-notifications"
 
 interface LeadtableLeadsPages {
   totalLeads: number
@@ -248,6 +249,12 @@ export async function importLeadtableCampaign(
         } catch (assignmentError) {
           console.error(`Kunden-Zuordnung fehlgeschlagen für Kandidat ${insertedCandidate.id}:`, assignmentError)
         }
+      }
+
+      try {
+        await notifyLeadRecipients(insertedCandidate.id, `${firstName} ${lastName}`.trim())
+      } catch (notifyError) {
+        console.error(`Lead-Benachrichtigung fehlgeschlagen für Kandidat ${insertedCandidate.id}:`, notifyError)
       }
 
       result.created++

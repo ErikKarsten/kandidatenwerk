@@ -13,6 +13,7 @@ import {
   createEmailTemplateAction,
   updateEmailTemplateAction,
   deleteEmailTemplateAction,
+  updateLeadNotificationRecipientsAction,
   type TeamMember,
   type EmailTemplate,
 } from "./actions"
@@ -32,11 +33,12 @@ interface EinstellungenDetailProps {
   team: TeamMember[]
   agencyId: string | null
   emailTemplates: EmailTemplate[]
+  leadNotificationRecipientIds: string[]
 }
 
 type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen"
 
-export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates }: EinstellungenDetailProps) {
+export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
 
   return (
@@ -59,7 +61,9 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
           {tab === "team" && <TeamTab team={team} ownProfileId={ownProfile.id} />}
           {tab === "agentur" && <AgenturTab agencyName={agencyName} />}
           {tab === "vorlagen" && agencyId && <EmailVorlagenTab agencyId={agencyId} templates={emailTemplates} />}
-          {tab === "automatisierung" && <AutomatisierungTab />}
+          {tab === "automatisierung" && agencyId && (
+            <AutomatisierungTab agencyId={agencyId} team={team} initialRecipientIds={leadNotificationRecipientIds} />
+          )}
         </div>
       </div>
     </div>
@@ -569,29 +573,104 @@ function EmailVorlagenTab({ agencyId, templates }: { agencyId: string; templates
   )
 }
 
-function AutomatisierungTab() {
-  return (
-    <Card>
-      <div>
-        <h2 className="text-sm font-semibold text-gray-900">Automatisierung</h2>
-        <p className="mt-1 text-xs text-gray-500">
-          Übersicht statt neuer Schalter — diese drei Dinge laufen bereits automatisch, nur an
-          verschiedenen Stellen.
-        </p>
-      </div>
+function AutomatisierungTab({
+  agencyId,
+  team,
+  initialRecipientIds,
+}: {
+  agencyId: string
+  team: TeamMember[]
+  initialRecipientIds: string[]
+}) {
+  const router = useRouter()
+  const [selectedIds, setSelectedIds] = useState<string[]>(initialRecipientIds)
+  const [savePending, startSaveTransition] = useTransition()
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
 
-      <InfoRow icon={Clock} title="Duplettenprüfung">
-        Läuft täglich 7:00 Uhr, Mail geht an alle Admins aus dem Team-Bereich oben.
-      </InfoRow>
-      <InfoRow icon={SyncIcon} title="Leadtable-Sync">
-        Läuft täglich 6:00 Uhr automatisch, manueller Trigger existiert bereits auf dem{" "}
-        <Link href="/dashboard" className="hover:underline" style={{ color: "#1e56a0" }}>Dashboard</Link>.
-      </InfoRow>
-      <InfoRow icon={Send} title="Kunden-Weiterleitung bei Vorqualifizierung">
-        Pro Kunde einzeln steuerbar, auf der jeweiligen{" "}
-        <Link href="/dashboard/clients" className="hover:underline" style={{ color: "#1e56a0" }}>Kundenseite</Link>.
-      </InfoRow>
-    </Card>
+  function toggle(id: string) {
+    setSaved(false)
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  function handleSave() {
+    setSaveError(null)
+    setSaved(false)
+    startSaveTransition(async () => {
+      const result = await updateLeadNotificationRecipientsAction(agencyId, selectedIds)
+      if (result?.error) { setSaveError(result.error); return }
+      setSaved(true)
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Benachrichtigung bei neuem Lead</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Diese Team-Mitglieder bekommen eine Mail, sobald ein neuer Kandidat angelegt wird (manuell,
+            Meta-Leads, Leadtable) — mit direktem Link zum Kandidaten.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {team.map((m) => (
+            <label
+              key={m.id}
+              className="flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 hover:bg-gray-50"
+              style={{ borderColor: selectedIds.includes(m.id) ? "#1e56a0" : "#dde3ea" }}
+            >
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(m.id)}
+                onChange={() => toggle(m.id)}
+                className="shrink-0 accent-[#1e56a0]"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900">{m.full_name ?? "—"}</p>
+                <p className="text-xs text-gray-500">{m.email ?? "—"}</p>
+              </div>
+            </label>
+          ))}
+          {team.length === 0 && <p className="text-sm text-gray-400">Kein Team vorhanden.</p>}
+        </div>
+
+        {saveError && <p className="text-xs text-red-600">{saveError}</p>}
+        {saved && !saveError && <p className="text-xs" style={{ color: "#1a9a6a" }}>Gespeichert.</p>}
+        <button
+          onClick={handleSave}
+          disabled={savePending}
+          className="self-start rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          style={{ backgroundColor: "#1e56a0" }}
+        >
+          {savePending ? "Wird gespeichert…" : "Speichern"}
+        </button>
+      </Card>
+
+      <Card>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Automatisierung</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Übersicht statt neuer Schalter — diese drei Dinge laufen bereits automatisch, nur an
+            verschiedenen Stellen.
+          </p>
+        </div>
+
+        <InfoRow icon={Clock} title="Duplettenprüfung">
+          Läuft täglich 7:00 Uhr, Mail geht an alle Admins aus dem Team-Bereich oben.
+        </InfoRow>
+        <InfoRow icon={SyncIcon} title="Leadtable-Sync">
+          Läuft täglich 6:00 Uhr automatisch, manueller Trigger existiert bereits auf dem{" "}
+          <Link href="/dashboard" className="hover:underline" style={{ color: "#1e56a0" }}>Dashboard</Link>.
+        </InfoRow>
+        <InfoRow icon={Send} title="Kunden-Weiterleitung bei Vorqualifizierung">
+          Pro Kunde einzeln steuerbar, auf der jeweiligen{" "}
+          <Link href="/dashboard/clients" className="hover:underline" style={{ color: "#1e56a0" }}>Kundenseite</Link>.
+        </InfoRow>
+      </Card>
+    </div>
   )
 }
 

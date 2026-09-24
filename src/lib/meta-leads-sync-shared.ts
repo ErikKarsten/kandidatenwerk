@@ -12,6 +12,7 @@ import { extractCleanName } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { FIXED_CUSTOM_FIELD_KEYS } from "@/lib/candidate-custom-fields"
 import { ensureClientAssignment } from "@/lib/client-assignment"
+import { notifyLeadRecipients } from "@/lib/lead-notifications"
 
 export type SupabaseClient = GenericSupabaseClient<Database>
 
@@ -188,6 +189,12 @@ export async function processMetaLead(
     } catch (assignmentError) {
       console.error(`Kunden-Zuordnung fehlgeschlagen für Kandidat ${inserted.id}:`, assignmentError)
     }
+  }
+
+  try {
+    await notifyLeadRecipients(inserted.id, `${firstName} ${lastName}`.trim())
+  } catch (notifyError) {
+    console.error(`Lead-Benachrichtigung fehlgeschlagen für Kandidat ${inserted.id}:`, notifyError)
   }
 
   return { status: "created", candidateId: inserted.id }

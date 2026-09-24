@@ -713,6 +713,42 @@ export type Database = {
           }
         ]
       }
+      lead_notification_recipients: {
+        Row: {
+          id: string
+          agency_id: string
+          profile_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          profile_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          profile_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_notification_recipients_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_notification_recipients_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       candidate_history: {
         Row: {
           id: string

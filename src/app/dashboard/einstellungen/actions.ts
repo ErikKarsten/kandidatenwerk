@@ -215,3 +215,41 @@ export async function deleteEmailTemplateAction(id: string): Promise<{ error: st
   revalidatePath("/dashboard/einstellungen")
   return null
 }
+
+// Wer bei einem neuen Lead per Mail benachrichtigt wird (Einstellungen ->
+// Automatisierung) - agenturweite Liste von Team-Mitgliedern, siehe notifyLeadRecipients
+// in lead-notifications.ts.
+export async function getLeadNotificationRecipientIds(agencyId: string): Promise<string[]> {
+  const supabase = await createSupabaseServerClient()
+  const { data } = await supabase
+    .from("lead_notification_recipients")
+    .select("profile_id")
+    .eq("agency_id", agencyId)
+  return (data ?? []).map((r) => r.profile_id)
+}
+
+// Ersetzt die komplette Empfänger-Liste (loeschen + neu einfuegen) statt einzeln zu
+// diffen - bei einer kleinen, seltenen aenderbaren Liste wie dieser reicht das, gleiches
+// simples Muster wie an anderen Stellen im Projekt fuer kleine Einstellungs-Listen.
+export async function updateLeadNotificationRecipientsAction(
+  agencyId: string,
+  profileIds: string[]
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+
+  const { error: deleteError } = await supabase
+    .from("lead_notification_recipients")
+    .delete()
+    .eq("agency_id", agencyId)
+  if (deleteError) return { error: deleteError.message }
+
+  if (profileIds.length > 0) {
+    const { error: insertError } = await supabase
+      .from("lead_notification_recipients")
+      .insert(profileIds.map((profileId) => ({ agency_id: agencyId, profile_id: profileId })))
+    if (insertError) return { error: insertError.message }
+  }
+
+  revalidatePath("/dashboard/einstellungen")
+  return null
+}
