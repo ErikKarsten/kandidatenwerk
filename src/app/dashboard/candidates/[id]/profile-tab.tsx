@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { Check, Copy } from "lucide-react"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { FIXED_CUSTOM_FIELDS, FIXED_CUSTOM_FIELD_KEYS, WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { updateCandidateProfileAction, updateCandidateCustomFieldAction } from "./actions"
@@ -273,7 +274,15 @@ function CustomFieldRow({
   const router = useRouter()
   const [localValue, setLocalValue] = useState(value)
   const [pending, startTransition] = useTransition()
+  const [copied, setCopied] = useState(false)
   const savedValueRef = useRef(value)
+
+  function handleCopy() {
+    navigator.clipboard.writeText(localValue).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
 
   function handleBlur() {
     const trimmed = localValue.trim()
@@ -298,16 +307,28 @@ function CustomFieldRow({
 
   return (
     <FieldRow label={label} editMode stacked>
-      <input
-        className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1 disabled:opacity-50"
-        style={{ borderColor: "#dde3ea" }}
-        value={localValue}
-        placeholder="Hier eingeben"
-        onChange={(e) => setLocalValue(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        disabled={pending}
-      />
+      <div className="flex items-center gap-2">
+        <input
+          className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1 disabled:opacity-50"
+          style={{ borderColor: "#dde3ea" }}
+          value={localValue}
+          placeholder="Hier eingeben"
+          onChange={(e) => setLocalValue(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          disabled={pending}
+        />
+        {localValue !== "" && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            title={copied ? "Kopiert" : "In Zwischenablage kopieren"}
+            className="shrink-0 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          >
+            {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
+          </button>
+        )}
+      </div>
     </FieldRow>
   )
 }
