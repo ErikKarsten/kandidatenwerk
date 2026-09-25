@@ -18,6 +18,7 @@ export default async function CandidateDetailPage({
     { data: assignmentRows },
     { data: clientRows },
     { data: profileRows },
+    { data: customFieldDefinitionRows },
   ] = await Promise.all([
     supabase
       .from("candidates")
@@ -52,6 +53,16 @@ export default async function CandidateDetailPage({
       .order("name", { ascending: true }),
     // Für das "Aufgabe erstellen"-Popup direkt auf der Kandidatenseite (Zuweisen-an-Dropdown).
     supabase.from("profiles").select("id, full_name").order("full_name", { ascending: true }),
+    // Ersetzt FIXED_CUSTOM_FIELDS (candidate-custom-fields.ts) als Quelle für die
+    // Zusatzfelder-Anzeige - kein .eq("agency_id", ...) nötig, RLS schränkt bereits auf
+    // die eigene Agentur ein (siehe custom_field_definitions-Policies). ALLE
+    // Definitionen (aktiv + inaktiv) werden geladen: profile-tab.tsx zeigt nur die
+    // aktiven als Boxen, braucht aber auch die inaktiven Keys, damit ein Wert unter
+    // einem gerade deaktivierten Feld nicht fälschlich unter "Weitere Felder" auftaucht.
+    supabase
+      .from("custom_field_definitions")
+      .select("id, key, label, sort_order, active")
+      .order("sort_order", { ascending: true }),
   ])
 
   if (!candidate) notFound()
@@ -151,6 +162,7 @@ export default async function CandidateDetailPage({
       activeAssignments={activeAssignments}
       clients={clients}
       profiles={profiles}
+      customFieldDefinitions={customFieldDefinitionRows ?? []}
     />
   )
 }

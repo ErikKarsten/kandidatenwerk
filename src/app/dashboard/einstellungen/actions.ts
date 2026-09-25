@@ -253,3 +253,144 @@ export async function updateLeadNotificationRecipientsAction(
   revalidatePath("/dashboard/einstellungen")
   return null
 }
+
+// ── custom_field_definitions (agenturweit gepflegte Zusatzfelder-Liste) ───────────
+// Schritt 2/3 des Umbaus vom 25.09.2026 (ersetzt FIXED_CUSTOM_FIELDS aus
+// candidate-custom-fields.ts als Quelle für UI-Anzeige) - Extraktionslogik
+// (Leadtable/Meta) folgt in Schritt 3, liest bis dahin weiterhin die alte
+// fest-codierte Liste.
+
+export interface CustomFieldDefinition {
+  id: string
+  key: string
+  label: string
+  sort_order: number
+  active: boolean
+}
+
+async function requireAgencyAdmin(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>
+): Promise<{ error: string } | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+  if (profile?.role !== "agency_admin") return { error: "Nur Agentur-Admins können Zusatzfelder verwalten." }
+
+  return null
+}
+
+// Kein .eq("agency_id", ...) nötig - die RLS-Policy "Team liest Zusatzfeld-
+// Definitionen der eigenen Agentur" schränkt ohnehin schon auf die eigene Agentur ein.
+export async function getCustomFieldDefinitions(): Promise<CustomFieldDefinition[]> {
+  const supabase = await createSupabaseServerClient()
+  const { data } = await supabase
+    .from("custom_field_definitions")
+    .select("id, key, label, sort_order, active")
+    .order("sort_order", { ascending: true })
+  return data ?? []
+}
+
+// Leitet aus der eingegebenen Bezeichnung einen stabilen, technischen Schlüssel ab
+// (klein geschrieben, Umlaute transliteriert, Sonderzeichen zu "_") - der Admin gibt
+// nur die Bezeichnung ein, ohne sich um einen internen Key kümmern zu müssen, genau
+// wie die bestehenden 12 Felder es beim Seed schon hatten.
+function slugifyFieldKey(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+}
+
+export async function createCustomFieldDefinitionAction(
+  agencyId: string,
+  label: string
+): Promise<{ error: string } | null> {
+  const trimmedLabel = label.trim()
+  if (!trimmedLabel) return { error: "Bezeichnung ist ein Pflichtfeld." }
+
+  const supabase = await createSupabaseServerClient()
+  const adminError = await requireAgencyAdmin(supabase)
+  if (adminError) return adminError
+
+  const key = slugifyFieldKey(trimmedLabel)
+  if (!key) return { error: "Aus dieser Bezeichnung lässt sich kein gültiger interner Schlüssel ableiten." }
+
+  const { data: lastRow } = await supabase
+    .from("custom_field_definitions")
+    .select("sort_order")
+    .eq("agency_id", agencyId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const nextSortOrder = (lastRow?.sort_order ?? -1) + 1
+
+  const { error } = await supabase.from("custom_field_definitions").insert({
+    agency_id: agencyId,
+    key,
+    label: trimmedLabel,
+    sort_order: nextSortOrder,
+  })
+  if (error) {
+    if (error.code === "23505") {
+      return { error: `Ein Feld mit diesem Namen (interner Schlüssel "${key}") existiert bereits.` }
+    }
+    return { error: error.message }
+  }
+
+  revalidatePath("/dashboard/einstellungen")
+  return null
+}
+
+export async function updateCustomFieldDefinitionLabelAction(
+  id: string,
+  label: string
+): Promise<{ error: string } | null> {
+  const trimmedLabel = label.trim()
+  if (!trimmedLabel) return { error: "Bezeichnung ist ein Pflichtfeld." }
+
+  const supabase = await createSupabaseServerClient()
+  const adminError = await requireAgencyAdmin(supabase)
+  if (adminError) return adminError
+
+  const { error } = await supabase
+    .from("custom_field_definitions")
+    .update({ label: trimmedLabel, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) return { error: error.message }
+
+  revalidatePath("/dashboard/einstellungen")
+  return null
+}
+
+// "Löschen" ist rein logisch (active=false) - siehe Migration
+// 20260925000000_dynamic_custom_field_definitions.sql: bereits gespeicherte
+// Kandidaten-Werte unter dem Key bleiben unangetastet und erscheinen bei
+// Reaktivierung wieder normal.
+export async function setCustomFieldDefinitionActiveAction(
+  id: string,
+  active: boolean
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const adminError = await requireAgencyAdmin(supabase)
+  if (adminError) return adminError
+
+  const { error } = await supabase
+    .from("custom_field_definitions")
+    .update({ active, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) return { error: error.message }
+
+  revalidatePath("/dashboard/einstellungen")
+  revalidatePath("/dashboard/candidates")
+  return null
+}

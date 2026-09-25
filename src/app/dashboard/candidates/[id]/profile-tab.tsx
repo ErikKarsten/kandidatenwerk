@@ -4,11 +4,23 @@ import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Check, Copy } from "lucide-react"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
-import { FIXED_CUSTOM_FIELDS, FIXED_CUSTOM_FIELD_KEYS, WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
+import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { updateCandidateProfileAction, updateCandidateCustomFieldAction } from "./actions"
 
 function formatLabel(key: string): string {
   return key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())
+}
+
+// Ersetzt FIXED_CUSTOM_FIELDS (candidate-custom-fields.ts) - siehe Umbau vom
+// 25.09.2026, Schritt 2/3. Vom Server (candidates/[id]/page.tsx) geladen statt hier
+// hart codiert, damit agenturweit gepflegte Felder (Einstellungen -> Zusatzfelder)
+// sofort greifen.
+export interface CustomFieldDefinition {
+  id: string
+  key: string
+  label: string
+  sort_order: number
+  active: boolean
 }
 
 interface ProfileTabProps {
@@ -20,6 +32,7 @@ interface ProfileTabProps {
   berufsbild: string | null
   plz: string | null
   customFields: Record<string, string> | null
+  customFieldDefinitions: CustomFieldDefinition[]
 }
 
 export function ProfileTab({
@@ -31,6 +44,7 @@ export function ProfileTab({
   berufsbild,
   plz,
   customFields,
+  customFieldDefinitions,
 }: ProfileTabProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -47,13 +61,19 @@ export function ProfileTab({
   const [newKey, setNewKey] = useState("")
   const [newValue, setNewValue] = useState("")
 
-  // Keys in custom_fields, die nicht zum festen 12-Felder-Satz gehören (z.B. aus
-  // älteren Imports) — werden weiterhin angezeigt und nicht stillschweigend gelöscht.
+  const activeFieldDefinitions = customFieldDefinitions.filter((f) => f.active).sort((a, b) => a.sort_order - b.sort_order)
+  // ALLE bekannten Keys (auch gerade deaktivierte Felder) - ein Wert unter einem
+  // deaktivierten Feld soll nicht fälschlich unter "Weitere Felder" auftauchen,
+  // sondern einfach ausgeblendet bleiben, bis das Feld reaktiviert wird.
+  const knownFieldKeys = new Set(customFieldDefinitions.map((f) => f.key))
+
+  // Keys in custom_fields, die zu keinem bekannten Feld gehören (z.B. aus älteren
+  // Imports) — werden weiterhin angezeigt und nicht stillschweigend gelöscht.
   // WEITERE_ANTWORTEN_KEY ist ausgenommen: der hat einen eigenen, mehrzeiligen
   // Anzeige-Block im Verlauf-Bereich (siehe history-section.tsx) statt hier als einzeiliges
   // Eingabefeld zu doppeln.
   const extraKeys = Object.keys(localCustom).filter(
-    (k) => !FIXED_CUSTOM_FIELD_KEYS.has(k) && k !== WEITERE_ANTWORTEN_KEY
+    (k) => !knownFieldKeys.has(k) && k !== WEITERE_ANTWORTEN_KEY
   )
 
   function handleCustomFieldSaved(key: string, value: string) {
@@ -172,8 +192,8 @@ export function ProfileTab({
         <fieldset className="rounded-xl border p-4" style={{ borderColor: "#dde3ea" }}>
           <legend className="px-1 text-xs font-semibold text-gray-400">Zusatzfelder</legend>
           <dl className="mt-1 flex flex-col gap-3">
-            {/* Fester Satz von 12 Feldern — immer in dieser Reihenfolge, direkt inline editierbar */}
-            {FIXED_CUSTOM_FIELDS.map(({ key, label }) => (
+            {/* Agenturweit gepflegte, aktive Felder — in der konfigurierten Reihenfolge, direkt inline editierbar */}
+            {activeFieldDefinitions.map(({ key, label }) => (
               <CustomFieldRow
                 key={key}
                 candidateId={candidateId}
@@ -184,7 +204,7 @@ export function ProfileTab({
               />
             ))}
 
-            {/* Extra Keys: in custom_fields, aber nicht im festen Satz (z.B. ältere Imports) */}
+            {/* Extra Keys: in custom_fields, aber zu keinem bekannten Feld gehörend (z.B. ältere Imports) */}
             {extraKeys.length > 0 && (
               <div className="mt-1 border-t pt-3" style={{ borderColor: "#dde3ea" }}>
                 <span className="text-xs font-medium text-gray-400">Weitere Felder</span>

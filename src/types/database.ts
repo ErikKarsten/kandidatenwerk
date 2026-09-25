@@ -50,6 +50,47 @@ export type Database = {
           }
         ]
       }
+      custom_field_definitions: {
+        Row: {
+          id: string
+          agency_id: string
+          key: string
+          label: string
+          sort_order: number
+          active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          key: string
+          label: string
+          sort_order?: number
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          key?: string
+          label?: string
+          sort_order?: number
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_field_definitions_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       client_assignment_notes: {
         Row: {
           id: string
@@ -83,6 +124,80 @@ export type Database = {
           {
             foreignKeyName: "client_assignment_notes_author_id_fkey"
             columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      custom_field_review_queue: {
+        Row: {
+          id: string
+          agency_id: string
+          raw_key: string
+          example_value: string | null
+          example_candidate_id: string | null
+          occurrences: number
+          status: string
+          mapped_to_field_id: string | null
+          first_seen_at: string
+          last_seen_at: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          raw_key: string
+          example_value?: string | null
+          example_candidate_id?: string | null
+          occurrences?: number
+          status?: string
+          mapped_to_field_id?: string | null
+          first_seen_at?: string
+          last_seen_at?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          raw_key?: string
+          example_value?: string | null
+          example_candidate_id?: string | null
+          occurrences?: number
+          status?: string
+          mapped_to_field_id?: string | null
+          first_seen_at?: string
+          last_seen_at?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_field_review_queue_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "custom_field_review_queue_example_candidate_id_fkey"
+            columns: ["example_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "custom_field_review_queue_mapped_to_field_id_fkey"
+            columns: ["mapped_to_field_id"]
+            isOneToOne: false
+            referencedRelation: "custom_field_definitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "custom_field_review_queue_reviewed_by_fkey"
+            columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -713,42 +828,6 @@ export type Database = {
           }
         ]
       }
-      lead_notification_recipients: {
-        Row: {
-          id: string
-          agency_id: string
-          profile_id: string
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          agency_id: string
-          profile_id: string
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          agency_id?: string
-          profile_id?: string
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "lead_notification_recipients_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_notification_recipients_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       candidate_history: {
         Row: {
           id: string
@@ -1003,6 +1082,42 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      lead_notification_recipients: {
+        Row: {
+          id: string
+          agency_id: string
+          profile_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          profile_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          profile_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_notification_recipients_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_notification_recipients_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           }
         ]

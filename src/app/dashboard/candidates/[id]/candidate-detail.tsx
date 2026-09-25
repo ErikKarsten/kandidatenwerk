@@ -12,7 +12,7 @@ import {
   deleteCandidateAction,
   refreshLeadtableCandidateAction,
 } from "./actions"
-import { ProfileTab } from "./profile-tab"
+import { ProfileTab, type CustomFieldDefinition } from "./profile-tab"
 import { FilesTab } from "./files-tab"
 import { HistorySection, type HistoryEntry } from "./history-section"
 import { type ClientOption } from "./client-assignment-section"
@@ -74,11 +74,12 @@ interface CandidateDetailProps {
   activeAssignments: ActiveAssignment[]
   clients: ClientOption[]
   profiles: ProfileOption[]
+  customFieldDefinitions: CustomFieldDefinition[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, matches, activeAssignments, clients, profiles }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, matches, activeAssignments, clients, profiles, customFieldDefinitions }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien">("profil")
@@ -297,6 +298,7 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
                 berufsbild={candidate.berufsbild}
                 plz={candidate.plz}
                 customFields={candidate.custom_fields}
+                customFieldDefinitions={customFieldDefinitions}
               />
             )}
             {tab === "dateien" && (

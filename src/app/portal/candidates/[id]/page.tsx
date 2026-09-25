@@ -2,7 +2,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
-import { FIXED_CUSTOM_FIELDS } from "@/lib/candidate-custom-fields"
+import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { NotesSection, type Note } from "./notes-section"
 import { PortalFilesList, type PortalFile } from "./files-list"
 
@@ -30,7 +30,7 @@ export default async function PortalCandidateDetailPage({
     supabase.from("candidates").select("*").eq("id", id).single(),
     supabase
       .from("client_assignments")
-      .select("id, status")
+      .select("id, status, client_id")
       .eq("candidate_id", id)
       .is("removed_at", null)
       .limit(1)
@@ -38,6 +38,29 @@ export default async function PortalCandidateDetailPage({
   ])
 
   if (!candidate || !assignment) notFound()
+
+  // Zusatzfelder-Definitionen (Umbau vom 25.09.2026, Schritt 2/3) - bewusst per
+  // Service-Role-Client statt über die RLS-Session des Portal-Nutzers gelesen:
+  // Portal-Kunden haben agency_id = NULL (Sicherheitsvorfall 22.09.2026), eine
+  // RLS-Lockerung dafür kommt nicht infrage. Die Agentur wird stattdessen sicher
+  // server-seitig über die bereits RLS-geprüfte Zuordnung (assignment.client_id)
+  // hergeleitet, kein Nutzereingabe-Pfad.
+  const admin = createSupabaseAdminClient()
+  const { data: assignedClient } = await admin
+    .from("clients")
+    .select("agency_id")
+    .eq("id", assignment.client_id)
+    .maybeSingle()
+
+  const { data: customFieldDefinitionRows } = assignedClient?.agency_id
+    ? await admin
+        .from("custom_field_definitions")
+        .select("id, key, label, sort_order")
+        .eq("agency_id", assignedClient.agency_id)
+        .eq("active", true)
+        .order("sort_order", { ascending: true })
+    : { data: [] }
+  const customFieldDefinitions = customFieldDefinitionRows ?? []
 
   const { data: fileRows } = await supabase
     .from("candidate_files")
@@ -116,7 +139,7 @@ export default async function PortalCandidateDetailPage({
             editierbarer Inputs, damit für den Kunden nicht der Eindruck entsteht, er
             könnte die Werte hier ändern. */}
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {FIXED_CUSTOM_FIELDS.map((f) => {
+          {customFieldDefinitions.map((f) => {
             const value = customFields[f.key]?.trim()
             return (
               <div key={f.key} className="flex flex-col gap-1">

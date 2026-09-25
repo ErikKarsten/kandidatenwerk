@@ -14,8 +14,12 @@ import {
   updateEmailTemplateAction,
   deleteEmailTemplateAction,
   updateLeadNotificationRecipientsAction,
+  createCustomFieldDefinitionAction,
+  updateCustomFieldDefinitionLabelAction,
+  setCustomFieldDefinitionActiveAction,
   type TeamMember,
   type EmailTemplate,
+  type CustomFieldDefinition,
 } from "./actions"
 
 const MIN_PASSWORD_LENGTH = 8
@@ -34,11 +38,12 @@ interface EinstellungenDetailProps {
   agencyId: string | null
   emailTemplates: EmailTemplate[]
   leadNotificationRecipientIds: string[]
+  customFieldDefinitions: CustomFieldDefinition[]
 }
 
-type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen"
+type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen" | "zusatzfelder"
 
-export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds }: EinstellungenDetailProps) {
+export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds, customFieldDefinitions }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
 
   return (
@@ -54,6 +59,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
           <TabButton active={tab === "agentur"} onClick={() => setTab("agentur")}>Agentur</TabButton>
           <TabButton active={tab === "vorlagen"} onClick={() => setTab("vorlagen")}>E-Mail-Vorlagen ({emailTemplates.length})</TabButton>
           <TabButton active={tab === "automatisierung"} onClick={() => setTab("automatisierung")}>Automatisierung</TabButton>
+          <TabButton active={tab === "zusatzfelder"} onClick={() => setTab("zusatzfelder")}>Zusatzfelder ({customFieldDefinitions.filter((f) => f.active).length})</TabButton>
         </div>
 
         <div className="mt-4 max-w-lg">
@@ -63,6 +69,9 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
           {tab === "vorlagen" && agencyId && <EmailVorlagenTab agencyId={agencyId} templates={emailTemplates} />}
           {tab === "automatisierung" && agencyId && (
             <AutomatisierungTab agencyId={agencyId} team={team} initialRecipientIds={leadNotificationRecipientIds} />
+          )}
+          {tab === "zusatzfelder" && agencyId && (
+            <ZusatzfelderTab agencyId={agencyId} isAgencyAdmin={ownProfile.role === "agency_admin"} fields={customFieldDefinitions} />
           )}
         </div>
       </div>
@@ -687,6 +696,199 @@ function InfoRow({ icon: Icon, title, children }: { icon: React.ElementType; tit
         <p className="text-sm font-medium text-gray-900">{title}</p>
         <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{children}</p>
       </div>
+    </div>
+  )
+}
+
+// Zusatzfelder-Verwaltung (Schritt 2/3 des Umbaus vom 25.09.2026) - Hinzufügen/
+// Umbenennen/(De-)Aktivieren nur für agency_admin (Punkt 4 der Anfrage), agency_member
+// sieht die Liste nur lesend (die Felder betreffen ohnehin schon die eigene Agentur,
+// kein zusätzliches Sicherheitsrisiko beim reinen Lesen).
+function ZusatzfelderTab({
+  agencyId,
+  isAgencyAdmin,
+  fields,
+}: {
+  agencyId: string
+  isAgencyAdmin: boolean
+  fields: CustomFieldDefinition[]
+}) {
+  const router = useRouter()
+  const [newLabel, setNewLabel] = useState("")
+  const [formError, setFormError] = useState<string | null>(null)
+  const [createPending, startCreateTransition] = useTransition()
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editLabel, setEditLabel] = useState("")
+  const [savePending, startSaveTransition] = useTransition()
+  const [togglePendingId, setTogglePendingId] = useState<string | null>(null)
+  const [, startToggleTransition] = useTransition()
+
+  const activeFields = fields.filter((f) => f.active).sort((a, b) => a.sort_order - b.sort_order)
+  const inactiveFields = fields.filter((f) => !f.active).sort((a, b) => a.sort_order - b.sort_order)
+
+  function handleCreate() {
+    if (!newLabel.trim()) { setFormError("Bezeichnung ist ein Pflichtfeld."); return }
+    setFormError(null)
+    startCreateTransition(async () => {
+      const result = await createCustomFieldDefinitionAction(agencyId, newLabel)
+      if (result?.error) { setFormError(result.error); return }
+      setNewLabel("")
+      router.refresh()
+    })
+  }
+
+  function startEdit(field: CustomFieldDefinition) {
+    setEditingId(field.id)
+    setEditLabel(field.label)
+    setFormError(null)
+  }
+
+  function handleSaveEdit() {
+    if (!editingId) return
+    if (!editLabel.trim()) { setFormError("Bezeichnung ist ein Pflichtfeld."); return }
+    setFormError(null)
+    startSaveTransition(async () => {
+      const result = await updateCustomFieldDefinitionLabelAction(editingId, editLabel)
+      if (result?.error) { setFormError(result.error); return }
+      setEditingId(null)
+      router.refresh()
+    })
+  }
+
+  function handleToggleActive(field: CustomFieldDefinition) {
+    setTogglePendingId(field.id)
+    startToggleTransition(async () => {
+      await setCustomFieldDefinitionActiveAction(field.id, !field.active)
+      setTogglePendingId(null)
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Zusatzfelder</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Diese Felder erscheinen auf jedem Kandidatenprofil (intern und im
+            Kunden-Portal) und werden bei der Leadtable-/Meta-Übernahme automatisch
+            befüllt, sofern erkennbar.
+          </p>
+        </div>
+
+        {activeFields.length === 0 && <p className="text-sm text-gray-400">Noch keine Zusatzfelder angelegt.</p>}
+
+        <div className="flex flex-col gap-2">
+          {activeFields.map((field) => (
+            <div key={field.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
+              {editingId === field.id ? (
+                <div className="flex flex-1 items-center gap-2">
+                  <input
+                    autoFocus
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                    className="flex-1 rounded-md border px-2 py-1 text-sm focus:outline-none focus:ring-1"
+                    style={{ borderColor: "#dde3ea" }}
+                  />
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={savePending}
+                    className="rounded-md px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
+                    style={{ backgroundColor: "#1e56a0" }}
+                  >
+                    {savePending ? "…" : "Speichern"}
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    disabled={savePending}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Abbrechen
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{field.label}</p>
+                    <p className="text-xs text-gray-400">{field.key}</p>
+                  </div>
+                  {isAgencyAdmin && (
+                    <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        onClick={() => startEdit(field)}
+                        className="rounded p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                        aria-label="Bezeichnung ändern"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleToggleActive(field)}
+                        disabled={togglePendingId === field.id}
+                        className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                      >
+                        {togglePendingId === field.id ? "…" : "Deaktivieren"}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {isAgencyAdmin && (
+          <div className="flex items-center gap-2 border-t pt-4" style={{ borderColor: "#dde3ea" }}>
+            <input
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="Neues Zusatzfeld, z.B. Führerschein"
+              className="flex-1 rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
+              style={{ borderColor: "#dde3ea" }}
+            />
+            <button
+              onClick={handleCreate}
+              disabled={createPending}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              style={{ backgroundColor: "#1e56a0" }}
+            >
+              <Plus size={13} />
+              {createPending ? "…" : "Hinzufügen"}
+            </button>
+          </div>
+        )}
+
+        {formError && <p className="text-xs text-red-600">{formError}</p>}
+      </Card>
+
+      {inactiveFields.length > 0 && (
+        <Card>
+          <h2 className="text-sm font-semibold text-gray-900">Deaktivierte Felder</h2>
+          <p className="text-xs text-gray-500">
+            Nicht mehr in Anzeige/Extraktion sichtbar - bereits gespeicherte Werte
+            bleiben erhalten und erscheinen nach Reaktivierung wieder.
+          </p>
+          <div className="flex flex-col gap-2">
+            {inactiveFields.map((field) => (
+              <div key={field.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5 opacity-60" style={{ borderColor: "#dde3ea" }}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{field.label}</p>
+                  <p className="text-xs text-gray-400">{field.key}</p>
+                </div>
+                {isAgencyAdmin && (
+                  <button
+                    onClick={() => handleToggleActive(field)}
+                    disabled={togglePendingId === field.id}
+                    className="shrink-0 text-xs font-medium hover:underline disabled:opacity-50"
+                    style={{ color: "#1e56a0" }}
+                  >
+                    {togglePendingId === field.id ? "…" : "Reaktivieren"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
