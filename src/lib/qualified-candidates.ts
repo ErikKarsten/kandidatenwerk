@@ -6,9 +6,12 @@
 // Regeln (Stand 10.09.2026, per Steffen freigegeben):
 //   1. Status ist weder "neu" (noch kein Qualitäts-Check durchlaufen) noch "abgelehnt".
 //   2. Ein Berufsbild ist gesetzt (sonst später schwer einzuordnen).
-//   3. Mindestens 4 der 12 festen Zusatzfelder sind ausgefüllt (Profil nicht nur
-//      Name/E-Mail) - Schwelle bewusst niedrig gewählt, kann bei Bedarf angepasst werden.
-import { FIXED_CUSTOM_FIELD_KEYS } from "./candidate-custom-fields"
+//   3. Mindestens 4 der agenturweit gepflegten, aktiven Zusatzfelder sind ausgefüllt
+//      (Profil nicht nur Name/E-Mail) - Schwelle bewusst niedrig gewählt, kann bei
+//      Bedarf angepasst werden. Bis 24.09.2026 waren das die 12 fest codierten Felder
+//      (FIXED_CUSTOM_FIELD_KEYS); seit dem Umbau auf eine DB-gestützte, agenturweit
+//      gepflegte Feldliste (Schritt 3/3) übergibt der Aufrufer die für den jeweiligen
+//      Kandidaten aktiven Feld-Keys.
 
 const EXCLUDED_STATUS = new Set(["neu", "abgelehnt"])
 const MIN_FILLED_FIELDS = 4
@@ -24,24 +27,27 @@ export interface QualificationResult {
   reason: string
 }
 
-function countFilledFixedFields(customFields: unknown): number {
+function countFilledFields(customFields: unknown, activeFieldKeys: Set<string>): number {
   if (typeof customFields !== "object" || customFields === null) return 0
   let count = 0
   for (const [key, value] of Object.entries(customFields as Record<string, unknown>)) {
-    if (!FIXED_CUSTOM_FIELD_KEYS.has(key)) continue
+    if (!activeFieldKeys.has(key)) continue
     if (typeof value === "string" && value.trim() !== "") count++
   }
   return count
 }
 
-export function evaluateQualification(candidate: QualificationCandidate): QualificationResult {
+export function evaluateQualification(
+  candidate: QualificationCandidate,
+  activeFieldKeys: Set<string>
+): QualificationResult {
   if (!candidate.status || EXCLUDED_STATUS.has(candidate.status)) {
     return { qualifies: false, reason: "Status zu früh oder abgelehnt" }
   }
   if (!candidate.berufsbild) {
     return { qualifies: false, reason: "Kein Berufsbild gesetzt" }
   }
-  const filled = countFilledFixedFields(candidate.custom_fields)
+  const filled = countFilledFields(candidate.custom_fields, activeFieldKeys)
   if (filled < MIN_FILLED_FIELDS) {
     return { qualifies: false, reason: `Nur ${filled}/${MIN_FILLED_FIELDS} Zusatzfelder ausgefüllt` }
   }

@@ -6,11 +6,15 @@
 // statt sie zweimal zu pflegen.
 import type { SupabaseClient as GenericSupabaseClient } from "@supabase/supabase-js"
 import type { Database, Json } from "@/types/database"
-import { extractMetaContactFields, type MetaLead } from "@/lib/meta-ads-client"
+import { extractMetaContactFields, NAME_KEYS, EMAIL_KEYS, PHONE_KEYS, type MetaLead } from "@/lib/meta-ads-client"
 import { extractCustomFieldsFromDescriptionAI } from "@/lib/leadtable-sync-shared"
 import { extractCleanName } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
-import { FIXED_CUSTOM_FIELD_KEYS } from "@/lib/candidate-custom-fields"
+import {
+  getActiveCustomFieldDefinitionsForAgency,
+  recordUnmappedAnswerKeys,
+  type UnmappedAnswer,
+} from "@/lib/custom-field-definitions"
 import { ensureClientAssignment } from "@/lib/client-assignment"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 
@@ -33,19 +37,39 @@ export const META_CUSTOM_FIELD_MAP: Record<string, string> = {
 }
 
 // Direkte, KI-freie Zuordnung für die oben bekannten Meta-Feld-Keys - Pendant zu
-// extractLeadtableCustomFields. Übernimmt einen Wert nur, wenn der zugeordnete
-// FIXED_CUSTOM_FIELDS-Key auch tatsächlich existiert (Tippfehler-Schutz) und der Wert
-// nicht leer ist.
-export function extractMetaCustomFields(record: Record<string, string>): Record<string, string> {
+// extractLeadtableCustomFields. Übernimmt einen Wert nur, wenn der zugeordnete Feld-Key
+// in der agenturweit gepflegten, aktiven Feldliste auch tatsächlich existiert
+// (Tippfehler-Schutz, ersetzt die frühere FIXED_CUSTOM_FIELD_KEYS-Prüfung seit Schritt
+// 3/3 des Umbaus vom 25.09.2026) und der Wert nicht leer ist.
+export function extractMetaCustomFields(record: Record<string, string>, activeFieldKeys: Set<string>): Record<string, string> {
   const fields: Record<string, string> = {}
   for (const [metaKey, fieldName] of Object.entries(META_CUSTOM_FIELD_MAP)) {
-    if (!FIXED_CUSTOM_FIELD_KEYS.has(fieldName)) continue
+    if (!activeFieldKeys.has(fieldName)) continue
     const value = record[metaKey]
     if (typeof value === "string" && value.trim() !== "") {
       fields[fieldName] = value.trim()
     }
   }
   return fields
+}
+
+// Meta-Feld-Keys, die weder in META_CUSTOM_FIELD_MAP bekannt sind noch zu Name/E-Mail/
+// Telefon gehören - für custom_field_review_queue (Punkt 3 der Anfrage vom 25.09.2026).
+// Anders als bei Leadtable sind Meta-Feld-Keys bereits der Klartext-Fragetext (siehe
+// Kommentar zu META_CUSTOM_FIELD_MAP oben), deshalb hier kein Regex-Filter nötig -
+// alles, was übrig bleibt, ist eine echte, unbekannte Formularfrage.
+const META_CONTACT_KEYS = new Set([...NAME_KEYS, ...EMAIL_KEYS, ...PHONE_KEYS])
+
+export function extractUnmappedMetaKeys(record: Record<string, string>): UnmappedAnswer[] {
+  const knownKeys = new Set(Object.keys(META_CUSTOM_FIELD_MAP))
+  const unmapped: UnmappedAnswer[] = []
+  for (const [key, value] of Object.entries(record)) {
+    if (knownKeys.has(key) || META_CONTACT_KEYS.has(key)) continue
+    const trimmed = value.trim()
+    if (trimmed === "") continue
+    unmapped.push({ rawKey: key, value: trimmed })
+  }
+  return unmapped
 }
 
 export interface MetaSyncCampaign {
@@ -141,15 +165,27 @@ export async function processMetaLead(
   // hier als modifiedData-Ersatz).
   const { firstName, lastName, usedLongNameHeuristic } = extractCleanName(name ?? "")
 
-  const aiResult = await extractCustomFieldsFromDescriptionAI(null, record, {})
+  // Agenturweit gepflegte Feldliste des Kunden dieser Kampagne (Schritt 3/3 des Umbaus
+  // vom 25.09.2026) - ohne client_id (noch keinem Kunden zugeordnete Kampagne) bleibt
+  // die Liste leer, KI-Extraktion und die direkte Meta-Feld-Zuordnung finden dann
+  // nichts, was unschädlich ist (Kandidat wird trotzdem angelegt).
+  let agencyId: string | null = null
+  if (campaign.client_id) {
+    const { data: clientRow } = await supabase.from("clients").select("agency_id").eq("id", campaign.client_id).maybeSingle()
+    agencyId = clientRow?.agency_id ?? null
+  }
+  const activeFieldDefinitions = agencyId ? await getActiveCustomFieldDefinitionsForAgency(supabase, agencyId) : []
+
+  const aiResult = await extractCustomFieldsFromDescriptionAI(null, record, {}, activeFieldDefinitions)
   if (aiResult.error) {
     console.warn(`  [KI-Warnung] Lead ${lead.id}: ${aiResult.error}`)
   }
+  const activeFieldKeys = new Set(activeFieldDefinitions.map((f) => f.key))
   // Direkt zugeordnete Werte (bekannte Meta-Feld-Keys, siehe META_CUSTOM_FIELD_MAP)
   // haben Vorrang vor der KI-Vermutung - deshalb NACH aiResult.fields gespreadet, damit
   // sie eine unsichere KI-Zuordnung überschreiben. Funktioniert auch, wenn die
   // KI-Extraktion komplett fehlschlägt (aiResult.fields ist dann nur {}).
-  const customFields = { ...aiResult.fields, ...extractMetaCustomFields(record) }
+  const customFields = { ...aiResult.fields, ...extractMetaCustomFields(record, activeFieldKeys) }
 
   // Berufsbild: zuerst aus der eigenen Ausbildungsantwort des Kandidaten ableiten
   // (verlässlicher als der Kampagnentitel - siehe Diagnose 21.09.2026: vorher wurde
@@ -188,6 +224,16 @@ export async function processMetaLead(
       await ensureClientAssignment(supabase, inserted.id, campaign.client_id)
     } catch (assignmentError) {
       console.error(`Kunden-Zuordnung fehlgeschlagen für Kandidat ${inserted.id}:`, assignmentError)
+    }
+  }
+
+  // Unbekannte Meta-Feld-Keys zur manuellen Prüfung vormerken (Punkt 3 der Anfrage vom
+  // 25.09.2026) - kein automatisches Anlegen neuer Felder.
+  if (agencyId) {
+    try {
+      await recordUnmappedAnswerKeys(supabase, agencyId, inserted.id, extractUnmappedMetaKeys(record))
+    } catch (unmappedError) {
+      console.error(`Unbekannte Zusatzfelder konnten nicht vorgemerkt werden für Kandidat ${inserted.id}:`, unmappedError)
     }
   }
 

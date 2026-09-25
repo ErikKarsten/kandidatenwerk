@@ -255,10 +255,9 @@ export async function updateLeadNotificationRecipientsAction(
 }
 
 // ── custom_field_definitions (agenturweit gepflegte Zusatzfelder-Liste) ───────────
-// Schritt 2/3 des Umbaus vom 25.09.2026 (ersetzt FIXED_CUSTOM_FIELDS aus
-// candidate-custom-fields.ts als Quelle für UI-Anzeige) - Extraktionslogik
-// (Leadtable/Meta) folgt in Schritt 3, liest bis dahin weiterhin die alte
-// fest-codierte Liste.
+// Umbau vom 25.09.2026, ersetzt FIXED_CUSTOM_FIELDS aus candidate-custom-fields.ts als
+// Quelle für UI-Anzeige UND Leadtable-/Meta-Extraktion (siehe
+// src/lib/custom-field-definitions.ts).
 
 export interface CustomFieldDefinition {
   id: string
@@ -393,4 +392,58 @@ export async function setCustomFieldDefinitionActiveAction(
   revalidatePath("/dashboard/einstellungen")
   revalidatePath("/dashboard/candidates")
   return null
+}
+
+// ── custom_field_review_queue (unbekannte Leadtable-/Meta-Antwortschlüssel) ───────
+// Punkt 3 der Anfrage vom 25.09.2026: Extraktion (leadtable-sync-shared.ts,
+// meta-leads-sync-shared.ts) legt hier NICHT automatisch neue Felder an, sondern
+// vermerkt unbekannte Antwortschlüssel zur manuellen Prüfung durch das Team.
+
+export interface CustomFieldReviewQueueEntry {
+  id: string
+  raw_key: string
+  example_value: string | null
+  occurrences: number
+  first_seen_at: string
+  last_seen_at: string
+}
+
+// Kein .eq("agency_id", ...) nötig - RLS schränkt bereits auf die eigene Agentur ein
+// (gleiches Muster wie getCustomFieldDefinitions oben).
+export async function getPendingCustomFieldReviewQueue(): Promise<CustomFieldReviewQueueEntry[]> {
+  const supabase = await createSupabaseServerClient()
+  const { data } = await supabase
+    .from("custom_field_review_queue")
+    .select("id, raw_key, example_value, occurrences, first_seen_at, last_seen_at")
+    .eq("status", "pending")
+    .order("occurrences", { ascending: false })
+  return data ?? []
+}
+
+async function setReviewQueueStatus(id: string, status: "dismissed" | "mapped"): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const adminError = await requireAgencyAdmin(supabase)
+  if (adminError) return adminError
+
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const { error } = await supabase
+    .from("custom_field_review_queue")
+    .update({ status, reviewed_at: new Date().toISOString(), reviewed_by: user?.id ?? null })
+    .eq("id", id)
+  if (error) return { error: error.message }
+
+  revalidatePath("/dashboard/einstellungen")
+  return null
+}
+
+export async function dismissCustomFieldReviewQueueEntryAction(id: string): Promise<{ error: string } | null> {
+  return setReviewQueueStatus(id, "dismissed")
+}
+
+// "Erledigt" heißt hier bewusst nur "geprüft, keine weitere automatische Anzeige mehr" -
+// falls das Team daraus ein neues Feld anlegt (über "Hinzufügen" oben), passiert das
+// als bewusster, separater Schritt, kein automatisches Verknüpfen.
+export async function markCustomFieldReviewQueueEntryDoneAction(id: string): Promise<{ error: string } | null> {
+  return setReviewQueueStatus(id, "mapped")
 }

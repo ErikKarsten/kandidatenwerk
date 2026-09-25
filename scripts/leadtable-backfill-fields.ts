@@ -16,6 +16,7 @@ import dotenv from "dotenv"
 import { createClient } from "@supabase/supabase-js"
 import type { Database, Json } from "../src/types/database"
 import { sleep, extractLeadtableCustomFields, findLeadByEmailWithFallback } from "../src/lib/leadtable-sync-shared"
+import { recordUnmappedAnswerKeys } from "../src/lib/custom-field-definitions"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -34,7 +35,7 @@ async function main() {
   console.log("=== Leadtable-Kandidaten mit E-Mail laden ===")
   const { data: candidates, error } = await supabase
     .from("candidates")
-    .select("id, email, custom_fields, campaign_id")
+    .select("id, email, custom_fields, campaign_id, client_id")
     .eq("source", "leadtable")
     .not("email", "is", null)
 
@@ -43,6 +44,21 @@ async function main() {
   const list = candidates ?? []
   console.log(`${list.length} Kandidaten geladen`)
   console.log("")
+
+  // client_id -> agency_id, für custom_field_review_queue (Punkt 3 der Anfrage vom
+  // 25.09.2026) - unbekannte Antwortschlüssel zur manuellen Prüfung vormerken statt
+  // automatisch als Feld anzulegen.
+  const agencyIdByClientId = new Map<string, string | null>()
+  async function agencyIdForClient(clientId: string | null): Promise<string | null> {
+    if (!clientId) return null
+    let agencyId = agencyIdByClientId.get(clientId)
+    if (agencyId === undefined) {
+      const { data } = await supabase.from("clients").select("agency_id").eq("id", clientId).maybeSingle()
+      agencyId = data?.agency_id ?? null
+      agencyIdByClientId.set(clientId, agencyId)
+    }
+    return agencyId
+  }
 
   // campaign_id (Kandidatenwerk) -> leadtable_campaign_id, für den Kampagnen-Fallback
   // bei fehlgeschlagener E-Mail-Suche (siehe findLeadByEmailWithFallback).
@@ -76,7 +92,12 @@ async function main() {
       if (!lead) {
         totals.skippedNoLead++
       } else {
-        const newFields = extractLeadtableCustomFields(lead.modifiedData)
+        const { fields: newFields, unmapped } = extractLeadtableCustomFields(lead.modifiedData)
+
+        if (unmapped.length > 0) {
+          const agencyId = await agencyIdForClient(candidate.client_id)
+          if (agencyId) await recordUnmappedAnswerKeys(supabase, agencyId, candidate.id, unmapped)
+        }
 
         if (Object.keys(newFields).length === 0) {
           totals.skippedNoMatchingFields++

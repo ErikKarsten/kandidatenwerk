@@ -1,6 +1,12 @@
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
-import { getTeamMembers, getEmailTemplates, getLeadNotificationRecipientIds, getCustomFieldDefinitions } from "./actions"
+import {
+  getTeamMembers,
+  getEmailTemplates,
+  getLeadNotificationRecipientIds,
+  getCustomFieldDefinitions,
+  getPendingCustomFieldReviewQueue,
+} from "./actions"
 import { EinstellungenDetail } from "./einstellungen-detail"
 
 export default async function EinstellungenPage() {
@@ -30,6 +36,7 @@ export default async function EinstellungenPage() {
     ? await getLeadNotificationRecipientIds(ownProfile.agency_id)
     : []
   const customFieldDefinitions = ownProfile.agency_id ? await getCustomFieldDefinitions() : []
+  const customFieldReviewQueue = ownProfile.agency_id ? await getPendingCustomFieldReviewQueue() : []
 
   return (
     <EinstellungenDetail
@@ -45,6 +52,7 @@ export default async function EinstellungenPage() {
       emailTemplates={emailTemplates}
       leadNotificationRecipientIds={leadNotificationRecipientIds}
       customFieldDefinitions={customFieldDefinitions}
+      customFieldReviewQueue={customFieldReviewQueue}
     />
   )
 }

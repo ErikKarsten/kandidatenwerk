@@ -15,6 +15,7 @@ import dotenv from "dotenv"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "../src/types/database"
 import { evaluateQualification } from "../src/lib/qualified-candidates"
+import { createCustomFieldDefinitionsCache } from "../src/lib/custom-field-definitions"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -27,9 +28,11 @@ async function main() {
 
   const { data: candidates, error: candidatesError } = await supabase
     .from("candidates")
-    .select("id, status, berufsbild, custom_fields")
+    .select("id, status, berufsbild, custom_fields, client_id")
 
   if (candidatesError) throw new Error(candidatesError.message)
+
+  const getFieldDefinitionsForClient = createCustomFieldDefinitionsCache(supabase)
 
   const { data: currentlyQualified, error: qualifiedError } = await supabase
     .from("qualified_candidates")
@@ -43,7 +46,9 @@ async function main() {
   let removed = 0
 
   for (const candidate of candidates ?? []) {
-    const result = evaluateQualification(candidate)
+    const fieldDefinitions = await getFieldDefinitionsForClient(candidate.client_id)
+    const activeFieldKeys = new Set(fieldDefinitions.map((f) => f.key))
+    const result = evaluateQualification(candidate, activeFieldKeys)
     const isCurrentlyIn = currentlyQualifiedIds.has(candidate.id)
 
     if (result.qualifies && !isCurrentlyIn) {

@@ -39,6 +39,7 @@ import {
   findLeadByEmailWithFallback,
 } from "../src/lib/leadtable-sync-shared"
 import { WEITERE_ANTWORTEN_KEY } from "../src/lib/candidate-custom-fields"
+import { createCustomFieldDefinitionsCache } from "../src/lib/custom-field-definitions"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -81,10 +82,14 @@ async function main() {
   console.log("=== Alle Leadtable-Kandidaten laden ===")
   const { data: candidates, error } = await supabase
     .from("candidates")
-    .select("id, first_name, last_name, email, description, custom_fields, leadtable_lead_id, campaign_id")
+    .select("id, first_name, last_name, email, description, custom_fields, leadtable_lead_id, campaign_id, client_id")
     .eq("source", "leadtable")
 
   if (error) throw new Error(error.message)
+
+  // Agenturweit gepflegte Feldliste statt der früher fest codierten 12 Felder (Schritt
+  // 3/3 des Umbaus vom 25.09.2026), gecacht pro Kunde/Agentur über den ganzen Lauf.
+  const getFieldDefinitionsForClient = createCustomFieldDefinitionsCache(supabase)
 
   let list = (candidates ?? []).filter((c) => c.leadtable_lead_id || c.email)
   console.log(`${list.length} Kandidaten mit leadtable_lead_id oder E-Mail geladen`)
@@ -145,7 +150,8 @@ async function main() {
         continue
       }
 
-      const result = await extractCustomFieldsFromDescriptionAI(candidate.description, lead.modifiedData, existing)
+      const fieldDefinitions = await getFieldDefinitionsForClient(candidate.client_id)
+      const result = await extractCustomFieldsFromDescriptionAI(candidate.description, lead.modifiedData, existing, fieldDefinitions)
 
       if (result.error) {
         totals.aiWarnings++

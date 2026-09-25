@@ -11,7 +11,8 @@
 
 import Anthropic from "@anthropic-ai/sdk"
 import { leadtableFetch } from "./leadtable-client"
-import { FIXED_CUSTOM_FIELDS, WEITERE_ANTWORTEN_KEY } from "./candidate-custom-fields"
+import { WEITERE_ANTWORTEN_KEY } from "./candidate-custom-fields"
+import type { CustomFieldDefinitionLite, UnmappedAnswer } from "./custom-field-definitions"
 
 export interface LeadtableSyncLead {
   _id: string
@@ -130,12 +131,27 @@ export const LEADTABLE_AUSBILDUNG_FIELD = "ausbildung"
 // wie den bekannten "10-11"-Ausreißer aus der Verifikation.
 const LOOKS_LIKE_TEXT_RE = /[a-zäöüßA-ZÄÖÜ]{3,}/
 
+export interface LeadtableCustomFieldsExtraction {
+  fields: Record<string, string>
+  // Fragen (rohe Leadtable-Frage-IDs, z.B. "q_gy0zcd"), die keinem der oben bekannten
+  // Felder zugeordnet werden konnten - für custom_field_review_queue (Punkt 3 der
+  // Anfrage vom 25.09.2026: NICHT automatisch als Feld anlegen, sondern dem Team zur
+  // manuellen Prüfung zeigen). Grob gefiltert auf "sieht nach echter Textantwort aus"
+  // (LOOKS_LIKE_TEXT_RE) UND "q_"-Präfix, um die vielen technischen/Tracking-Felder in
+  // modifiedData (formID, pageID, leadgenID, isOrganic, ...) nicht mit aufzunehmen -
+  // bewusst konservativ gefiltert, Restrauschen kann im Review als "verworfen" markiert werden.
+  unmapped: UnmappedAnswer[]
+}
+
 // Gibt nur die NEUEN Felder zurück (Werte aus modifiedData, die den Plausibilitäts-
 // Check bestehen). Merge mit bestehenden custom_fields (existing gewinnt bei
 // Konflikt) bleibt bewusst beim Aufrufer.
-export function extractLeadtableCustomFields(modifiedData: Record<string, unknown> | undefined): Record<string, string> {
+export function extractLeadtableCustomFields(modifiedData: Record<string, unknown> | undefined): LeadtableCustomFieldsExtraction {
   const newFields: Record<string, string> = {}
-  if (!modifiedData) return newFields
+  const unmapped: UnmappedAnswer[] = []
+  if (!modifiedData) return { fields: newFields, unmapped }
+
+  const knownQuestionIds = new Set([...Object.keys(LEADTABLE_CUSTOM_FIELD_MAP), LEADTABLE_AUSBILDUNG_QUESTION_ID])
 
   for (const [questionId, fieldName] of Object.entries(LEADTABLE_CUSTOM_FIELD_MAP)) {
     const value = modifiedData[questionId]
@@ -149,7 +165,16 @@ export function extractLeadtableCustomFields(modifiedData: Record<string, unknow
     newFields[LEADTABLE_AUSBILDUNG_FIELD] = ausbildungValue
   }
 
-  return newFields
+  for (const [key, value] of Object.entries(modifiedData)) {
+    if (knownQuestionIds.has(key)) continue
+    if (!key.startsWith("q_")) continue
+    if (typeof value !== "string") continue
+    const trimmed = value.trim()
+    if (trimmed === "" || !LOOKS_LIKE_TEXT_RE.test(trimmed)) continue
+    unmapped.push({ rawKey: key, value: trimmed })
+  }
+
+  return { fields: newFields, unmapped }
 }
 
 interface LeadtableLeadsPage {
@@ -206,14 +231,6 @@ export async function findLeadByEmailWithFallback(
   return campaignLeads.find((l) => l.email?.toLowerCase() === normalizedEmail) ?? null
 }
 
-// Bekannte Zielfelder der KI-Extraktion: alle 12 festen Felder + das Sammelfeld
-// "weitere_antworten". Dient als Allowlist beim manuellen Parsen der Modell-Antwort
-// (siehe parseExtractedFields) - alles andere im JSON wird verworfen.
-const EXTRACTABLE_FIELD_KEYS = new Set<string>([
-  ...FIXED_CUSTOM_FIELDS.map((f) => f.key),
-  WEITERE_ANTWORTEN_KEY,
-])
-
 // Extrahiert das erste JSON-Objekt aus der Modell-Antwort. Trotz Prompt-Anweisung
 // "gib NUR JSON zurück" umschließt Haiku die Antwort öfter mit ```json ... ```-
 // Codeblöcken (empirisch beobachtet) - dieser Schritt entfernt sie, statt sich blind
@@ -235,7 +252,7 @@ function extractJsonObject(text: string): string | null {
 // complex" abgelehnt bzw. läuft verlässlich in Timeouts (verifiziert per Bisektion:
 // 3/6 Felder gehen, ab ~9 Feldern schlägt es fehl) - deshalb einfaches Prompt-JSON
 // mit manuellem, tolerantem Parsing statt zodOutputFormat/messages.parse().
-function parseExtractedFields(rawText: string): Record<string, string> {
+function parseExtractedFields(rawText: string, allowedKeys: Set<string>): Record<string, string> {
   const jsonText = extractJsonObject(rawText)
   if (!jsonText) return {}
 
@@ -250,7 +267,7 @@ function parseExtractedFields(rawText: string): Record<string, string> {
 
   const result: Record<string, string> = {}
   for (const [key, value] of Object.entries(candidate as Record<string, unknown>)) {
-    if (!EXTRACTABLE_FIELD_KEYS.has(key)) continue
+    if (!allowedKeys.has(key)) continue
     if (typeof value !== "string" || value.trim() === "") continue
     result[key] = value.trim()
   }
@@ -300,8 +317,15 @@ const AI_GENERIC_ERROR = "KI-Extraktion fehlgeschlagen, bitte später erneut ver
 export async function extractCustomFieldsFromDescriptionAI(
   description: string | null | undefined,
   modifiedData: Record<string, unknown> | undefined,
-  existingFields: Record<string, string>
+  existingFields: Record<string, string>,
+  fieldDefinitions: CustomFieldDefinitionLite[]
 ): Promise<CustomFieldsAIResult> {
+  // Agenturweit gepflegte Feldliste statt der früher fest codierten 12 Felder (siehe
+  // Schritt 3/3 des Umbaus vom 25.09.2026) - der Aufrufer lädt sie passend zur Agentur
+  // des jeweiligen Kandidaten/der Kampagne (custom-field-definitions.ts). Ohne
+  // konfigurierte Felder lohnt sich der KI-Aufruf nicht.
+  if (fieldDefinitions.length === 0) return { fields: {} }
+
   const trimmedDescription = (description ?? "").trim()
   const answerValues = leadtableAnswerValues(modifiedData)
   if (trimmedDescription === "" && answerValues.length === 0) return { fields: {} }
@@ -314,7 +338,8 @@ export async function extractCustomFieldsFromDescriptionAI(
     return { fields: {}, error: AI_GENERIC_ERROR }
   }
 
-  const fieldList = FIXED_CUSTOM_FIELDS.map((f) => `- ${f.label} (${f.key})`).join("\n")
+  const allowedKeys = new Set<string>([...fieldDefinitions.map((f) => f.key), WEITERE_ANTWORTEN_KEY])
+  const fieldList = fieldDefinitions.map((f) => `- ${f.label} (${f.key})`).join("\n")
   const answersList = answerValues.length > 0
     ? answerValues.map((v, i) => `${i + 1}. ${v}`).join("\n")
     : "(keine Formular-Antworten vorhanden)"
@@ -328,12 +353,12 @@ Freitext-Bericht:
 ${trimmedDescription || "(kein Freitext-Bericht vorhanden)"}
 """
 
-Ordne den folgenden 12 bekannten Fragen zu, was du eindeutig zuordnen kannst (JSON-Feldname in Klammern):
+Ordne den folgenden ${fieldDefinitions.length} bekannten Fragen zu, was du eindeutig zuordnen kannst (JSON-Feldname in Klammern):
 ${fieldList}
 
-Ordne nur zu, wenn du dir wirklich sicher bist. Im Zweifel: nicht zuordnen, sondern in "${WEITERE_ANTWORTEN_KEY}" aufnehmen. Die Fragen sind anonymisiert - eine Antwort wie "18 Uhr" könnte z.B. sowohl Erreichbarkeit als auch etwas ganz anderes meinen. Bei einer solchen Mehrdeutigkeit rätst du NICHT, welches der 12 Felder gemeint ist.
+Ordne nur zu, wenn du dir wirklich sicher bist. Im Zweifel: nicht zuordnen, sondern in "${WEITERE_ANTWORTEN_KEY}" aufnehmen. Die Fragen sind anonymisiert - eine Antwort wie "18 Uhr" könnte z.B. sowohl Erreichbarkeit als auch etwas ganz anderes meinen. Bei einer solchen Mehrdeutigkeit rätst du NICHT, welches der bekannten Felder gemeint ist.
 
-Gib NUR JSON zurück. Lass ein Feld komplett weg, wenn weder die Formular-Antworten noch der Freitext dazu etwas eindeutig hergeben - rate nichts. Für alles, was du NICHT eindeutig einer der 12 Fragen zuordnen kannst, aber dennoch eine relevante Information über den Bewerber ist: sammle es roh, eine Zeile pro Information, im Feld "${WEITERE_ANTWORTEN_KEY}" statt es zu verwerfen.`
+Gib NUR JSON zurück. Lass ein Feld komplett weg, wenn weder die Formular-Antworten noch der Freitext dazu etwas eindeutig hergeben - rate nichts. Für alles, was du NICHT eindeutig einer der bekannten Fragen zuordnen kannst, aber dennoch eine relevante Information über den Bewerber ist: sammle es roh, eine Zeile pro Information, im Feld "${WEITERE_ANTWORTEN_KEY}" statt es zu verwerfen.`
 
   let rawText: string
   try {
@@ -359,7 +384,7 @@ Gib NUR JSON zurück. Lass ein Feld komplett weg, wenn weder die Formular-Antwor
     return { fields: {}, error: AI_GENERIC_ERROR }
   }
 
-  const extracted = parseExtractedFields(rawText)
+  const extracted = parseExtractedFields(rawText, allowedKeys)
   const result: Record<string, string> = {}
   for (const [key, value] of Object.entries(extracted)) {
     const alreadySet = typeof existingFields[key] === "string" && existingFields[key].trim() !== ""

@@ -17,9 +17,12 @@ import {
   createCustomFieldDefinitionAction,
   updateCustomFieldDefinitionLabelAction,
   setCustomFieldDefinitionActiveAction,
+  dismissCustomFieldReviewQueueEntryAction,
+  markCustomFieldReviewQueueEntryDoneAction,
   type TeamMember,
   type EmailTemplate,
   type CustomFieldDefinition,
+  type CustomFieldReviewQueueEntry,
 } from "./actions"
 
 const MIN_PASSWORD_LENGTH = 8
@@ -39,11 +42,12 @@ interface EinstellungenDetailProps {
   emailTemplates: EmailTemplate[]
   leadNotificationRecipientIds: string[]
   customFieldDefinitions: CustomFieldDefinition[]
+  customFieldReviewQueue: CustomFieldReviewQueueEntry[]
 }
 
 type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen" | "zusatzfelder"
 
-export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds, customFieldDefinitions }: EinstellungenDetailProps) {
+export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
 
   return (
@@ -71,7 +75,12 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
             <AutomatisierungTab agencyId={agencyId} team={team} initialRecipientIds={leadNotificationRecipientIds} />
           )}
           {tab === "zusatzfelder" && agencyId && (
-            <ZusatzfelderTab agencyId={agencyId} isAgencyAdmin={ownProfile.role === "agency_admin"} fields={customFieldDefinitions} />
+            <ZusatzfelderTab
+              agencyId={agencyId}
+              isAgencyAdmin={ownProfile.role === "agency_admin"}
+              fields={customFieldDefinitions}
+              reviewQueue={customFieldReviewQueue}
+            />
           )}
         </div>
       </div>
@@ -708,10 +717,12 @@ function ZusatzfelderTab({
   agencyId,
   isAgencyAdmin,
   fields,
+  reviewQueue,
 }: {
   agencyId: string
   isAgencyAdmin: boolean
   fields: CustomFieldDefinition[]
+  reviewQueue: CustomFieldReviewQueueEntry[]
 }) {
   const router = useRouter()
   const [newLabel, setNewLabel] = useState("")
@@ -722,6 +733,26 @@ function ZusatzfelderTab({
   const [savePending, startSaveTransition] = useTransition()
   const [togglePendingId, setTogglePendingId] = useState<string | null>(null)
   const [, startToggleTransition] = useTransition()
+  const [queuePendingId, setQueuePendingId] = useState<string | null>(null)
+  const [, startQueueTransition] = useTransition()
+
+  function handleDismissQueueEntry(id: string) {
+    setQueuePendingId(id)
+    startQueueTransition(async () => {
+      await dismissCustomFieldReviewQueueEntryAction(id)
+      setQueuePendingId(null)
+      router.refresh()
+    })
+  }
+
+  function handleMarkQueueEntryDone(id: string) {
+    setQueuePendingId(id)
+    startQueueTransition(async () => {
+      await markCustomFieldReviewQueueEntryDoneAction(id)
+      setQueuePendingId(null)
+      router.refresh()
+    })
+  }
 
   const activeFields = fields.filter((f) => f.active).sort((a, b) => a.sort_order - b.sort_order)
   const inactiveFields = fields.filter((f) => !f.active).sort((a, b) => a.sort_order - b.sort_order)
@@ -883,6 +914,51 @@ function ZusatzfelderTab({
                   >
                     {togglePendingId === field.id ? "…" : "Reaktivieren"}
                   </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {reviewQueue.length > 0 && (
+        <Card>
+          <h2 className="text-sm font-semibold text-gray-900">
+            {reviewQueue.length} unbekannte{reviewQueue.length !== 1 ? "" : "s"} Feld{reviewQueue.length !== 1 ? "er" : ""} aus Leadtable/Meta gefunden
+          </h2>
+          <p className="text-xs text-gray-500">
+            Antworten aus Formularfragen, die keinem bestehenden Zusatzfeld zugeordnet
+            werden konnten - wurden NICHT automatisch als Feld angelegt. Bei Bedarf oben
+            ein passendes Feld anlegen, dann hier als erledigt markieren, oder verwerfen,
+            wenn es nicht relevant ist.
+          </p>
+          <div className="flex flex-col gap-2">
+            {reviewQueue.map((entry) => (
+              <div key={entry.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{entry.example_value || "(kein Beispielwert)"}</p>
+                  <p className="text-xs text-gray-400">
+                    {entry.raw_key} · {entry.occurrences}× gesehen
+                  </p>
+                </div>
+                {isAgencyAdmin && (
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      onClick={() => handleMarkQueueEntryDone(entry.id)}
+                      disabled={queuePendingId === entry.id}
+                      className="text-xs font-medium hover:underline disabled:opacity-50"
+                      style={{ color: "#1e56a0" }}
+                    >
+                      {queuePendingId === entry.id ? "…" : "Erledigt"}
+                    </button>
+                    <button
+                      onClick={() => handleDismissQueueEntry(entry.id)}
+                      disabled={queuePendingId === entry.id}
+                      className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                    >
+                      {queuePendingId === entry.id ? "…" : "Verwerfen"}
+                    </button>
+                  </div>
                 )}
               </div>
             ))}

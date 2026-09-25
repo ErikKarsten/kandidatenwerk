@@ -14,6 +14,7 @@ import {
   extractCustomFieldsFromDescriptionAI,
   findLeadByEmailWithFallback,
 } from "@/lib/leadtable-sync-shared"
+import { getActiveCustomFieldDefinitionsForAgency, recordUnmappedAnswerKeys } from "@/lib/custom-field-definitions"
 import type { Json } from "@/types/database"
 
 export async function updateCandidateProfileAction(
@@ -128,6 +129,8 @@ export async function refreshLeadtableCandidateAction(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Nicht eingeloggt." }
 
+  const { data: ownProfile } = await supabase.from("profiles").select("agency_id").eq("id", user.id).single()
+
   const { data: candidate, error: fetchError } = await supabase
     .from("candidates")
     .select("id, source, status, description, custom_fields, leadtable_lead_id, email, campaign_id")
@@ -215,7 +218,7 @@ export async function refreshLeadtableCandidateAction(
   }
 
   // Zusatzfelder: wie beim Backfill nur Lücken füllen, bestehende Werte gewinnen.
-  const newCustomFields = extractLeadtableCustomFields(lead.modifiedData)
+  const { fields: newCustomFields, unmapped } = extractLeadtableCustomFields(lead.modifiedData)
   let currentFields = (candidate.custom_fields as Record<string, string> | null) ?? {}
   const fieldsToAdd = Object.keys(newCustomFields).filter(
     (key) => !(typeof currentFields[key] === "string" && currentFields[key].trim() !== "")
@@ -231,6 +234,21 @@ export async function refreshLeadtableCandidateAction(
     currentFields = mergedFields
   }
 
+  // Unbekannte Leadtable-Frageschlüssel zur manuellen Prüfung vormerken (Punkt 3 der
+  // Anfrage vom 25.09.2026) - kein automatisches Anlegen neuer Felder. Best-effort:
+  // ein Fehler hier soll den Refresh nicht scheitern lassen.
+  if (ownProfile?.agency_id && unmapped.length > 0) {
+    try {
+      await recordUnmappedAnswerKeys(supabase, ownProfile.agency_id, candidateId, unmapped)
+    } catch (err) {
+      console.error("Unbekannte Zusatzfelder konnten nicht vorgemerkt werden:", err)
+    }
+  }
+
+  const activeFieldDefinitions = ownProfile?.agency_id
+    ? await getActiveCustomFieldDefinitionsForAgency(supabase, ownProfile.agency_id)
+    : []
+
   // KI-Extraktion aus modifiedData + Beschreibung: deckt auch Felder ab, die die
   // regelbasierte Extraktion oben nicht kennt (die kennt nur 4 fest codierte
   // Leadtable-Frage-IDs + Ausbildung - je nach Kampagnen-Formular können das ganz
@@ -238,7 +256,7 @@ export async function refreshLeadtableCandidateAction(
   // Werte - siehe extractCustomFieldsFromDescriptionAI. Ein fehlgeschlagener KI-Aufruf
   // bricht den Refresh nicht ab, wird aber über aiWarning an die UI durchgereicht statt
   // nur in den Server-Logs zu verschwinden.
-  const aiResult = await extractCustomFieldsFromDescriptionAI(currentDescription, lead.modifiedData, currentFields)
+  const aiResult = await extractCustomFieldsFromDescriptionAI(currentDescription, lead.modifiedData, currentFields, activeFieldDefinitions)
   if (Object.keys(aiResult.fields).length > 0) {
     const mergedAiFields: Record<string, string> = { ...aiResult.fields, ...currentFields }
     const { error: aiFieldsError } = await supabase

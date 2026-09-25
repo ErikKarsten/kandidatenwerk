@@ -39,8 +39,11 @@ import {
   extractCustomFieldsFromDescriptionAI,
   findLeadByEmailWithFallback,
 } from "../src/lib/leadtable-sync-shared"
-import { FIXED_CUSTOM_FIELDS } from "../src/lib/candidate-custom-fields"
 import { mapKanzleistelleBerufsbild } from "../src/lib/sync-kanzleistelle"
+import {
+  createCustomFieldDefinitionsCache,
+  recordUnmappedAnswerKeys,
+} from "../src/lib/custom-field-definitions"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -366,11 +369,25 @@ async function backfillCustomFields(
 ): Promise<{ fieldsAdded: number; berufsbildUpdated: number; errors: number }> {
   const { data: allLeadtableCandidates, error } = await supabase
     .from("candidates")
-    .select("id, email, berufsbild, custom_fields, campaigns(title)")
+    .select("id, email, berufsbild, custom_fields, client_id, campaigns(title)")
     .eq("source", "leadtable")
     .not("email", "is", null)
 
   if (error) throw new Error(error.message)
+
+  // client_id -> agency_id, für custom_field_review_queue (Punkt 3 der Anfrage vom
+  // 25.09.2026) - unbekannte Leadtable-Frageschlüssel zur manuellen Prüfung vormerken.
+  const agencyIdByClientId = new Map<string, string | null>()
+  async function agencyIdForClient(clientId: string | null): Promise<string | null> {
+    if (!clientId) return null
+    let agencyId = agencyIdByClientId.get(clientId)
+    if (agencyId === undefined) {
+      const { data } = await supabase.from("clients").select("agency_id").eq("id", clientId).maybeSingle()
+      agencyId = data?.agency_id ?? null
+      agencyIdByClientId.set(clientId, agencyId)
+    }
+    return agencyId
+  }
 
   const candidates = (allLeadtableCandidates ?? []).filter((c) => hasNoCustomFields(c.custom_fields))
 
@@ -397,7 +414,13 @@ async function backfillCustomFields(
       const lead = resp.leads[0]
       if (!lead) continue
 
-      const newFields = extractLeadtableCustomFields(lead.modifiedData)
+      const { fields: newFields, unmapped } = extractLeadtableCustomFields(lead.modifiedData)
+
+      if (unmapped.length > 0) {
+        const agencyId = await agencyIdForClient(candidate.client_id)
+        if (agencyId) await recordUnmappedAnswerKeys(supabase, agencyId, candidate.id, unmapped)
+      }
+
       if (Object.keys(newFields).length === 0) continue
 
       const update: { custom_fields: Json; berufsbild?: string } = { custom_fields: newFields as Json }
@@ -445,19 +468,27 @@ async function backfillCustomFieldsWithAI(
 ): Promise<{ fieldsAdded: number; candidatesUpdated: number; berufsbildUpdated: number; errors: number; aiWarnings: number }> {
   const { data: candidates, error } = await supabase
     .from("candidates")
-    .select("id, email, description, custom_fields, leadtable_lead_id, campaign_id, berufsbild, campaigns(title)")
+    .select("id, email, description, custom_fields, leadtable_lead_id, campaign_id, client_id, berufsbild, campaigns(title)")
     .eq("source", "leadtable")
     .not("description", "is", null)
 
   if (error) throw new Error(error.message)
 
-  const withGaps = (candidates ?? []).filter((c) => {
-    if ((c.description ?? "").trim() === "") return false
+  // Agenturweit gepflegte Feldliste statt der früher fest codierten 12 Felder (Schritt
+  // 3/3 des Umbaus vom 25.09.2026), gecacht pro Kunde/Agentur über den ganzen Lauf -
+  // "Lücke" heißt jetzt: mindestens eines der für DIESEN Kandidaten aktiven Felder fehlt.
+  const getFieldDefinitionsForClient = createCustomFieldDefinitionsCache(supabase)
+
+  const withGaps: NonNullable<typeof candidates> = []
+  for (const c of candidates ?? []) {
+    if ((c.description ?? "").trim() === "") continue
     const existing = (c.custom_fields as Record<string, string> | null) ?? {}
-    return FIXED_CUSTOM_FIELDS.some(
+    const fieldDefinitions = await getFieldDefinitionsForClient(c.client_id)
+    const hasGap = fieldDefinitions.some(
       (f) => !(typeof existing[f.key] === "string" && existing[f.key].trim() !== "")
     )
-  })
+    if (hasGap) withGaps.push(c)
+  }
 
   let list = withGaps
   if (limit) list = list.slice(0, limit)
@@ -503,7 +534,8 @@ async function backfillCustomFieldsWithAI(
         lead = email ? (await findLeadByEmailWithFallback(email, leadtableCampaignId)) ?? undefined : undefined
       }
 
-      const result = await extractCustomFieldsFromDescriptionAI(candidate.description, lead?.modifiedData, existing)
+      const fieldDefinitions = await getFieldDefinitionsForClient(candidate.client_id)
+      const result = await extractCustomFieldsFromDescriptionAI(candidate.description, lead?.modifiedData, existing, fieldDefinitions)
       if (result.error) aiWarnings++
 
       if (Object.keys(result.fields).length === 0) continue

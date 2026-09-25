@@ -211,9 +211,12 @@ export function metaFieldDataToRecord(fieldData: MetaLeadFieldData[]): Record<st
 
 // Meta liefert Name/E-Mail/Telefon als eigene, standardisierte Feld-Keys (bei allen
 // Lead-Ads-Formularen gleich benannt, unabhängig von Sprache/individuellen Fragen).
-const NAME_KEYS = ["full_name"]
-const EMAIL_KEYS = ["email"]
-const PHONE_KEYS = ["phone_number"]
+// Exportiert (statt lokal), damit meta-leads-sync-shared.ts Name/E-Mail/Telefon aus der
+// Menge der "unbekannten" Meta-Feld-Keys ausschließen kann (siehe
+// extractUnmappedMetaKeys, Schritt 3/3 des Zusatzfelder-Umbaus vom 25.09.2026).
+export const NAME_KEYS = ["full_name"]
+export const EMAIL_KEYS = ["email"]
+export const PHONE_KEYS = ["phone_number"]
 
 function firstMatchingValue(record: Record<string, string>, keys: string[]): string | null {
   for (const key of keys) {
