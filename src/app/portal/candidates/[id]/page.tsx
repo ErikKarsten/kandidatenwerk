@@ -111,11 +111,23 @@ export default async function PortalCandidateDetailPage({
 
       <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Zusatzfelder</span>
-        <div className="mt-3 flex flex-col gap-2.5">
+        {/* Gleiches Boxen-Layout wie die Zusatzfelder im internen Kandidatenprofil
+            (profile-tab.tsx) - hier bewusst als reine, nicht-interaktive Anzeige statt
+            editierbarer Inputs, damit für den Kunden nicht der Eindruck entsteht, er
+            könnte die Werte hier ändern. */}
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {FIXED_CUSTOM_FIELDS.map((f) => {
             const value = customFields[f.key]?.trim()
             return (
-              <FieldRow key={f.key} label={f.label}>{value || "—"}</FieldRow>
+              <div key={f.key} className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-400">{f.label}</span>
+                <div
+                  className="rounded-md border px-3 py-1.5 text-sm text-gray-900"
+                  style={{ borderColor: "#dde3ea", backgroundColor: "#f9fafb" }}
+                >
+                  {value || "—"}
+                </div>
+              </div>
             )
           })}
         </div>
