@@ -110,7 +110,11 @@ async function main() {
 
       if (result.skipped) {
         totals.clientsSkipped++
+        totals.campaignsCreated += result.campaignsCreated
+        totals.campaignsSkippedArchived += result.campaignsSkippedArchived
         sinceLastProgress.clientsSkipped++
+        sinceLastProgress.campaignsCreated += result.campaignsCreated
+        sinceLastProgress.campaignsSkippedArchived += result.campaignsSkippedArchived
       } else {
         totals.clientsCreated++
         totals.campaignsCreated += result.campaignsCreated

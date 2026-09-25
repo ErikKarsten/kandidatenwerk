@@ -88,7 +88,9 @@ async function main() {
     created: 0,
     skippedAbsage: 0,
     skippedNoEmail: 0,
+    skippedTestLead: 0,
     skippedDuplicate: 0,
+    relinkedExisting: 0,
     errors: [],
   }
   const runErrors: RunError[] = []
@@ -136,6 +138,7 @@ async function main() {
         totals.skippedAbsage += result.skippedAbsage
         totals.skippedNoEmail += result.skippedNoEmail
         totals.skippedDuplicate += result.skippedDuplicate
+        totals.relinkedExisting += result.relinkedExisting
         totals.errors.push(...result.errors)
 
         sinceLastProgress.created += result.created

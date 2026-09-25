@@ -121,6 +121,28 @@ export function extractCleanName(rawName: string): {
   }
 }
 
+// Leadtable liefert bei manchen Leads das E-Mail-Feld verdoppelt/verkettet zurück (z.B.
+// "erika@example.com erika@example.com", vermutlich ein Formularfeld-Mapping-Problem auf
+// Leadtable-Seite, siehe Live-Audit vom 24.09.2026, Fälle Erika Sadzanski/Julia May) -
+// hier bereinigen, bevor der Wert für Dublettenprüfung ODER Insert genutzt wird.
+function cleanLeadtableEmail(raw: string): string {
+  const trimmed = raw.trim()
+  const parts = trimmed.split(/\s+/)
+  if (parts.length === 2 && parts[0].toLowerCase() === parts[1].toLowerCase()) return parts[0]
+  return trimmed
+}
+
+// Meta speist Dummy-Test-Leads teils auch in Leadtable ein (gleiche feste Adresse
+// "test@meta.com" über viele Kampagnen/Kunden hinweg geteilt, siehe isMetaTestLead in
+// meta-ads-client.ts für das Pendant im Meta-Pfad) - hier explizit ausschließen, sonst
+// wird EIN geteilter Dummy-Kandidat bei jedem Kunden/jeder Kampagne, die ihren eigenen
+// Test-Lead durchlaufen lässt, immer wieder fälschlich umgehängt (siehe Live-Test vom
+// 24.09.2026, Kampagne "Braunschweig - SFA").
+const KNOWN_TEST_LEAD_EMAILS = new Set(["test@meta.com"])
+function isTestLead(lead: LeadtableLead): boolean {
+  return KNOWN_TEST_LEAD_EMAILS.has((lead.email ?? "").trim().toLowerCase())
+}
+
 async function fetchAllLeads(campaignId: string): Promise<LeadtableLead[]> {
   const firstPage = await leadtableFetch<LeadtableLeadsResponse>(`/lead/campaign/${campaignId}`, {
     page: 1,
@@ -148,7 +170,13 @@ export type ImportLeadtableCampaignResult = {
   created: number
   skippedAbsage: number
   skippedNoEmail: number
+  skippedTestLead: number
   skippedDuplicate: number
+  // Von den Duplikaten (bereits bekannter Kandidat per E-Mail): wie viele wurden dabei
+  // mit dieser (neuen/anderen) Kampagne verknüpft und/oder im Status aktualisiert -
+  // Pendant zum "erneut beworben"-Fall im Meta-Pfad (siehe processMetaLead), vorher
+  // wurde hier still übersprungen, siehe Root-Cause-Audit vom 24.09.2026.
+  relinkedExisting: number
   errors: ImportLeadtableCampaignError[]
   // IDs der neu angelegten Kandidaten (Kandidatenwerk-IDs) - z.B. damit der Aufrufer
   // gezielt matchCandidateToCampaigns() pro neuem Kandidaten anstoßen kann, statt
@@ -188,7 +216,9 @@ export async function importLeadtableCampaign(
     created: 0,
     skippedAbsage: 0,
     skippedNoEmail: 0,
+    skippedTestLead: 0,
     skippedDuplicate: 0,
+    relinkedExisting: 0,
     errors: [],
     createdCandidateIds: [],
   }
@@ -200,26 +230,113 @@ export async function importLeadtableCampaign(
         continue
       }
 
+      if (isTestLead(lead)) {
+        result.skippedTestLead++
+        continue
+      }
+
       if (!lead.email) {
         result.skippedNoEmail++
         continue
       }
 
-      const { data: existing, error: existingError } = await kandidatenwerk
+      const email = cleanLeadtableEmail(lead.email)
+      const mappedStatus = STATUS_MAP[lead.status ?? ""] ?? FALLBACK_STATUS
+
+      // Gegen die bereinigte UND die (evtl. noch nicht migrierte) verdoppelte Form
+      // prüfen, damit ein bereits bekannter Kandidat mit historisch verdoppelt
+      // gespeicherter E-Mail hier trotzdem gefunden wird, statt fälschlich als neu zu gelten.
+      const { data: matches, error: existingError } = await kandidatenwerk
         .from("candidates")
-        .select("id")
-        .eq("email", lead.email)
-        .maybeSingle()
+        .select("id, campaign_id, client_id, status, email, leadtable_lead_id")
+        .in("email", Array.from(new Set([email, `${email} ${email}`])))
 
       if (existingError) throw new Error(existingError.message)
 
+      // Kommt dieselbe E-Mail bei mehreren Kandidaten vor (z.B. Altbestand mit
+      // eigenständigen Dubletten durch den E-Mail-Verdopplungs-Bug, siehe Live-Test vom
+      // 24.09.2026, Fall Erika Sadzanski), NIE raten: nur eindeutig übernehmen, wenn
+      // genau einer davon bereits zu DIESEM Kunden gehört - sonst überspringen und zur
+      // manuellen Prüfung protokollieren, statt versehentlich den falschen Kandidaten
+      // umzuhängen.
+      let existing: NonNullable<typeof matches>[number] | null = null
+      if (matches && matches.length === 1) {
+        existing = matches[0]
+      } else if (matches && matches.length > 1) {
+        const clientMatch = clientRecordId ? matches.find((m) => m.client_id === clientRecordId) : undefined
+        if (clientMatch) {
+          existing = clientMatch
+        } else {
+          result.errors.push({
+            leadId: lead._id,
+            message:
+              `Mehrdeutig: ${matches.length} Kandidaten mit E-Mail "${email}" gefunden, keiner eindeutig ` +
+              `diesem Kunden zuordenbar (IDs: ${matches.map((m) => m.id).join(", ")}) - übersprungen, bitte manuell prüfen.`,
+          })
+          continue
+        }
+      }
+
       if (existing) {
         result.skippedDuplicate++
+
+        // Bekannter Kandidat, hier per E-Mail gefunden - wie im Meta-Pfad
+        // (processMetaLead) nicht mehr nur überspringen: Status/leadtable_lead_id/
+        // E-Mail-Bereinigung immer nachziehen, Kampagnen-/Kunden-Zuordnung nur
+        // ergänzen, wenn sie sich tatsächlich geändert hat (Root-Cause-Fix,
+        // Audit vom 24.09.2026 - Fall Erika Sadzanski/Julia May, Brausnchweig - SFA).
+        const candidateUpdates: {
+          status?: string
+          email?: string
+          leadtable_lead_id?: string
+          campaign_id?: string
+        } = {}
+        if (existing.status !== mappedStatus) candidateUpdates.status = mappedStatus
+        if (existing.email !== email) candidateUpdates.email = email
+        if (existing.leadtable_lead_id !== lead._id) candidateUpdates.leadtable_lead_id = lead._id
+        const campaignChanged = !!campaignRecordId && existing.campaign_id !== campaignRecordId
+        if (campaignChanged) candidateUpdates.campaign_id = campaignRecordId
+
+        if (Object.keys(candidateUpdates).length > 0) {
+          const { error: updateError } = await kandidatenwerk
+            .from("candidates")
+            .update(candidateUpdates)
+            .eq("id", existing.id)
+          if (updateError) throw new Error(updateError.message)
+          result.relinkedExisting++
+        }
+
+        let newAssignment = false
+        if (clientRecordId) {
+          const { data: existingAssignment } = await kandidatenwerk
+            .from("client_assignments")
+            .select("id")
+            .eq("candidate_id", existing.id)
+            .eq("client_id", clientRecordId)
+            .is("removed_at", null)
+            .maybeSingle()
+
+          if (!existingAssignment) {
+            await ensureClientAssignment(kandidatenwerk, existing.id, clientRecordId)
+            newAssignment = true
+          }
+        }
+
+        if (campaignChanged || newAssignment) {
+          await kandidatenwerk.from("candidate_history").insert({
+            candidate_id: existing.id,
+            type: "note",
+            content:
+              `Erneut über Leadtable beworben, Kampagne "${campaignName}"` +
+              (newAssignment ? " - neue Kanzlei-Zuordnung ergänzt" : " - Zuordnung aktualisiert") +
+              `, Status: "${lead.status}".`,
+          })
+        }
+
         continue
       }
 
       const { firstName, lastName, usedLongNameHeuristic } = extractCleanName(lead.name ?? "")
-      const mappedStatus = STATUS_MAP[lead.status ?? ""] ?? FALLBACK_STATUS
 
       const notePrefix = usedLongNameHeuristic ? "[Automatisch bereinigter Name, bitte prüfen] " : ""
 
@@ -228,7 +345,7 @@ export async function importLeadtableCampaign(
         .insert({
           first_name: firstName,
           last_name: lastName,
-          email: lead.email,
+          email,
           phone: lead.phone ?? null,
           berufsbild,
           plz: null,
@@ -236,6 +353,7 @@ export async function importLeadtableCampaign(
           source: "leadtable",
           campaign_id: campaignRecordId ?? null,
           client_id: clientRecordId,
+          leadtable_lead_id: lead._id,
           notes: `${notePrefix}Import aus Leadtable, Kampagne "${campaignName}", ursprünglicher Status: "${lead.status}"`,
         })
         .select("id")

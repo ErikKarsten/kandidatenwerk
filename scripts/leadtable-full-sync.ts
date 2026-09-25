@@ -9,11 +9,13 @@
 //   3. Beschreibungs-Import für Kandidaten ohne description (wie leadtable-description-import.ts)
 //   4. Zusatzfelder-Backfill für Kandidaten ohne custom_fields (wie leadtable-backfill-fields.ts)
 //
-// Bekannte Einschränkung (geerbt von importLeadtableCustomer): Für bereits bekannte
-// Kunden (leadtable_customer_id schon in clients vorhanden) werden keine automatisch
-// NEUEN Kampagnen dieses Kunden in unsere campaigns-Tabelle nachgetragen - Leads aus
-// solchen neuen Kampagnen werden trotzdem importiert, aber ohne campaign_id/client_id-
-// Verknüpfung (wie beim ursprünglichen, ungefilterten Bulk-Import).
+// Seit 24.09.2026 (Root-Cause-Fix, Audit desselben Tages): importLeadtableCustomer legt
+// jetzt auch für bereits bekannte Kunden neue Leadtable-Kampagnen automatisch in
+// campaigns nach (vorher nur beim allerersten Kunden-Import) - Leads landen dadurch
+// zuverlässig mit korrekter campaign_id/client_id-Verknüpfung statt orphaned. Bereits
+// bekannte Kandidaten, die sich über eine neue Kampagne erneut bewerben, werden in
+// importLeadtableCampaign jetzt ebenfalls verknüpft/aktualisiert statt still
+// übersprungen (Pendant zum bestehenden Verhalten im Meta-Pfad, processMetaLead).
 //
 // Usage:
 //   npx tsx scripts/leadtable-full-sync.ts                                    (voller Lauf)

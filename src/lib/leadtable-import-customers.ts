@@ -148,7 +148,7 @@ export async function importNewLeadtableCampaignsForClient(
 }
 
 export type ImportLeadtableCustomerResult =
-  | { skipped: true }
+  | { skipped: true; campaignsCreated: number; campaignsSkippedArchived: number }
   | { skipped: false; clientCreated: boolean; campaignsCreated: number; campaignsSkippedArchived: number }
 
 export async function importLeadtableCustomer(
@@ -168,8 +168,19 @@ export async function importLeadtableCustomer(
 
   if (existingClientError) throw new Error(existingClientError.message)
 
+  // Bereits bekannte Kunden: früher hier sofort abgebrochen ("skipped"), wodurch NEUE
+  // Kampagnen eines längst bekannten Kunden nie automatisch in unsere campaigns-Tabelle
+  // nachgetragen wurden (Root-Cause des Kampagnen-Lücken-Bugs, Audit vom 24.09.2026: 34
+  // fehlende Kampagnen bei 14 Kunden, 192 betroffene Leads) - jetzt trotzdem denselben
+  // Nachtrag anstoßen wie beim manuellen "Mit Leadtable aktualisieren"-Knopf
+  // (refreshLeadtableClientAction), damit der periodische Sync die Lücke nicht laufend
+  // neu aufreißt.
   if (existingClient) {
-    return { skipped: true }
+    const { campaignsCreated, campaignsSkippedArchived } = await importNewLeadtableCampaignsForClient(
+      existingClient.id,
+      customerId
+    )
+    return { skipped: true, campaignsCreated, campaignsSkippedArchived }
   }
 
   const { data: newClient, error: clientInsertError } = await kandidatenwerk
