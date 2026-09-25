@@ -56,6 +56,8 @@ const CAMPAIGN_STATUS_OPTIONS: { value: string; label: string }[] = [
 
 const CAMPAIGN_SEARCH_DEBOUNCE_MS = 300
 
+const DELETE_CONFIRMATION_WORD = "LÖSCHEN"
+
 interface Campaign {
   id: string
   title: string
@@ -196,11 +198,11 @@ export function ClientDetail({
     })
   }
 
-  // Beide Seiten trimmen, nicht nur die Eingabe - sonst schlägt der Vergleich bei einem
-  // Kundennamen mit (unsichtbarem) führendem/nachgestelltem Leerzeichen in der DB immer
-  // fehl, selbst bei exaktem Copy-Paste aus dem Platzhaltertext (siehe "Böhnel & Ranfft
-  // GmbH ", DB-Wert mit Leerzeichen am Ende, Bug-Report vom 25.09.2026).
-  const nameMatches = nameConfirm.trim() === client.name.trim()
+  // Festes Bestätigungswort statt vollem Firmennamen (schneller zu tippen, siehe
+  // 25.09.2026) - nur die Eingabe trimmen (führende/nachgestellte Leerzeichen), Groß-/
+  // Kleinschreibung bleibt bewusst exakt vorgegeben, kein erneuter Trimm-Bug wie beim
+  // vorherigen Namensabgleich (dort wurde nur eine Seite getrimmt).
+  const nameMatches = nameConfirm.trim() === DELETE_CONFIRMATION_WORD
 
   return (
     <div className="flex flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
@@ -300,21 +302,18 @@ export function ClientDetail({
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-gray-600">
-                    Geben Sie den Firmennamen zur Bestätigung ein:
+                    Geben Sie zur Bestätigung "{DELETE_CONFIRMATION_WORD}" ein:
                   </label>
-                  <p className="text-xs text-gray-400 font-mono px-2 py-1 rounded bg-gray-50">
-                    {client.name}
-                  </p>
                   <input
                     autoFocus
                     value={nameConfirm}
                     onChange={(e) => setNameConfirm(e.target.value)}
-                    placeholder={client.name}
+                    placeholder={DELETE_CONFIRMATION_WORD}
                     className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
                     style={{ borderColor: nameConfirm && !nameMatches ? "#fca5a5" : "#dde3ea" }}
                   />
                   {nameConfirm && !nameMatches && (
-                    <p className="text-xs text-red-500">Name stimmt nicht überein.</p>
+                    <p className="text-xs text-red-500">Text stimmt nicht überein.</p>
                   )}
                 </div>
 
