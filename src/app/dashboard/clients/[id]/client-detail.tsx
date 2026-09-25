@@ -196,7 +196,11 @@ export function ClientDetail({
     })
   }
 
-  const nameMatches = nameConfirm.trim() === client.name
+  // Beide Seiten trimmen, nicht nur die Eingabe - sonst schlägt der Vergleich bei einem
+  // Kundennamen mit (unsichtbarem) führendem/nachgestelltem Leerzeichen in der DB immer
+  // fehl, selbst bei exaktem Copy-Paste aus dem Platzhaltertext (siehe "Böhnel & Ranfft
+  // GmbH ", DB-Wert mit Leerzeichen am Ende, Bug-Report vom 25.09.2026).
+  const nameMatches = nameConfirm.trim() === client.name.trim()
 
   return (
     <div className="flex flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
