@@ -36,11 +36,15 @@ export function PortalSidebar({
   function navLinkClass(active: boolean) {
     return cn(
       "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-      active ? "text-white" : "text-blue-100/70 hover:bg-white/10 hover:text-white"
+      active ? "text-white" : "hover:bg-white/10 hover:text-white"
     )
   }
+  // Statt Tailwinds "text-blue-100/70" (Opacity-Utility, in Tailwind v4 über
+  // color-mix() im oklab-Farbraum berechnet): unter Chrome auf Windows live gemeldet,
+  // dass der Text dadurch schwarz statt hell dargestellt wird (Fix vom 25.09.2026) -
+  // fester rgba()-Wert im sRGB-Farbraum umgeht das zuverlässig.
   function navLinkStyle(active: boolean) {
-    return active ? { backgroundColor: "#1e56a0" } : undefined
+    return active ? { backgroundColor: "#1e56a0" } : { color: "rgba(219, 234, 254, 0.7)" }
   }
 
   return (
@@ -81,7 +85,8 @@ export function PortalSidebar({
         <button
           type="button"
           onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-blue-100/70 transition-colors hover:bg-white/10 hover:text-white"
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-white/10 hover:text-white"
+          style={{ color: "rgba(219, 234, 254, 0.7)" }}
         >
           <LogOut size={18} className="shrink-0" />
           <span>Abmelden</span>

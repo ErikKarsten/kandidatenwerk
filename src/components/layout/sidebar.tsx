@@ -62,11 +62,16 @@ function NavItem({ href, label, icon: Icon, badge, active, collapsed }: NavItemP
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
         collapsed && "justify-center px-0",
-        active
-          ? "text-white"
-          : "text-blue-100/70 hover:bg-white/10 hover:text-white"
+        active ? "text-white" : "hover:bg-white/10 hover:text-white"
       )}
-      style={active ? { backgroundColor: "#1e56a0" } : undefined}
+      // Statt Tailwinds "text-blue-100/70" (Opacity-Utility, in Tailwind v4 über
+      // color-mix() im oklab-Farbraum berechnet): unter Chrome auf Windows live
+      // gemeldet, dass der Text dadurch schwarz statt hell dargestellt wird (Fix vom
+      // 25.09.2026) - macOS/andere Browser offenbar nicht betroffen, vermutlich eine
+      // Chromium-Rendering-Eigenheit bei der oklab-Interpolation auf Windows. Fester
+      // rgba()-Wert im sRGB-Farbraum umgeht das zuverlässig, gleiches Muster wie die
+      // übrigen Sidebar-Farben in dieser Datei (siehe rgba(255,255,255,0.08/0.5) unten).
+      style={active ? { backgroundColor: "#1e56a0" } : { color: "rgba(219, 234, 254, 0.7)" }}
     >
       <Icon size={18} className="shrink-0" />
       {!collapsed && (
@@ -158,9 +163,10 @@ export function Sidebar({
         onClick={toggleCollapsed}
         aria-label={collapsed ? "Sidebar ausklappen" : "Sidebar einklappen"}
         className={cn(
-          "mx-3 mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-blue-100/70 transition-colors hover:bg-white/10 hover:text-white",
+          "mx-3 mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors hover:bg-white/10 hover:text-white",
           collapsed && "justify-center px-0"
         )}
+        style={{ color: "rgba(219, 234, 254, 0.7)" }}
       >
         {collapsed ? (
           <PanelLeftOpen size={16} className="shrink-0" />
