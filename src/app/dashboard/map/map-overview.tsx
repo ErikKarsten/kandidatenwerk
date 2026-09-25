@@ -1,8 +1,11 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState, useTransition } from "react"
 import dynamic from "next/dynamic"
-import type { MapPoint } from "@/components/dashboard/matches-map"
+import { Search } from "lucide-react"
+import type { MapPoint, MatchesMapHandle } from "@/components/dashboard/matches-map"
+import { geocodePlz } from "@/lib/geocode-plz"
+import { searchLocationAction } from "./actions"
 
 // Leaflet greift beim Modul-Import auf Browser-Globals zu - muss deshalb clientseitig-only
 // geladen werden (ssr:false), sonst schlägt das Server-Rendering fehl (gleiches Muster
@@ -18,6 +21,8 @@ const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").th
     </div>
   ),
 })
+
+const SEARCH_ZOOM = 12
 
 export interface MapClientPoint {
   id: string
@@ -68,6 +73,39 @@ export function MapOverview({
 }) {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all")
   const [accuracyFilter, setAccuracyFilter] = useState<AccuracyFilter>("all")
+
+  const mapRef = useRef<MatchesMapHandle>(null)
+  const [locationQuery, setLocationQuery] = useState("")
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [searchPending, startSearchTransition] = useTransition()
+
+  function handleLocationSearch() {
+    const query = locationQuery.trim()
+    if (!query) return
+    setSearchError(null)
+
+    // PLZ (genau 5 Ziffern) lokal aus der bereits vorhandenen PLZ-Koordinatentabelle
+    // auflösen - kein Netzwerk nötig, gleicher Mechanismus wie bei Kunden. Alles
+    // andere wird als Ortsname behandelt und per Server Action (Nominatim) gesucht.
+    if (/^\d{5}$/.test(query)) {
+      const coords = geocodePlz(query)
+      if (!coords) {
+        setSearchError(`PLZ "${query}" nicht gefunden.`)
+        return
+      }
+      mapRef.current?.flyTo(coords.lat, coords.lng, SEARCH_ZOOM)
+      return
+    }
+
+    startSearchTransition(async () => {
+      const result = await searchLocationAction(query)
+      if ("error" in result) {
+        setSearchError(result.error)
+        return
+      }
+      mapRef.current?.flyTo(result.lat, result.lng, SEARCH_ZOOM)
+    })
+  }
 
   const candidatesWithOwnLocation = useMemo(() => candidates.filter((c) => !c.approximate).length, [candidates])
   const candidatesWithApproxLocation = candidates.length - candidatesWithOwnLocation
@@ -122,6 +160,39 @@ export function MapOverview({
         Kandidat{candidatesWithOwnLocation !== 1 ? "en" : ""} mit eigenem Standort,{" "}
         <span className="font-medium text-gray-900">{candidatesWithApproxLocation}</span>{" "}
         mit ungefährem Standort
+      </div>
+
+      {/* PLZ/Ort-Suche - reine Ansichtsänderung (zoomt/zentriert die Karte), filtert
+          nichts: alle Kanzleien/Kandidaten bleiben sichtbar. */}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              value={locationQuery}
+              onChange={(e) => setLocationQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleLocationSearch()
+              }}
+              placeholder="PLZ oder Ort suchen…"
+              className="w-full rounded-md border py-1.5 pl-8 pr-3 text-sm focus:outline-none focus:ring-1"
+              style={{ borderColor: "#dde3ea" }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleLocationSearch}
+            disabled={searchPending || !locationQuery.trim()}
+            className="shrink-0 rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: "#1e56a0" }}
+          >
+            {searchPending ? "Suche…" : "Suchen"}
+          </button>
+        </div>
+        {searchError && <p className="text-xs text-red-500">{searchError}</p>}
       </div>
 
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -184,7 +255,7 @@ export function MapOverview({
         </div>
       </div>
 
-      <MatchesMap points={points} height="600px" scrollWheelZoom />
+      <MatchesMap ref={mapRef} points={points} height="600px" scrollWheelZoom />
     </div>
   )
 }

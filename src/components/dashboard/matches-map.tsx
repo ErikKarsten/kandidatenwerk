@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react"
 import Link from "next/link"
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet"
 import L from "leaflet"
@@ -136,17 +136,29 @@ function PointDetails({ point }: { point: MapPoint }) {
   )
 }
 
-export function MatchesMap({
-  points,
-  height = "280px",
-  scrollWheelZoom = false,
-}: {
+// Imperative API für Aufrufer, die die Kartenposition gezielt steuern wollen (z.B. die
+// PLZ/Ort-Suche in dashboard/map/map-overview.tsx) - bewusst nicht über einen weiteren
+// Prop gelöst, da eine reine Props-Änderung nicht zwischen "einmalig hinzoomen" und
+// "Kandidat für die Bounds-Berechnung" unterscheiden könnte.
+export interface MatchesMapHandle {
+  flyTo(lat: number, lng: number, zoom?: number): void
+}
+
+export const MatchesMap = forwardRef<MatchesMapHandle, {
   points: MapPoint[]
   height?: string
   scrollWheelZoom?: boolean
-}) {
+}>(function MatchesMap({ points, height = "280px", scrollWheelZoom = false }, ref) {
   const validPoints = useMemo(() => points.filter(hasCoords), [points])
   const groups = useMemo(() => groupByLocation(validPoints), [validPoints])
+  // Referenziell stabil, solange sich die Punktmenge nicht ändert - sonst würde JEDER
+  // Re-Render (z.B. durch einen Marker-Klick, der eine Popup öffnet) ein neues
+  // L.LatLngBounds-Objekt erzeugen und MapContainers "bounds"-Prop erneut auslösen, was
+  // die Karte ungewollt wieder auf alle Punkte zurückzoomt (siehe Bug-Report 25.09.2026).
+  const bounds = useMemo(
+    () => L.latLngBounds(validPoints.map((p) => [p.lat, p.lng] as [number, number])),
+    [validPoints]
+  )
 
   // WICHTIG: bewusst useState statt useRef für die Map-Instanz. react-leaflets
   // MapContainer befüllt seinen ref-Wert erst asynchron über einen Folge-Render
@@ -158,6 +170,12 @@ export function MatchesMap({
   // Ein Callback-Ref + useState löst das robust: sobald react-leaflet den Ref-Wert
   // (neu) setzt, feuert setMap erneut und der Effekt unten läuft mit der echten Instanz.
   const [map, setMap] = useState<L.Map | null>(null)
+
+  useImperativeHandle(ref, () => ({
+    flyTo(lat, lng, zoom = 12) {
+      map?.flyTo([lat, lng], zoom)
+    },
+  }), [map])
 
   // Leaflet misst die Container-Größe nur einmal beim Mount und cached sie intern.
   // Ändert sich die Größe danach rein CSS-getrieben (z.B. schmaleres Browserfenster,
@@ -188,8 +206,6 @@ export function MatchesMap({
       </div>
     )
   }
-
-  const bounds = L.latLngBounds(validPoints.map((p) => [p.lat, p.lng] as [number, number]))
 
   return (
     <div className="overflow-hidden rounded-xl border" style={{ borderColor: "#dde3ea" }}>
@@ -252,4 +268,4 @@ export function MatchesMap({
       </MapContainer>
     </div>
   )
-}
+})
