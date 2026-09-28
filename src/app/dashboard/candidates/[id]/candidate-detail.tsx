@@ -15,9 +15,10 @@ import {
 import { ProfileTab, type CustomFieldDefinition } from "./profile-tab"
 import { FilesTab } from "./files-tab"
 import { HistorySection, type HistoryEntry } from "./history-section"
+import { ClientNotesSection, type ClientNote } from "./client-notes-section"
 import { type ClientOption } from "./client-assignment-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
-import { MatchesSection, AssignmentControl, type ActiveAssignment } from "./matches-section"
+import { MatchesSection, AssignmentControl, assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
 
@@ -73,13 +74,14 @@ interface CandidateDetailProps {
   matches: CampaignMatch[]
   activeAssignments: ActiveAssignment[]
   clients: ClientOption[]
+  clientNotes: ClientNote[]
   profiles: ProfileOption[]
   customFieldDefinitions: CustomFieldDefinition[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, matches, activeAssignments, clients, profiles, customFieldDefinitions }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, matches, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien">("profil")
@@ -266,6 +268,23 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
             {refreshMessage.text}
           </p>
         )}
+        {activeAssignments.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {activeAssignments.map((a) => {
+              const client = clients.find((c) => c.id === a.clientId)
+              const colors = assignmentStatusLabel(a.status)
+              return (
+                <span
+                  key={a.id}
+                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
+                  style={{ backgroundColor: colors.bg, color: colors.text }}
+                >
+                  {client?.name ?? "Unbekannter Kunde"}: {colors.label}
+                </span>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="grid gap-6" style={{ gridTemplateColumns: "60% minmax(0, 1fr)" }}>
@@ -330,6 +349,7 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
             selfLabel={`${candidate.first_name} ${candidate.last_name}`}
           />
           <OtherAssignmentsSection assignments={otherAssignments} clients={clients} />
+          <ClientNotesSection notes={clientNotes} />
           <DescriptionSection candidateId={candidate.id} notes={candidate.notes} />
           <NoteSection candidateId={candidate.id} />
           <HistorySection

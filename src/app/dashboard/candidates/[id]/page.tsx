@@ -82,6 +82,33 @@ export default async function CandidateDetailPage({
     createdByName: h.created_by ? (creatorNameById.get(h.created_by) ?? null) : null,
   }))
 
+  // Eigene Notizen des Kunden im Portal (client_assignment_notes) - erst hier, nicht im
+  // Promise.all oben, da wir die IDs der aktiven Zuordnungen (assignmentRows) brauchen.
+  // Kundenname wird bewusst aus den bereits geladenen assignmentRows/clientRows aufgelöst
+  // (statt einer zusätzlichen profiles-Abfrage für den einzelnen Portal-Autor) - braucht
+  // keine weitere Datenbankabfrage.
+  const assignmentIds = (assignmentRows ?? []).map((a) => a.id)
+  const { data: clientNoteRows } =
+    assignmentIds.length > 0
+      ? await supabase
+          .from("client_assignment_notes")
+          .select("id, client_assignment_id, content, created_at")
+          .in("client_assignment_id", assignmentIds)
+          .order("created_at", { ascending: false })
+      : { data: [] }
+
+  const clientIdByAssignmentId = new Map((assignmentRows ?? []).map((a) => [a.id, a.client_id]))
+  const clientNameById = new Map((clientRows ?? []).map((c) => [c.id, c.name]))
+  const clientNotes = (clientNoteRows ?? []).map((n) => {
+    const clientId = clientIdByAssignmentId.get(n.client_assignment_id) ?? null
+    return {
+      id: n.id,
+      content: n.content,
+      created_at: n.created_at,
+      clientName: clientId ? (clientNameById.get(clientId) ?? "Unbekannter Kunde") : "Unbekannter Kunde",
+    }
+  })
+
   const files = await Promise.all(
     (fileRows ?? []).map(async (f) => {
       const { data: urlData } = await supabase.storage
@@ -161,6 +188,7 @@ export default async function CandidateDetailPage({
       matches={matches}
       activeAssignments={activeAssignments}
       clients={clients}
+      clientNotes={clientNotes}
       profiles={profiles}
       customFieldDefinitions={customFieldDefinitionRows ?? []}
     />
