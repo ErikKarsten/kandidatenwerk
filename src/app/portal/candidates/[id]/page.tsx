@@ -5,15 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { NotesSection, type Note } from "./notes-section"
 import { PortalFilesList, type PortalFile } from "./files-list"
-
-const STATUS_LABELS: Record<string, string> = {
-  inbox: "Unbearbeitet",
-  vq: "Vorqualifiziert",
-  vqk: "Vorqualifiziert beim Kunden",
-  vg: "Vorstellungsgespräch",
-  ja: "Ja",
-  nein: "Nein",
-}
+import { PortalStatusSelector } from "./status-selector"
 
 export default async function PortalCandidateDetailPage({
   params,
@@ -114,12 +106,7 @@ export default async function PortalCandidateDetailPage({
         <h1 className="text-xl font-bold text-gray-900">
           {candidate.first_name} {candidate.last_name}
         </h1>
-        <span
-          className="rounded-full px-3 py-1 text-xs font-medium"
-          style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}
-        >
-          {STATUS_LABELS[assignment.status] ?? assignment.status}
-        </span>
+        <PortalStatusSelector clientAssignmentId={assignment.id} currentStatus={assignment.status} />
       </div>
 
       <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
