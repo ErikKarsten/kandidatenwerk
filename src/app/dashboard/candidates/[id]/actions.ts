@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { getStaffContext } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { leadtableFetch } from "@/lib/leadtable-client"
@@ -126,10 +127,11 @@ export async function refreshLeadtableCandidateAction(
 > {
   const supabase = await createSupabaseServerClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: "Nicht eingeloggt." }
-
-  const { data: ownProfile } = await supabase.from("profiles").select("agency_id").eq("id", user.id).single()
+  // Nur Staff - ruft Leadtable/Anthropic auf und schreibt mit Service-Role-Rechten
+  // (Security-Review 02.10.2026).
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return { success: false, error: guard.error }
+  const ownProfile = { agency_id: guard.staff.agencyId }
 
   const { data: candidate, error: fetchError } = await supabase
     .from("candidates")

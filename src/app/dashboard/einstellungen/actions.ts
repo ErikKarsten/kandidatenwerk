@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { requireAgencyAdmin as getAgencyAdminContext } from "@/lib/auth-guards"
 
 const MIN_PASSWORD_LENGTH = 8
 
@@ -87,12 +88,14 @@ export async function inviteTeamMemberAction(
   const trimmedEmail = email.trim()
   if (!trimmedEmail) return { error: "E-Mail-Adresse ist ein Pflichtfeld." }
 
+  // Nur Agentur-Admins dürfen Team-Zugänge anlegen - vorher reichte ein beliebiger
+  // Login, ein Mitarbeiter konnte sich so z.B. weitere Admins einladen
+  // (Security-Review 02.10.2026).
   const supabase = await createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Nicht eingeloggt." }
-
-  const { data: ownProfile } = await supabase.from("profiles").select("agency_id").eq("id", user.id).single()
-  if (!ownProfile?.agency_id) return { error: "Eigene Agentur konnte nicht ermittelt werden." }
+  const guard = await getAgencyAdminContext(supabase)
+  if ("error" in guard) return guard
+  const ownProfile = { agency_id: guard.staff.agencyId }
+  if (!ownProfile.agency_id) return { error: "Eigene Agentur konnte nicht ermittelt werden." }
 
   const admin = createSupabaseAdminClient()
 
@@ -123,12 +126,29 @@ export async function inviteTeamMemberAction(
 }
 
 export async function removeTeamMemberAction(profileId: string): Promise<{ error: string } | null> {
+  // Vorher reichte ein beliebiger Login (auch ein Portal-Kunde), um per profileId JEDEN
+  // Account zu löschen (Security-Review 02.10.2026). Jetzt: nur Agentur-Admins, und nur
+  // Team-Mitglieder der eigenen Agentur.
   const supabase = await createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Nicht eingeloggt." }
-  if (profileId === user.id) return { error: "Du kannst dich nicht selbst entfernen." }
+  const guard = await getAgencyAdminContext(supabase)
+  if ("error" in guard) return guard
+  if (profileId === guard.staff.userId) return { error: "Du kannst dich nicht selbst entfernen." }
 
   const admin = createSupabaseAdminClient()
+
+  const { data: target } = await admin
+    .from("profiles")
+    .select("role, agency_id")
+    .eq("id", profileId)
+    .maybeSingle()
+  if (
+    !target ||
+    !["agency_admin", "agency_member"].includes(target.role) ||
+    !guard.staff.agencyId ||
+    target.agency_id !== guard.staff.agencyId
+  ) {
+    return { error: "Team-Mitglied nicht gefunden." }
+  }
   const { error: profileError } = await admin.from("profiles").delete().eq("id", profileId)
   if (profileError) return { error: profileError.message }
 

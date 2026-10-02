@@ -1,6 +1,7 @@
 "use server"
 
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { requireStaffUser } from "@/lib/auth-guards"
 
 export interface LeadtableSyncRunSummary {
   id: string
@@ -29,8 +30,10 @@ export async function triggerLeadtableSyncAction(): Promise<
 > {
   const supabase = await createSupabaseServerClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: "Nicht eingeloggt." }
+  // Nur Staff - ruft externe Dienste bzw. schreibt mit Service-Role-Rechten
+  // (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return { success: false, error: staffError.error }
 
   const staleCutoff = new Date(Date.now() - STALE_RUN_THRESHOLD_MS).toISOString()
   const { data: runningRun, error: checkError } = await supabase

@@ -54,6 +54,12 @@ export default function SetPasswordPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // Liest einmalig das URL-Hash-Fragment (nur im Browser verfügbar) und setzt daraus den
+  // Seitenzustand - ein bewusster Sync mit einer externen Quelle. Die Lint-Regel
+  // react-hooks/set-state-in-effect ist hier deshalb abgeschaltet statt die Seite
+  // umzubauen: sie ist der Einladungsweg für Portal-Kunden und Team und lässt sich nur
+  // mit einem echten Einladungslink end-to-end testen (Lint-Aufräumen 02.10.2026).
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const params = readHash()
     if (!params) {
@@ -92,6 +98,7 @@ export default function SetPasswordPage() {
       cancelled = true
     }
   }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function validate(): string | null {
     if (password.length < MIN_PASSWORD_LENGTH) {

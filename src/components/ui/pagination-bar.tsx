@@ -1,24 +1,25 @@
 "use client"
 
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
+import { useLocalStorageValue } from "@/lib/use-local-storage"
 
 const PAGE_SIZES = [10, 20, 50] as const
 export type PageSize = (typeof PAGE_SIZES)[number]
 
-export function readStoredPageSize(key: string): PageSize {
-  if (typeof window === "undefined") return 10
-  const n = Number(window.localStorage.getItem(key))
+function parsePageSize(raw: string | null): PageSize {
+  const n = Number(raw)
   return (PAGE_SIZES as readonly number[]).includes(n) ? (n as PageSize) : 10
 }
 
-export function usePaginatedList<T>(items: T[], storageKey: string) {
-  const [pageSize, setPageSize] = useState<PageSize>(10)
-  const [page, setPage] = useState(1)
+export function readStoredPageSize(key: string): PageSize {
+  if (typeof window === "undefined") return 10
+  return parsePageSize(window.localStorage.getItem(key))
+}
 
-  useEffect(() => {
-    setPageSize(readStoredPageSize(storageKey))
-  }, [storageKey])
+export function usePaginatedList<T>(items: T[], storageKey: string) {
+  const [pageSize, setPageSize] = useLocalStorageValue<PageSize>(storageKey, parsePageSize, 10)
+  const [page, setPage] = useState(1)
 
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize))
   const safePage = Math.min(page, totalPages)
@@ -27,7 +28,6 @@ export function usePaginatedList<T>(items: T[], storageKey: string) {
   function handlePageSize(size: PageSize) {
     setPageSize(size)
     setPage(1)
-    window.localStorage.setItem(storageKey, String(size))
   }
 
   return { visible, page: safePage, totalPages, pageSize, setPage, handlePageSize }
