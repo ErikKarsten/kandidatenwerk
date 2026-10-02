@@ -2,12 +2,16 @@
 
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { requireStaffUser } from "@/lib/auth-guards"
 
 export async function updateMatchStatusAction(
   matchId: string,
   status: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }

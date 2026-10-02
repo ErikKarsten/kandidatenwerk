@@ -32,6 +32,9 @@ export async function updateClientAction(
   if (!name) return { error: "Firmenname ist ein Pflichtfeld." }
 
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   // PLZ wird immer als Rohwert gespeichert, auch wenn sie nicht in der Lookup-Tabelle
   // gefunden wird (geocodePlz gibt dann null zurück) - lat/lng bleiben in dem Fall
@@ -114,6 +117,9 @@ export async function uploadClientLogoAction(
   const path = `${clientId}/logo.${ext}`
 
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const buffer = Buffer.from(await file.arrayBuffer())
 
   const { error: uploadError } = await supabase.storage
@@ -138,6 +144,9 @@ export async function uploadClientLogoAction(
 
 export async function archiveClientAction(clientId: string): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { error } = await supabase
     .from("clients")
     .update({ status: "Archiviert" })
@@ -149,6 +158,9 @@ export async function archiveClientAction(clientId: string): Promise<{ error: st
 
 export async function unarchiveClientAction(clientId: string): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { error } = await supabase
     .from("clients")
     .update({ status: "Aktiv" })
@@ -162,6 +174,9 @@ export async function unarchiveClientAction(clientId: string): Promise<{ error: 
 export async function deleteClientPermanentlyAction(clientId: string): Promise<{ error: string } | null> {
   console.log("[deleteClientPermanentlyAction] called with clientId:", clientId)
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   // Cascade: candidates → campaigns → client_contacts → client
   const { data: campaigns, error: fetchErr } = await supabase

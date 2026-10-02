@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { autoForwardCandidateIfEnabled } from "@/lib/auto-forward-candidate"
@@ -33,6 +34,9 @@ export async function createCandidateAction(
   if (!last_name) return { error: "Nachname ist ein Pflichtfeld." }
 
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
@@ -96,6 +100,9 @@ export async function updateCandidateStatusAction(
   campaignId?: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }

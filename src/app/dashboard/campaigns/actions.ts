@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { matchCampaignToCandidates } from "@/lib/matching"
@@ -26,6 +27,9 @@ export async function createCampaignAction(
   if (!client_id) return { error: "Bitte einen Kunden auswählen." }
 
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }

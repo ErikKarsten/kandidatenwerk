@@ -78,6 +78,9 @@ export async function triggerLeadtableSyncAction(): Promise<
 
 export async function getLatestLeadtableSyncRunAction(): Promise<LeadtableSyncRunSummary | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return null
 
   const { data, error } = await supabase
     .from("leadtable_sync_runs")

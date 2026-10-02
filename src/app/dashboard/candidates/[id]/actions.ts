@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
-import { getStaffContext } from "@/lib/auth-guards"
+import { getStaffContext, requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { leadtableFetch } from "@/lib/leadtable-client"
@@ -23,6 +23,9 @@ export async function updateCandidateProfileAction(
   formData: FormData
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
@@ -87,6 +90,9 @@ export async function updateCandidateCustomFieldAction(
   value: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
@@ -279,6 +285,9 @@ export async function saveDescriptionAction(
   notes: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
@@ -299,6 +308,9 @@ export async function addNoteAction(
   content: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -319,6 +331,9 @@ export async function deleteNoteAction(
   historyEntryId: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
@@ -347,6 +362,9 @@ export async function uploadFileAction(
   formData: FormData
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
@@ -384,6 +402,9 @@ export async function archiveCandidateAction(
   candidateId: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { error } = await supabase
     .from("candidates")
     .update({ status: "Archiviert" })
@@ -397,6 +418,9 @@ export async function deleteCandidateAction(
   candidateId: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   // Delete storage files first (DB rows CASCADE on candidate delete)
   const { data: files } = await supabase
@@ -423,6 +447,9 @@ export async function deleteFileAction(
   candidateId: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
@@ -447,6 +474,9 @@ export async function assignToClientAction(
   clientId: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
@@ -471,6 +501,9 @@ export async function removeClientAssignmentAction(
   assignmentId: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
@@ -495,6 +528,9 @@ export async function updateAssignmentStatusAction(
   status: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }

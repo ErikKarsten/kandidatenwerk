@@ -28,6 +28,9 @@ export async function getCampaignCandidatesForExport(campaignId: string): Promis
   { error: string } | { candidates: Array<{ first_name: string; last_name: string; email: string | null; phone: string | null; status: string; custom_fields: Record<string, string> | null }> }
 > {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { data, error } = await supabase
     .from("candidates")
     .select("first_name, last_name, email, phone, status, custom_fields")
@@ -50,6 +53,9 @@ export async function getCampaignCandidatesForExport(campaignId: string): Promis
 
 export async function deleteCampaignWithCandidatesAction(campaignId: string): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { error: candidateErr } = await supabase.from("candidates").delete().eq("campaign_id", campaignId)
   if (candidateErr) return { error: candidateErr.message }
   const { error } = await supabase.from("campaigns").delete().eq("id", campaignId)
@@ -60,6 +66,9 @@ export async function deleteCampaignWithCandidatesAction(campaignId: string): Pr
 
 export async function archiveCampaignAction(campaignId: string): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { error } = await supabase
     .from("campaigns")
     .update({ status: "Archiviert" })
@@ -71,6 +80,9 @@ export async function archiveCampaignAction(campaignId: string): Promise<{ error
 
 export async function deleteCampaignAction(campaignId: string): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   // ON DELETE SET NULL handles candidates automatically
   const { error } = await supabase.from("campaigns").delete().eq("id", campaignId)
   if (error) return { error: error.message }
@@ -86,6 +98,9 @@ export async function updateCampaignTitleAction(
   if (!trimmed) return { error: "Titel darf nicht leer sein." }
 
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { error } = await supabase
     .from("campaigns")
     .update({ title: trimmed })
@@ -103,6 +118,9 @@ export async function updateCampaignSettingsAction(
   formData: FormData
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
