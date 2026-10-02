@@ -1,11 +1,10 @@
 name: Meta-Leads-Sync
 
 on:
-  schedule:
-    # Alle 30 Minuten - deutlich häufiger als der tägliche Leadtable-Sync, da Meta hier
-    # (Stand jetzt: Parallelphase) die primäre, zeitkritischere Quelle werden soll.
-    # Intervall kann bei Bedarf angepasst werden (z.B. auf stündlich "0 * * * *").
-    - cron: "*/30 * * * *"
+  # Kein Zeitplan mehr: läuft seit 02.10.2026 regulär per Cloudflare Cron Trigger
+  # (custom-worker.ts, wrangler.jsonc "triggers.crons"), da GitHub den Cron hier nur
+  # alle 3-6 Stunden statt im geplanten Takt ausgeführt hat. Bleibt als manueller
+  # Notfall-Start erhalten.
   workflow_dispatch: {}
 
 jobs:

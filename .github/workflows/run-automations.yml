@@ -1,13 +1,10 @@
 name: Kampagnen-Automatisierungen
 
 on:
-  schedule:
-    # 5 Minuten ist die von GitHub selbst empfohlene kürzeste Taktung für Scheduled
-    # Workflows (kürzere Intervalle werden nicht zuverlässig pünktlich ausgeführt).
-    # delay_seconds in der Automatisierungs-Konfiguration ist dadurch eine
-    # Mindestwartezeit, keine sekundengenaue Zusage - siehe Kommentar in
-    # scripts/run-automations.ts.
-    - cron: "*/5 * * * *"
+  # Kein Zeitplan mehr: läuft seit 02.10.2026 regulär per Cloudflare Cron Trigger
+  # (custom-worker.ts, wrangler.jsonc "triggers.crons"), da GitHub den Cron hier nur
+  # alle 3-6 Stunden statt im geplanten Takt ausgeführt hat. Bleibt als manueller
+  # Notfall-Start erhalten.
   workflow_dispatch: {}
 
 jobs:
