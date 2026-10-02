@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -17,6 +16,7 @@ import {
   PanelLeftOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useLocalStorageValue } from "@/lib/use-local-storage"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
@@ -121,19 +121,14 @@ export function Sidebar({
   // Start bewusst ausgeklappt (= Server-/Erstrender-Zustand), der localStorage-Wert wird
   // erst nach dem Mount übernommen - sonst Hydration-Mismatch, da localStorage auf dem
   // Server nicht existiert (gleiches Muster wie der view-Toggle in campaign-detail.tsx).
-  const [collapsed, setCollapsed] = useState(false)
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
-    if (stored === "true") setCollapsed(true)
-  }, [])
+  const [collapsed, setCollapsed] = useLocalStorageValue(
+    SIDEBAR_COLLAPSED_KEY,
+    (raw) => raw === "true",
+    false
+  )
 
   function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev
-      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next))
-      return next
-    })
+    setCollapsed(!collapsed)
   }
 
   return (

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useRef, useEffect, useMemo } from "react"
+import { useState, useTransition, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ChevronLeft, Plus, Pencil, LayoutGrid, List, Search, RefreshCw, Globe } from "lucide-react"
@@ -16,6 +16,7 @@ import {
   moveCampaignToClientAction,
 } from "./actions"
 import { Button } from "@/components/ui/button"
+import { useLocalStorageValue } from "@/lib/use-local-storage"
 import {
   Table,
   TableBody,
@@ -170,16 +171,11 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
   const statusColors = CAMPAIGN_STATUS_COLORS[campaign.status] ?? CAMPAIGN_STATUS_COLORS.completed
   const router = useRouter()
 
-  const [view, setView] = useState<"table" | "grid">("table")
-  useEffect(() => {
-    const stored = window.localStorage.getItem(VIEW_STORAGE_KEY)
-    if (stored === "grid" || stored === "table") setView(stored)
-  }, [])
-
-  function handleViewChange(v: "table" | "grid") {
-    setView(v)
-    window.localStorage.setItem(VIEW_STORAGE_KEY, v)
-  }
+  const [view, handleViewChange] = useLocalStorageValue<"table" | "grid">(
+    VIEW_STORAGE_KEY,
+    (raw) => (raw === "grid" ? "grid" : "table"),
+    "table"
+  )
 
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("alle")
@@ -217,12 +213,6 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
   function handleBerufsbildFilterChange(value: string) {
     setBerufsbildFilter(value)
     setPage(1)
-  }
-
-  function openModal() {
-    setModalStep("choice")
-    setSelectedOption(null)
-    setModalError(null)
   }
 
   function closeModal() {
@@ -484,7 +474,7 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
             <div className="p-6 flex flex-col gap-4">
               <h2 className="text-base font-semibold text-gray-900">Kampagne duplizieren</h2>
               <p className="text-xs text-gray-500">
-                Legt eine neue Kampagne "{campaign.title} (Kopie)" an. Anderen Kunden wählen, um zu diesem zu
+                Legt eine neue Kampagne „{campaign.title} (Kopie)“ an. Anderen Kunden wählen, um zu diesem zu
                 kopieren.
               </p>
 

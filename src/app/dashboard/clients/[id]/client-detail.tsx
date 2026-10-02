@@ -302,7 +302,7 @@ export function ClientDetail({
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-gray-600">
-                    Geben Sie zur Bestätigung "{DELETE_CONFIRMATION_WORD}" ein:
+                    Geben Sie zur Bestätigung „{DELETE_CONFIRMATION_WORD}“ ein:
                   </label>
                   <input
                     autoFocus
