@@ -31,7 +31,7 @@ export function MetaCampaignsTab({ campaigns, isAdmin }: { campaigns: LeadCampai
   const [showEnded, setShowEnded] = useState(false)
 
   const lastSync = campaigns.map((c) => c.metaSyncedAt).filter(Boolean).sort().pop() ?? null
-  const visible = showEnded ? campaigns : campaigns.filter((c) => c.status !== "completed")
+  const visible = showEnded ? campaigns : campaigns.filter((c) => c.status === "active")
 
   function handleSync() {
     setMessage(null)
@@ -87,12 +87,12 @@ export function MetaCampaignsTab({ campaigns, isAdmin }: { campaigns: LeadCampai
 
       <label className="flex items-center gap-1.5 text-xs text-gray-600">
         <input type="checkbox" checked={showEnded} onChange={(e) => setShowEnded(e.target.checked)} />
-        Beendete Kampagnen anzeigen ({campaigns.filter((c) => c.status === "completed").length})
+        Pausierte und beendete Kampagnen anzeigen ({campaigns.filter((c) => c.status !== "active").length})
       </label>
 
       {visible.length === 0 ? (
         <p className="text-sm text-gray-400">
-          {campaigns.length === 0 ? "Noch keine Meta-Kampagnen importiert." : "Keine laufenden oder pausierten Kampagnen."}
+          {campaigns.length === 0 ? "Noch keine Meta-Kampagnen importiert." : "Keine laufenden Kampagnen."}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "#dde3ea" }}>

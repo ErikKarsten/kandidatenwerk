@@ -73,14 +73,28 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function fetchAll<T>(path: string, params: Record<string, string>): Promise<T[]> {
+// pageSize klein halten, wo Meta viel Daten je Objekt liefert (Anzeigen mit Creative:
+// bei 200 je Seite antwortet Meta mit "Please reduce the amount of data").
+async function fetchAll<T>(path: string, params: Record<string, string>, pageSize = 200): Promise<T[]> {
   const all: T[] = []
   let after: string | undefined
-  for (let page = 0; page < 50; page++) {
-    const resp = await metaGraphFetch<MetaPaged<T>>(path, { ...params, limit: "200", ...(after ? { after } : {}) })
+  for (let page = 0; page < 200; page++) {
+    const resp = await metaGraphFetch<MetaPaged<T>>(path, { ...params, limit: String(pageSize), ...(after ? { after } : {}) })
     all.push(...(resp.data ?? []))
     after = resp.paging?.cursors?.after
     if (!resp.paging?.next || !after) break
+  }
+  return all
+}
+
+// Lädt Objekte (Anzeigen/Anzeigengruppen) nur für die angegebenen Kampagnen - gefiltert
+// in Blöcken, statt das ganze Werbekonto abzufragen.
+async function fetchForCampaigns<T>(path: string, fields: string, campaignIds: string[], pageSize: number): Promise<T[]> {
+  const all: T[] = []
+  for (let i = 0; i < campaignIds.length; i += 50) {
+    const chunk = campaignIds.slice(i, i + 50)
+    const filtering = JSON.stringify([{ field: "campaign.id", operator: "IN", value: chunk }])
+    all.push(...(await fetchAll<T>(path, { fields, filtering }, pageSize)))
   }
   return all
 }
@@ -118,23 +132,9 @@ export async function syncMetaCampaigns(
     errors: [],
   }
 
-  const [campaigns, adsets, ads] = await Promise.all([
-    fetchAll<MetaCampaign>(`${act}/campaigns`, { fields: "id,name,effective_status,objective" }),
-    fetchAll<MetaAdSet>(`${act}/adsets`, { fields: "id,name,campaign_id,effective_status,targeting{geo_locations}" }),
-    fetchAll<MetaAd>(`${act}/ads`, {
-      fields: "campaign_id,effective_status,creative{object_story_spec,asset_feed_spec}",
-    }),
-  ])
+  const campaigns = await fetchAll<MetaCampaign>(`${act}/campaigns`, { fields: "id,name,effective_status,objective" })
   const leadCampaigns = campaigns.filter((c) => !c.objective || LEAD_OBJECTIVES.has(c.objective))
   result.metaCampaigns = leadCampaigns.length
-  log(`${leadCampaigns.length} Lead-Kampagnen, ${adsets.length} Anzeigengruppen, ${ads.length} Anzeigen von Meta geladen.`)
-
-  // Lead-Formular je Kampagne: bevorzugt aus aktiven Anzeigen.
-  const formByCampaign = new Map<string, string>()
-  for (const ad of [...ads].sort((a, b) => Number(b.effective_status === "ACTIVE") - Number(a.effective_status === "ACTIVE"))) {
-    const formId = extractLeadFormId(ad.creative)
-    if (formId && !formByCampaign.has(ad.campaign_id)) formByCampaign.set(ad.campaign_id, formId)
-  }
 
   const { data: existingRows, error: existingError } = await db
     .from("campaigns")
@@ -143,6 +143,37 @@ export async function syncMetaCampaigns(
     .not("meta_campaign_id", "is", null)
   if (existingError) throw new Error(existingError.message)
   const existingByMetaId = new Map((existingRows ?? []).map((r) => [r.meta_campaign_id as string, r]))
+
+  // Meta begrenzt API-Aufrufe je Werbekonto stark (Fehler 17 "User request limit
+  // reached" schon nach zwei Voll-Läufen). Deshalb nur nachladen, was sich ändern kann:
+  // - Anzeigen (-> Lead-Formular) nur für Kampagnen ohne verknüpftes Formular,
+  // - Anzeigengruppen (-> Werbegebiete) nur für neue und nicht beendete Kampagnen.
+  const needsFormIds = leadCampaigns.filter((c) => !existingByMetaId.get(c.id)?.meta_form_id).map((c) => c.id)
+  const needsAreasIds = leadCampaigns
+    .filter((c) => !existingByMetaId.has(c.id) || mapMetaStatus(c.effective_status) !== "completed")
+    .map((c) => c.id)
+
+  const ads = await fetchForCampaigns<MetaAd>(
+    `${act}/ads`,
+    "campaign_id,effective_status,creative{object_story_spec{link_data{call_to_action},video_data{call_to_action}},asset_feed_spec{call_to_actions}}",
+    needsFormIds,
+    25
+  )
+  const adsets = await fetchForCampaigns<MetaAdSet>(
+    `${act}/adsets`,
+    "id,name,campaign_id,effective_status,targeting{geo_locations}",
+    needsAreasIds,
+    100
+  )
+  const needsAreas = new Set(needsAreasIds)
+  log(`${leadCampaigns.length} Lead-Kampagnen; Formulare für ${needsFormIds.length}, Werbegebiete für ${needsAreasIds.length} geladen (${ads.length} Anzeigen, ${adsets.length} Anzeigengruppen).`)
+
+  // Lead-Formular je Kampagne: bevorzugt aus aktiven Anzeigen.
+  const formByCampaign = new Map<string, string>()
+  for (const ad of [...ads].sort((a, b) => Number(b.effective_status === "ACTIVE") - Number(a.effective_status === "ACTIVE"))) {
+    const formId = extractLeadFormId(ad.creative)
+    if (formId && !formByCampaign.has(ad.campaign_id)) formByCampaign.set(ad.campaign_id, formId)
+  }
 
   // Bereits bekannte Koordinaten (vor allem Städte) wiederverwenden.
   const { data: knownAreas } = await db
@@ -194,6 +225,7 @@ export async function syncMetaCampaigns(
         if (formId) result.formsLinked++
       }
 
+      if (!needsAreas.has(mc.id)) continue
       const areas = adsets
         .filter((s) => s.campaign_id === mc.id)
         .flatMap((s) =>
@@ -212,13 +244,23 @@ export async function syncMetaCampaigns(
 
   // Städte ohne bekannte Koordinaten: Namen + Bundesland über Meta (adgeolocationmeta,
   // deutsche Namen), dann Nominatim - gedrosselt und begrenzt je Lauf.
+  // Auch Städte aus früheren Läufen, die noch keine Koordinaten haben (Limit je Lauf).
+  const { data: storedMissing } = await db
+    .from("campaign_ad_areas")
+    .select("area_key")
+    .eq("area_type", "city")
+    .is("lat", null)
+    .not("area_key", "is", null)
+  // Städte aktiver Anzeigengruppen zuerst - die braucht Karte/Kundenprofil.
+  const currentMissing = [...areasByCampaignId.values()]
+    .flat()
+    .filter((a) => a.areaType === "city" && a.areaKey && !coordsByKey.has(`city:${a.areaKey}`))
+    .sort((a, b) => Number(b.adsetActive) - Number(a.adsetActive))
   const missingCityKeys = [
-    ...new Set(
-      [...areasByCampaignId.values()]
-        .flat()
-        .filter((a) => a.areaType === "city" && a.areaKey && !coordsByKey.has(`city:${a.areaKey}`))
-        .map((a) => a.areaKey as string)
-    ),
+    ...new Set([
+      ...currentMissing.map((a) => a.areaKey as string),
+      ...(storedMissing ?? []).map((r) => r.area_key as string).filter((k) => !coordsByKey.has(`city:${k}`)),
+    ]),
   ]
   if (missingCityKeys.length > 0) {
     const toResolve = missingCityKeys.slice(0, GEOCODE_LIMIT)
@@ -229,11 +271,15 @@ export async function syncMetaCampaigns(
     })
     for (const key of toResolve) {
       const info = meta.data?.cities?.[key]
-      const query = [info?.name, info?.region, "Deutschland"].filter(Boolean).join(", ")
+      // Meta hängt teils das Land an den Namen ("Tann, Germany") - stört die Suche.
+      const cityName = info?.name?.replace(/,\s*(Germany|Deutschland)$/i, "").trim()
+      const query = [cityName, info?.region, "Deutschland"].filter(Boolean).join(", ")
       try {
-        const coords = info?.name ? await forwardGeocode(query) : null
+        const coords = cityName ? await forwardGeocode(query) : null
         if (coords) {
           coordsByKey.set(`city:${key}`, coords)
+          // Gespeicherte Gebiete dieser Stadt (z.B. beendeter Kampagnen) gleich ergänzen.
+          await db.from("campaign_ad_areas").update({ lat: coords.lat, lng: coords.lng }).eq("area_type", "city").eq("area_key", key).is("lat", null)
           result.geocoded++
         } else {
           result.errors.push(`Stadt ${key} („${query}“) nicht gefunden.`)
