@@ -75,18 +75,22 @@ async function loadCampaigns(
   )
 }
 
-// limit: max. Leads pro Formular (kleiner Testlauf), campaignId: nur diese Kampagne.
+// limit: max. Leads pro Formular (kleiner Testlauf), campaignId: nur diese Kampagne,
+// sinceDays: nur Leads der letzten n Tage (Cron - sonst lädt jeder Lauf alle Leads aller
+// Formulare und stößt an Cloudflares Limit von 1000 Unteranfragen je Lauf).
 export async function syncMetaLeads(
   supabase: Supabase,
   {
     limit = null,
     campaignId = null,
     includeInactiveLeadCampaigns = false,
+    sinceDays = null,
     log = console.log,
   }: {
     limit?: number | null
     campaignId?: string | null
     includeInactiveLeadCampaigns?: boolean
+    sinceDays?: number | null
     log?: (message: string) => void
   } = {}
 ): Promise<MetaLeadsSyncResult> {
@@ -127,7 +131,8 @@ export async function syncMetaLeads(
     }
     let leads: MetaLead[]
     try {
-      leads = await fetchMetaLeadsForForm(campaign.meta_form_id!, undefined, pageAccessToken)
+      const sinceUnix = sinceDays ? Math.floor(Date.now() / 1000) - sinceDays * 86400 : undefined
+      leads = await fetchMetaLeadsForForm(campaign.meta_form_id!, sinceUnix ? { sinceUnix } : undefined, pageAccessToken)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       console.error(`  Fehler beim Laden der Leads: ${message}`)
