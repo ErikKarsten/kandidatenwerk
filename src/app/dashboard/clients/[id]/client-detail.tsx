@@ -17,6 +17,7 @@ import { PortalAccessSection, type PortalUser } from "./portal-access-section"
 import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import type { DashboardKpis } from "@/lib/kpis"
+import { AvailableCandidatesPanel } from "./available-candidates-panel"
 import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import {
   Table,
@@ -106,6 +107,7 @@ interface ClientDetailProps {
   files: ClientFileItem[]
   portalUsers: PortalUser[]
   assignedCandidates: AssignedCandidate[]
+  activeCampaignCount: number
   kpis: DashboardKpis
 }
 
@@ -124,6 +126,7 @@ export function ClientDetail({
   files,
   portalUsers,
   assignedCandidates,
+  activeCampaignCount,
   kpis,
 }: ClientDetailProps) {
   const router = useRouter()
@@ -470,7 +473,12 @@ export function ClientDetail({
             />
           )}
           {tab === "kandidaten" && (
-            <KandidatenTab candidates={assignedCandidates} />
+            <KandidatenTab
+              clientId={client.id}
+              candidates={assignedCandidates}
+              activeCampaignCount={activeCampaignCount}
+              clientHasLocation={client.lat !== null && client.lng !== null}
+            />
           )}
           {tab === "stammdaten" && (
             <StammdatenTab
@@ -701,9 +709,53 @@ function KampagnenTab({
   )
 }
 
-function KandidatenTab({ candidates }: { candidates: AssignedCandidate[] }) {
+function KandidatenTab({
+  clientId,
+  candidates,
+  activeCampaignCount,
+  clientHasLocation,
+}: {
+  clientId: string
+  candidates: AssignedCandidate[]
+  activeCampaignCount: number
+  clientHasLocation: boolean
+}) {
+  const [view, setView] = useState<"zugeordnet" | "verfuegbar">(candidates.length === 0 ? "verfuegbar" : "zugeordnet")
+
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {([
+          ["zugeordnet", `Zugeordnet (${candidates.length})`],
+          ["verfuegbar", "Verfügbare Kandidaten finden"],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setView(value)}
+            className="rounded-full border px-3 py-1 text-xs font-medium"
+            style={
+              view === value
+                ? { backgroundColor: "#1e56a0", borderColor: "#1e56a0", color: "white" }
+                : { backgroundColor: "white", borderColor: "#dde3ea", color: "#374151" }
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeCampaignCount === 0 && (
+        <p className="rounded-md border px-3 py-2 text-xs" style={{ borderColor: "#fcd34d", backgroundColor: "#fffbeb", color: "#92400e" }}>
+          Dieser Kunde hat keine aktive Kampagne. Das automatische Matching läuft über Kampagnen und findet ihn
+          deshalb nicht - über „Verfügbare Kandidaten finden“ lassen sich trotzdem Kandidaten zuordnen.
+        </p>
+      )}
+
+      {view === "verfuegbar" ? (
+        <AvailableCandidatesPanel clientId={clientId} clientHasLocation={clientHasLocation} />
+      ) : (
+      <>
       <p className="text-sm text-gray-500">
         {candidates.length} zugeordnete{candidates.length === 1 ? "r" : ""} Kandidat{candidates.length !== 1 ? "en" : ""}
       </p>
@@ -756,6 +808,8 @@ function KandidatenTab({ candidates }: { candidates: AssignedCandidate[] }) {
             </TableBody>
           </Table>
         </div>
+      )}
+      </>
       )}
     </div>
   )

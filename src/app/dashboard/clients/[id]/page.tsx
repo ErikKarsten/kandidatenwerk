@@ -51,7 +51,7 @@ export default async function ClientDetailPage({
     .order("id", { ascending: false })
     .range(campaignFrom, campaignFrom + campaignPageSize - 1)
 
-  const [{ data: client }, { data: campaigns, count: campaignTotalCount }, { data: contacts }, { data: fileRows }, { data: assignments }, kpis] = await Promise.all([
+  const [{ data: client }, { data: campaigns, count: campaignTotalCount }, { data: contacts }, { data: fileRows }, { data: assignments }, kpis, { count: activeCampaignCount }] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
     campaignsQuery,
     supabase
@@ -74,6 +74,8 @@ export default async function ClientDetailPage({
       .is("removed_at", null)
       .order("created_at", { ascending: false }),
     getDashboardKpis(supabase, id),
+    // Für den Hinweis im Kandidaten-Reiter: ohne aktive Kampagne kein automatisches Matching.
+    supabase.from("campaigns").select("id", { count: "exact", head: true }).eq("client_id", id).eq("status", "active"),
   ])
 
   if (!client) notFound()
@@ -198,6 +200,7 @@ export default async function ClientDetailPage({
       }))}
       files={files}
       assignedCandidates={assignedCandidates}
+      activeCampaignCount={activeCampaignCount ?? 0}
       kpis={kpis}
     />
   )

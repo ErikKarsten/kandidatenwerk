@@ -8,6 +8,13 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { reverseGeocodeCity } from "@/lib/reverse-geocode"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { ensureClientAssignment } from "@/lib/client-assignment"
+import {
+  rankAvailableCandidates,
+  type AvailableCandidate,
+  type AvailableSort,
+  type CandidateRow,
+} from "@/lib/available-candidates"
 
 // Server Actions verlassen sich nach dem Security-Review vom 09.09.2026 nicht mehr
 // ausschliesslich auf RLS als einzige Schutzschicht - requireStaffUser() (src/lib/auth-guards.ts)
@@ -540,5 +547,95 @@ export async function removeClientPortalUserAction(
   if (authError) return { error: authError.message }
 
   revalidatePath(`/dashboard/clients/${clientId}`)
+  return null
+}
+
+// ============================================================
+// Verfügbare Kandidaten im Kundenprofil (Atlas T-29): alle nicht archivierten
+// Kandidaten, die diesem Kunden noch nicht aktiv zugeordnet sind - unabhängig von
+// Kampagnen (das automatische Matching findet Kunden ohne aktive Kampagne nicht).
+// Filter laufen in der Datenbank, Entfernung/Umkreis/Sortierung in
+// rankAvailableCandidates(). Obergrenze MAX_CANDIDATE_ROWS hält die Abfrage klein;
+// bei deutlich mehr Kandidaten müsste die Umkreissuche in die DB wandern.
+// Gleicher Wert wie in candidates/page.tsx ("Archiviert" ist ein Status, kein eigenes Feld).
+const ARCHIVED_STATUS = "Archiviert"
+const AVAILABLE_PAGE_SIZE = 20
+const MAX_CANDIDATE_ROWS = 3000
+
+export async function searchAvailableCandidatesAction(
+  clientId: string,
+  filters: {
+    q: string
+    berufsbild: string
+    status: string
+    radiusKm: number | null
+    sort: AvailableSort
+    page: number
+  }
+): Promise<
+  | { error: string }
+  | { items: AvailableCandidate[]; total: number; totalPages: number; page: number; truncated: boolean; clientHasLocation: boolean }
+> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+
+  const { data: client } = await supabase.from("clients").select("id, lat, lng").eq("id", clientId).maybeSingle()
+  if (!client) return { error: "Kunde nicht gefunden." }
+
+  let query = supabase
+    .from("candidates")
+    .select("id, first_name, last_name, email, plz, lat, lng, berufsbild, status, source, created_at")
+    .neq("status", ARCHIVED_STATUS)
+    .order("created_at", { ascending: false })
+    .limit(MAX_CANDIDATE_ROWS)
+
+  // Zeichen entfernen, die in der PostgREST-or()-Syntax eine Bedeutung haben.
+  const q = filters.q.replace(/[%,()"\\*]/g, " ").trim()
+  if (q) query = query.or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,plz.ilike.${q}%`)
+  if (filters.berufsbild && filters.berufsbild !== "alle") query = query.eq("berufsbild", filters.berufsbild)
+  if (filters.status && filters.status !== "alle") query = query.eq("status", filters.status)
+
+  const [{ data: rows, error }, { data: assigned }] = await Promise.all([
+    query,
+    supabase.from("client_assignments").select("candidate_id").eq("client_id", clientId).is("removed_at", null),
+  ])
+  if (error) return { error: error.message }
+
+  const ranked = rankAvailableCandidates((rows ?? []) as CandidateRow[], new Set((assigned ?? []).map((a) => a.candidate_id)), {
+    clientLat: client.lat,
+    clientLng: client.lng,
+    radiusKm: filters.radiusKm,
+    sort: filters.sort,
+    page: filters.page,
+    pageSize: AVAILABLE_PAGE_SIZE,
+  })
+
+  return {
+    ...ranked,
+    truncated: (rows ?? []).length >= MAX_CANDIDATE_ROWS,
+    clientHasLocation: client.lat !== null && client.lng !== null,
+  }
+}
+
+// Ein-Klick-Zuordnung aus der Liste "Verfügbar" - idempotent über
+// ensureClientAssignment (kein Doppel-Eintrag bei Doppelklick), gleiche Tabelle wie
+// assignToClientAction auf der Kandidatenseite.
+export async function assignCandidateToClientAction(
+  clientId: string,
+  candidateId: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+
+  try {
+    await ensureClientAssignment(supabase, candidateId, clientId)
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+
+  revalidatePath(`/dashboard/clients/${clientId}`)
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
   return null
 }
