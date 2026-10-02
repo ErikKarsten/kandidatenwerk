@@ -10,7 +10,8 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -44,6 +45,7 @@
     "eslint-config-next": "16.2.11",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vitest": "^3.2.7",
     "wrangler": "^4.113.0"
   }
 }

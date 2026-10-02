@@ -1,0 +1,24 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Abhängigkeiten installieren
+        run: npm ci
+      - name: Typ-Check
+        run: npx tsc --noEmit -p .
+      - name: Lint
+        run: npx eslint src scripts
+      - name: Tests
+        run: npm test
