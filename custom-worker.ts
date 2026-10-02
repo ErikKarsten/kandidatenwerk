@@ -30,12 +30,13 @@ interface ExecutionContext {
   passThroughOnException(): void
 }
 
-// Muss exakt zu den Einträgen in wrangler.jsonc "triggers.crons" passen.
-const CRON_ROUTES: Record<string, string> = {
-  "*/5 * * * *": "/api/cron/run-automations",
-  "*/30 * * * *": "/api/cron/meta-leads-sync",
-  "0 * * * *": "/api/cron/sync-kanzleistelle",
-  "0 6 * * *": "/api/cron/task-reminders",
+// Muss exakt zu den Einträgen in wrangler.jsonc "triggers.crons" passen. Mehrere Routen
+// je Ausdruck laufen nacheinander (spart Cron-Trigger).
+const CRON_ROUTES: Record<string, string[]> = {
+  "*/5 * * * *": ["/api/cron/run-automations"],
+  "*/30 * * * *": ["/api/cron/meta-leads-sync"],
+  "0 * * * *": ["/api/cron/sync-kanzleistelle", "/api/cron/meta-campaigns-sync"],
+  "0 6 * * *": ["/api/cron/task-reminders"],
 }
 
 const APP_ORIGIN = "https://kandidatenwerk.kanzleistelle24.de"
@@ -64,12 +65,16 @@ const worker = {
   fetch: handler.fetch,
 
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    const path = CRON_ROUTES[controller.cron]
-    if (!path) {
+    const paths = CRON_ROUTES[controller.cron]
+    if (!paths) {
       console.error(`[cron] Kein Job für Cron-Ausdruck "${controller.cron}" hinterlegt.`)
       return
     }
-    ctx.waitUntil(runCronRoute(path, env, ctx))
+    ctx.waitUntil(
+      (async () => {
+        for (const path of paths) await runCronRoute(path, env, ctx)
+      })()
+    )
   },
 }
 

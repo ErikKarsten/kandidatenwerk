@@ -20,6 +20,8 @@ import { notifyLeadRecipients } from "@/lib/lead-notifications"
 
 export type SupabaseClient = GenericSupabaseClient<Database>
 
+const NOTIFY_MAX_LEAD_AGE_MS = 48 * 60 * 60 * 1000
+
 export const META_FALLBACK_CANDIDATE_STATUS = "neu"
 
 // Meta generiert die Feld-Keys eines Lead-Formulars automatisch aus dem Fragetext
@@ -239,10 +241,16 @@ export async function processMetaLead(
     }
   }
 
-  try {
-    await notifyLeadRecipients(inserted.id, `${firstName} ${lastName}`.trim())
-  } catch (notifyError) {
-    console.error(`Lead-Benachrichtigung fehlgeschlagen für Kandidat ${inserted.id}:`, notifyError)
+  // Nur frische Leads melden: Wird ein Formular neu verknüpft (z.B. durch den
+  // Meta-Kampagnen-Abgleich, Atlas T-38), holt der Sync auch dessen alte Leads - dafür
+  // keine "Neuer Lead"-Mail, sonst gäbe es eine Mail-Flut ans Team.
+  const leadAgeMs = Date.now() - new Date(lead.created_time).getTime()
+  if (Number.isFinite(leadAgeMs) && leadAgeMs <= NOTIFY_MAX_LEAD_AGE_MS) {
+    try {
+      await notifyLeadRecipients(inserted.id, `${firstName} ${lastName}`.trim())
+    } catch (notifyError) {
+      console.error(`Lead-Benachrichtigung fehlgeschlagen für Kandidat ${inserted.id}:`, notifyError)
+    }
   }
 
   return { status: "created", candidateId: inserted.id }

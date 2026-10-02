@@ -2,6 +2,9 @@ import { notFound } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { getDashboardKpis } from "@/lib/kpis"
+import { getActiveAdAreas } from "@/lib/meta-campaigns-queries"
+import { coveringAreas } from "@/lib/ad-coverage"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { ClientDetail } from "./client-detail"
 
@@ -51,7 +54,7 @@ export default async function ClientDetailPage({
     .order("id", { ascending: false })
     .range(campaignFrom, campaignFrom + campaignPageSize - 1)
 
-  const [{ data: client }, { data: campaigns, count: campaignTotalCount }, { data: contacts }, { data: fileRows }, { data: assignments }, kpis, { data: kanzleiCampaignRows }] = await Promise.all([
+  const [{ data: client }, { data: campaigns, count: campaignTotalCount }, { data: contacts }, { data: fileRows }, { data: assignments }, kpis, { data: kanzleiCampaignRows }, adAreas] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
     campaignsQuery,
     supabase
@@ -82,9 +85,21 @@ export default async function ClientDetailPage({
       .eq("kind", "kanzlei")
       .eq("status", "active")
       .order("title", { ascending: true }),
+    // Werbegebiete laufender Meta-Kampagnen für den Abdeckungs-Hinweis (Atlas T-38).
+    getActiveAdAreas(supabase as unknown as SupabaseClient),
   ])
 
   if (!client) notFound()
+
+  // Liegt die Kanzlei im Werbegebiet einer laufenden Meta-Kampagne? Hilft bei neuen
+  // Kunden zu entscheiden, ob eine neue Kampagne nötig ist (Atlas T-38).
+  const adCoverage = coveringAreas(client.lat, client.lng, adAreas).map((a) => ({
+    campaignId: a.campaignId,
+    campaignTitle: a.campaignTitle,
+    label: a.label,
+    radiusKm: a.radiusKm,
+    distanceKm: a.distanceKm,
+  }))
 
   // Portal-Zugänge per Admin-Client statt über die RLS-Session: Portal-Profile haben
   // bewusst agency_id = NULL (Sicherheitsvorfall 22.09.2026), die "Profile der eigenen
@@ -210,6 +225,8 @@ export default async function ClientDetailPage({
       files={files}
       assignedCandidates={assignedCandidates}
       kanzleiCampaigns={kanzleiCampaignRows ?? []}
+      adCoverage={adCoverage}
+      adAreasKnown={adAreas.length > 0}
       kpis={kpis}
     />
   )
