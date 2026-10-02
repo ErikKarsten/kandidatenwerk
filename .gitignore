@@ -45,3 +45,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Sicherungen aus scripts/leadtable-neuimport.ts (enthalten personenbezogene Daten)
+/backups/

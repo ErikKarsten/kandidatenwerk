@@ -64,6 +64,7 @@ interface Campaign {
   status: string
   created_at: string
   leads_count: number
+  assigned_count: number
 }
 
 interface Client {
@@ -727,8 +728,14 @@ function KampagnenTab({
                   </div>
                   <div className="flex items-center gap-3 text-xs text-gray-500">
                     <span className="font-medium" style={{ color: "#1e56a0" }}>
-                      {c.leads_count} Lead{c.leads_count !== 1 ? "s" : ""}
+                      {c.assigned_count} Kandidat{c.assigned_count !== 1 ? "en" : ""} zugewiesen
                     </span>
+                    {/* Direkte Leads gibt es nur noch bei Altkampagnen (vor T-31). */}
+                    {c.leads_count > 0 && (
+                      <span>
+                        {c.leads_count} Lead{c.leads_count !== 1 ? "s" : ""}
+                      </span>
+                    )}
                     <span>
                       {new Date(c.created_at).toLocaleDateString("de-DE", {
                         day: "2-digit", month: "2-digit", year: "numeric",
