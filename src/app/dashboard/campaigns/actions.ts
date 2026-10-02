@@ -6,7 +6,6 @@ import { requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { matchCampaignToCandidates } from "@/lib/matching"
-import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 
 export type CreateCampaignState = { error: string } | null
 
@@ -24,7 +23,8 @@ export async function createCampaignAction(
   const radius_km_raw = formData.get("radius_km") as string
 
   if (!title) return { error: "Titel ist ein Pflichtfeld." }
-  if (!client_id) return { error: "Bitte einen Kunden auswählen." }
+  if (!client_id) return { error: "Kampagnen werden im Kundenprofil angelegt." }
+  if (!berufsbildInput) return { error: "Bitte das gesuchte Berufsbild auswählen." }
 
   const supabase = await createSupabaseServerClient()
   // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
@@ -38,29 +38,24 @@ export async function createCampaignAction(
   // analog zur Cascade-Logik in updateClientAction (clients/[id]/actions.ts), nur
   // umgekehrte Richtung. Hat auch der Kunde keine PLZ, bleibt die Kampagne wie bisher
   // ohne PLZ - kein Fehler.
-  if (!plz) {
-    const { data: client } = await supabase
-      .from("clients")
-      .select("plz")
-      .eq("id", client_id)
-      .single()
-
-    if (client?.plz) plz = client.plz
-  }
+  // Kunde über die RLS-Session prüfen (nur Kunden der eigenen Agentur).
+  const { data: client } = await supabase.from("clients").select("plz").eq("id", client_id).maybeSingle()
+  if (!client) return { error: "Kunde nicht gefunden." }
+  if (!plz && client.plz) plz = client.plz
 
   const coords = plz ? geocodePlz(plz) : null
   const location_id = await getOrCreateLocationForPlz(supabase, plz)
 
-  // Automatischer Vorschlag NUR, wenn das Dropdown leer gelassen wurde - eine bewusste
-  // manuelle Wahl (auch "Kein Berufsbild") wird nie überschrieben, da dieser Fallback
-  // erst greift, wenn berufsbildInput selbst schon leer ist.
-  const berufsbild = berufsbildInput || (title ? mapKanzleistelleBerufsbild(title) : null)
+  // Berufsbild ist seit Atlas T-32 Pflicht - eine Kanzlei-Kampagne beschreibt, wen die
+  // Kanzlei sucht. Der frühere Vorschlag aus dem Titel entfällt damit.
+  const berufsbild = berufsbildInput
 
   const { data: campaign, error } = await supabase
     .from("campaigns")
     .insert({
       title,
       client_id,
+      kind: "kanzlei", // im Kundenprofil angelegt = Kanzlei-Kampagne (Atlas T-36)
       description: description || null,
       status,
       meta_campaign_id: meta_campaign_id || null,
@@ -141,5 +136,6 @@ export async function createCampaignAction(
     console.error("Matching fehlgeschlagen für Kampagne", campaign.id, matchError)
   }
 
-  redirect("/dashboard/campaigns")
+  // Zurück ins Kundenprofil, aus dem die Kampagne angelegt wurde (Atlas T-32).
+  redirect(`/dashboard/clients/${client_id}`)
 }

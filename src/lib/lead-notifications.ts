@@ -43,9 +43,11 @@ async function resolveCandidateAgencyId(
   if (!clientId && candidate.campaign_id) {
     const { data: campaign } = await admin
       .from("campaigns")
-      .select("client_id")
+      .select("client_id, agency_id")
       .eq("id", candidate.campaign_id)
       .maybeSingle()
+    // Lead-Kampagnen (T-36) haben keinen Kunden, aber direkt eine Agentur.
+    if (campaign?.agency_id) return campaign.agency_id
     clientId = campaign?.client_id ?? null
   }
   if (!clientId) return null

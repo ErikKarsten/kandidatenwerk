@@ -13,23 +13,20 @@ import { createCampaignAction, type CreateCampaignState } from "../actions"
 
 const schema = z.object({
   title: z.string().min(1, "Pflichtfeld"),
-  client_id: z.string().min(1, "Bitte einen Kunden auswählen"),
   description: z.string().optional(),
   status: z.enum(["active", "paused", "completed"]),
   meta_campaign_id: z.string().optional(),
-  berufsbild: z.string().optional(),
+  berufsbild: z.string().min(1, "Bitte das gesuchte Berufsbild auswählen"),
   plz: z.string().regex(/^\d{5}$/, "PLZ muss 5-stellig sein").optional().or(z.literal("")),
   radius_km: z.string().optional(),
 })
 
 type FormValues = z.infer<typeof schema>
 
-interface Client {
-  id: string
-  name: string
-}
-
-export function CampaignForm({ clients, defaultClientId }: { clients: Client[]; defaultClientId?: string | null }) {
+// Kanzlei-Kampagne eines Kunden: beschreibt, wen die Kanzlei sucht (Berufsbild,
+// Standort, Umkreis). Der Kunde steht durch den Einstieg aus dem Kundenprofil fest und
+// ist nicht mehr auswählbar (Atlas T-32).
+export function CampaignForm({ clientId, clientName }: { clientId: string; clientName: string }) {
   const [state, formAction] = useActionState<CreateCampaignState, FormData>(
     createCampaignAction,
     null
@@ -42,17 +39,17 @@ export function CampaignForm({ clients, defaultClientId }: { clients: Client[]; 
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { status: "active", client_id: defaultClientId ?? "", radius_km: "25" },
+    defaultValues: { status: "active", radius_km: "25" },
   })
 
   function onSubmit(values: FormValues) {
     const fd = new FormData()
     fd.append("title", values.title)
-    fd.append("client_id", values.client_id)
+    fd.append("client_id", clientId)
     fd.append("status", values.status)
     if (values.description) fd.append("description", values.description)
     if (values.meta_campaign_id) fd.append("meta_campaign_id", values.meta_campaign_id)
-    if (values.berufsbild) fd.append("berufsbild", values.berufsbild)
+    fd.append("berufsbild", values.berufsbild)
     if (values.plz) fd.append("plz", values.plz)
     if (values.radius_km) fd.append("radius_km", values.radius_km)
     startTransition(() => formAction(fd))
@@ -64,25 +61,8 @@ export function CampaignForm({ clients, defaultClientId }: { clients: Client[]; 
         <Input id="title" {...register("title")} placeholder="Herbst-Recruiting 2026" aria-invalid={!!errors.title} />
       </Field>
 
-      <Field label="Kunde" required error={errors.client_id?.message}>
-        <select
-          id="client_id"
-          {...register("client_id")}
-          className="flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
-          defaultValue=""
-        >
-          <option value="" disabled>Kunden auswählen…</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        {clients.length === 0 && (
-          <p className="text-xs text-amber-600">
-            Noch kein Kunde angelegt.{" "}
-            <Link href="/dashboard/clients/new" className="underline">Kunden anlegen</Link>
-          </p>
-        )}
+      <Field label="Kunde">
+        <p className="text-sm font-medium text-gray-900">{clientName}</p>
       </Field>
 
       <Field label="Status" error={errors.status?.message}>
@@ -118,7 +98,7 @@ export function CampaignForm({ clients, defaultClientId }: { clients: Client[]; 
         />
       </Field>
 
-      <Field label="Berufsbild" error={errors.berufsbild?.message}>
+      <Field label="Gesuchtes Berufsbild" required error={errors.berufsbild?.message}>
         <select
           id="berufsbild"
           {...register("berufsbild")}
@@ -126,7 +106,7 @@ export function CampaignForm({ clients, defaultClientId }: { clients: Client[]; 
           style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
           defaultValue=""
         >
-          <option value="">Kein Berufsbild</option>
+          <option value="" disabled>Berufsbild auswählen…</option>
           {BERUFSBILD_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
@@ -162,7 +142,7 @@ export function CampaignForm({ clients, defaultClientId }: { clients: Client[]; 
           {pending ? "Wird gespeichert…" : "Kampagne anlegen"}
         </Button>
         <Button variant="ghost" asChild>
-          <Link href="/dashboard/campaigns">Abbrechen</Link>
+          <Link href={`/dashboard/clients/${clientId}`}>Abbrechen</Link>
         </Button>
       </div>
     </form>

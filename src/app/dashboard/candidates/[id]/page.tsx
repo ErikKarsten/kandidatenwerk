@@ -19,10 +19,11 @@ export default async function CandidateDetailPage({
     { data: clientRows },
     { data: profileRows },
     { data: customFieldDefinitionRows },
+    { data: kanzleiCampaignRows },
   ] = await Promise.all([
     supabase
       .from("candidates")
-      .select("*, campaigns(title, clients(id, name))")
+      .select("*, campaigns(title, kind, berufsbild, clients(id, name))")
       .eq("id", id)
       .single(),
     supabase
@@ -37,14 +38,14 @@ export default async function CandidateDetailPage({
       .order("created_at", { ascending: false }),
     supabase
       .from("candidate_campaign_matches")
-      .select("id, distance_km, status, matched_at, campaigns(id, title, lat, lng, clients(id, name))")
+      .select("id, distance_km, status, matched_at, campaigns(id, title, kind, lat, lng, clients(id, name))")
       .eq("candidate_id", id)
       .order("matched_at", { ascending: false }),
     // Alle aktiven Zuordnungen (nicht mehr nur eine) - ein Kandidat kann jetzt
-    // gleichzeitig mehreren Kanzleien zugeordnet sein, siehe assignToClientAction.
+    // gleichzeitig mehreren Kanzleien zugeordnet sein, siehe assignToCampaignAction.
     supabase
       .from("client_assignments")
-      .select("id, status, client_id")
+      .select("id, status, client_id, campaign_id, campaigns(title)")
       .eq("candidate_id", id)
       .is("removed_at", null),
     supabase
@@ -63,6 +64,13 @@ export default async function CandidateDetailPage({
       .from("custom_field_definitions")
       .select("id, key, label, sort_order, active")
       .order("sort_order", { ascending: true }),
+    // Ziele für "Weiterschieben" im Reiter Zuordnung: alle aktiven Kanzlei-Kampagnen.
+    supabase
+      .from("campaigns")
+      .select("id, title, berufsbild, client_id, clients(name)")
+      .eq("kind", "kanzlei")
+      .eq("status", "active")
+      .order("title", { ascending: true }),
   ])
 
   if (!candidate) notFound()
@@ -126,17 +134,25 @@ export default async function CandidateDetailPage({
     })
   )
 
-  type CampaignJoin = { title: string; clients: { id: string; name: string } | null } | null
+  type CampaignJoin = {
+    title: string
+    kind: string
+    berufsbild: string | null
+    clients: { id: string; name: string } | null
+  } | null
   const campaigns = candidate.campaigns as CampaignJoin
 
   type MatchCampaignJoin = {
     id: string
     title: string
+    kind: string
     lat: number | null
     lng: number | null
     clients: { id: string; name: string } | null
   } | null
-  const matches = (matchRows ?? []).map((m) => {
+  // Nur Kanzlei-Kampagnen sind Zuordnungsziele (Lead-Kampagnen werden seit T-36 nicht
+  // mehr gematcht; ältere Treffer auf solche Kampagnen werden ausgeblendet).
+  const matches = (matchRows ?? []).filter((m) => (m.campaigns as MatchCampaignJoin)?.kind !== "lead").map((m) => {
     const matchCampaign = m.campaigns as MatchCampaignJoin
     return {
       id: m.id,
@@ -171,11 +187,29 @@ export default async function CandidateDetailPage({
     campaigns: campaigns,
   }
 
-  const activeAssignments = (assignmentRows ?? []).map((a) => ({
-    id: a.id,
-    clientId: a.client_id,
-    status: a.status,
-  }))
+  const activeAssignments = (assignmentRows ?? []).map((a) => {
+    const campaignRel = a.campaigns as { title: string } | { title: string }[] | null
+    const campaign = Array.isArray(campaignRel) ? campaignRel[0] ?? null : campaignRel
+    return {
+      id: a.id,
+      clientId: a.client_id,
+      status: a.status,
+      campaignId: a.campaign_id,
+      campaignTitle: campaign?.title ?? null,
+    }
+  })
+
+  const kanzleiCampaigns = (kanzleiCampaignRows ?? []).map((c) => {
+    const clientRel = c.clients as { name: string } | { name: string }[] | null
+    const client = Array.isArray(clientRel) ? clientRel[0] ?? null : clientRel
+    return {
+      id: c.id,
+      title: c.title,
+      berufsbild: c.berufsbild,
+      clientId: c.client_id,
+      clientName: client?.name ?? "Unbekannter Kunde",
+    }
+  })
 
   const clients = (clientRows ?? []).map((c) => ({ id: c.id, name: c.name }))
   const profiles = (profileRows ?? []).map((p) => ({ id: p.id, full_name: p.full_name }))
@@ -191,6 +225,7 @@ export default async function CandidateDetailPage({
       clientNotes={clientNotes}
       profiles={profiles}
       customFieldDefinitions={customFieldDefinitionRows ?? []}
+      kanzleiCampaigns={kanzleiCampaigns}
     />
   )
 }

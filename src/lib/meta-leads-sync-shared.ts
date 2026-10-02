@@ -76,6 +76,8 @@ export interface MetaSyncCampaign {
   id: string
   title: string
   client_id: string | null
+  // Bei Lead-Kampagnen (kind = 'lead', ohne Kunde) kommt die Agentur von hier (T-36).
+  agency_id?: string | null
 }
 
 export type ProcessMetaLeadOutcome =
@@ -130,8 +132,8 @@ export async function processMetaLead(
     // Bewirbt sich ein schon bekannter Kandidat ueber eine ANDERE Kampagne (z.B. eine
     // zweite Anzeige einer anderen Kanzlei), soll diese neue Kanzlei ihn ebenfalls
     // sehen koennen - ueber dieselbe Mehrfachzuordnung wie bei der manuellen Zuordnung
-    // (client_assignments, siehe assignToClientAction in
-    // dashboard/candidates/[id]/actions.ts, seit 20260902000000 ohne
+    // (client_assignments, siehe ensureClientAssignment in
+    // src/lib/client-assignment.ts, seit 20260902000000 ohne
     // Unique-Beschraenkung mehr auf eine aktive Zuordnung pro Kandidat). ensureClientAssignment
     // legt nur an, wenn noch keine AKTIVE Zuordnung zu dieser Kanzlei besteht, sonst wuerden
     // wiederholte Leads/Sync-Laeufe die Zuordnungsliste unnoetig aufblaehen - die History-
@@ -169,8 +171,8 @@ export async function processMetaLead(
   // vom 25.09.2026) - ohne client_id (noch keinem Kunden zugeordnete Kampagne) bleibt
   // die Liste leer, KI-Extraktion und die direkte Meta-Feld-Zuordnung finden dann
   // nichts, was unschädlich ist (Kandidat wird trotzdem angelegt).
-  let agencyId: string | null = null
-  if (campaign.client_id) {
+  let agencyId: string | null = campaign.agency_id ?? null
+  if (!agencyId && campaign.client_id) {
     const { data: clientRow } = await supabase.from("clients").select("agency_id").eq("id", campaign.client_id).maybeSingle()
     agencyId = clientRow?.agency_id ?? null
   }

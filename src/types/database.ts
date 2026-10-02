@@ -428,6 +428,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           removed_at: string | null
+          campaign_id: string | null
         }
         Insert: {
           id?: string
@@ -437,6 +438,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           removed_at?: string | null
+          campaign_id?: string | null
         }
         Update: {
           id?: string
@@ -446,8 +448,16 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           removed_at?: string | null
+          campaign_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "client_assignments_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "client_assignments_candidate_id_fkey"
             columns: ["candidate_id"]
@@ -614,7 +624,7 @@ export type Database = {
       campaigns: {
         Row: {
           id: string
-          client_id: string
+          client_id: string | null
           title: string
           description: string | null
           status: string
@@ -632,10 +642,12 @@ export type Database = {
           location_id: string | null
           meta_webhook_last_test_at: string | null
           meta_form_name: string | null
+          kind: string
+          agency_id: string | null
         }
         Insert: {
           id?: string
-          client_id: string
+          client_id?: string | null
           title: string
           description?: string | null
           status?: string
@@ -653,10 +665,12 @@ export type Database = {
           location_id?: string | null
           meta_webhook_last_test_at?: string | null
           meta_form_name?: string | null
+          kind?: string
+          agency_id?: string | null
         }
         Update: {
           id?: string
-          client_id?: string
+          client_id?: string | null
           title?: string
           description?: string | null
           status?: string
@@ -674,6 +688,8 @@ export type Database = {
           location_id?: string | null
           meta_webhook_last_test_at?: string | null
           meta_form_name?: string | null
+          kind?: string
+          agency_id?: string | null
         }
         Relationships: [
           {

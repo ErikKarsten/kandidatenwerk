@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import { RefreshCw, ListTodo } from "lucide-react"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import {
@@ -11,6 +10,7 @@ import {
   archiveCandidateAction,
   deleteCandidateAction,
   refreshLeadtableCandidateAction,
+  updateCandidateBerufsbildAction,
 } from "./actions"
 import { ProfileTab, type CustomFieldDefinition } from "./profile-tab"
 import { FilesTab } from "./files-tab"
@@ -18,7 +18,9 @@ import { HistorySection, type HistoryEntry } from "./history-section"
 import { ClientNotesSection, type ClientNote } from "./client-notes-section"
 import { type ClientOption } from "./client-assignment-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
-import { MatchesSection, AssignmentControl, assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
+import { assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
+import { AssignmentTab, type CampaignMatch, type KanzleiCampaignOption } from "./assignment-tab"
+import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
 
@@ -33,19 +35,6 @@ interface FileItem {
   mime_type: string | null
   created_at: string
   signedUrl: string | null
-}
-
-interface CampaignMatch {
-  id: string
-  campaignId: string
-  campaignTitle: string
-  clientId: string | null
-  clientName: string | null
-  distanceKm: number | null
-  status: string
-  matchedAt: string
-  lat: number | null
-  lng: number | null
 }
 
 interface Candidate {
@@ -64,7 +53,7 @@ interface Candidate {
   lng: number | null
   custom_fields: Record<string, string> | null
   campaign_id: string | null
-  campaigns: { title: string; clients: { id: string; name: string } | null } | null
+  campaigns: { title: string; kind: string; berufsbild: string | null; clients: { id: string; name: string } | null } | null
 }
 
 interface CandidateDetailProps {
@@ -77,14 +66,17 @@ interface CandidateDetailProps {
   clientNotes: ClientNote[]
   profiles: ProfileOption[]
   customFieldDefinitions: CustomFieldDefinition[]
+  kanzleiCampaigns: KanzleiCampaignOption[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, matches, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, matches, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, kanzleiCampaigns }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
-  const [tab, setTab] = useState<"profil" | "dateien">("profil")
+  const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung">("profil")
+  const [berufsbildPending, startBerufsbildTransition] = useTransition()
+  const [berufsbildError, setBerufsbildError] = useState<string | null>(null)
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [modalError, setModalError] = useState<string | null>(null)
   const [archivePending, startArchiveTransition] = useTransition()
@@ -95,12 +87,26 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
 
   const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
 
-  // Zuordnungen zu Kunden, die NICHT unter den automatischen Matches auftauchen, haben
-  // keine Match-Zeile, in der ihre AssignmentControl angezeigt werden könnte (z.B. über
-  // "+ Weitere Kanzlei hinzufügen" angelegt). Ohne diesen Abschnitt wären sie nirgends
-  // einsehbar oder verwaltbar - siehe "Weitere Zuordnungen" unten.
-  const matchedClientIds = new Set(matches.map((m) => m.clientId).filter((id): id is string => id !== null))
-  const otherAssignments = activeAssignments.filter((a) => !matchedClientIds.has(a.clientId))
+  // Berufsbild-Herkunft (Atlas T-34): gleich wie das der Herkunfts-Kampagne = übernommen.
+  const campaignBerufsbild = candidate.campaigns?.berufsbild ?? null
+  const berufsbildOrigin = !candidate.berufsbild
+    ? null
+    : campaignBerufsbild && campaignBerufsbild === candidate.berufsbild
+      ? "aus Kampagne übernommen"
+      : "manuell gesetzt"
+
+  function handleBerufsbildChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value || null
+    setBerufsbildError(null)
+    startBerufsbildTransition(async () => {
+      const result = await updateCandidateBerufsbildAction(candidate.id, value)
+      if (result?.error) {
+        setBerufsbildError(result.error)
+        return
+      }
+      router.refresh()
+    })
+  }
 
   function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const newStatus = e.target.value
@@ -236,6 +242,26 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
                 </option>
               ))}
             </select>
+            <div className="flex items-center gap-1.5">
+              <select
+                value={candidate.berufsbild ?? ""}
+                onChange={handleBerufsbildChange}
+                disabled={berufsbildPending}
+                aria-label="Berufsbild"
+                className="rounded-full border px-3 py-1 text-xs font-semibold focus:outline-none focus:ring-1 disabled:opacity-50"
+                style={
+                  candidate.berufsbild
+                    ? { borderColor: "#1e56a0", color: "#1e56a0", backgroundColor: "#1e56a010" }
+                    : { borderColor: "#dc2626", color: "#dc2626", backgroundColor: "#dc262610" }
+                }
+              >
+                <option value="">Berufsbild fehlt – bitte wählen</option>
+                {BERUFSBILD_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              {berufsbildOrigin && <span className="text-xs text-gray-400">{berufsbildOrigin}</span>}
+            </div>
             {candidate.source === "leadtable" && (
               <button
                 type="button"
@@ -268,6 +294,12 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
             {refreshMessage.text}
           </p>
         )}
+        {!candidate.berufsbild && (
+          <p className="mt-2 text-xs font-medium text-red-600">
+            Ohne Berufsbild gibt es kein Matching und keine passenden Kanzlei-Kampagnen.
+          </p>
+        )}
+        {berufsbildError && <p className="mt-2 text-xs text-red-600">{berufsbildError}</p>}
         {activeAssignments.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {activeAssignments.map((a) => {
@@ -279,7 +311,8 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
                   className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
                   style={{ backgroundColor: colors.bg, color: colors.text }}
                 >
-                  {client?.name ?? "Unbekannter Kunde"}: {colors.label}
+                  {client?.name ?? "Unbekannter Kunde"}
+                  {a.campaignTitle ? ` · ${a.campaignTitle}` : ""}: {colors.label}
                 </span>
               )
             })}
@@ -304,6 +337,12 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
             >
               Dateien
             </TabButton>
+            <TabButton
+              active={tab === "zuordnung"}
+              onClick={() => setTab("zuordnung")}
+            >
+              Zuordnung ({activeAssignments.length})
+            </TabButton>
           </div>
 
           <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
@@ -323,6 +362,26 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
             {tab === "dateien" && (
               <FilesTab candidateId={candidate.id} files={files} />
             )}
+            {tab === "zuordnung" && (
+              <AssignmentTab
+                candidateId={candidate.id}
+                candidateName={`${candidate.first_name} ${candidate.last_name}`}
+                berufsbild={candidate.berufsbild}
+                selfLat={candidate.lat}
+                selfLng={candidate.lng}
+                origin={{
+                  campaignId: candidate.campaign_id,
+                  title: candidate.campaigns?.title ?? null,
+                  kind: candidate.campaigns?.kind ?? null,
+                  clientId: candidate.campaigns?.clients?.id ?? null,
+                  clientName: candidate.campaigns?.clients?.name ?? null,
+                }}
+                matches={matches}
+                activeAssignments={activeAssignments}
+                clients={clients}
+                kanzleiCampaigns={kanzleiCampaigns}
+              />
+            )}
           </div>
         </div>
 
@@ -338,17 +397,6 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
             <ListTodo size={16} />
             Aufgabe erstellen
           </button>
-          <CampaignInfoCard campaignId={candidate.campaign_id} campaigns={candidate.campaigns} />
-          <MatchesSection
-            matches={matches}
-            candidateId={candidate.id}
-            activeAssignments={activeAssignments}
-            clients={clients}
-            selfLat={candidate.lat}
-            selfLng={candidate.lng}
-            selfLabel={`${candidate.first_name} ${candidate.last_name}`}
-          />
-          <OtherAssignmentsSection assignments={otherAssignments} clients={clients} />
           <ClientNotesSection notes={clientNotes} />
           <DescriptionSection candidateId={candidate.id} notes={candidate.notes} />
           <NoteSection candidateId={candidate.id} />
@@ -392,90 +440,6 @@ function TabButton({
     >
       {children}
     </button>
-  )
-}
-
-function CampaignInfoCard({
-  campaignId,
-  campaigns,
-}: {
-  campaignId: string | null
-  campaigns: { title: string; clients: { id: string; name: string } | null } | null
-}) {
-  if (!campaignId || !campaigns) return null
-
-  return (
-    <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Zuordnung</p>
-      <dl className="flex flex-col gap-2">
-        <div className="flex items-start gap-2">
-          <dt className="shrink-0 text-sm text-gray-500" style={{ minWidth: "5rem" }}>Kampagne</dt>
-          <dd className="min-w-0 text-sm">
-            <Link
-              href={`/dashboard/campaigns/${campaignId}`}
-              className="block truncate font-medium hover:underline"
-              style={{ color: "#1e56a0" }}
-            >
-              {campaigns.title}
-            </Link>
-          </dd>
-        </div>
-        {campaigns.clients && (
-          <div className="flex items-start gap-2">
-            <dt className="shrink-0 text-sm text-gray-500" style={{ minWidth: "5rem" }}>Kunde</dt>
-            <dd className="min-w-0 text-sm">
-              <Link
-                href={`/dashboard/clients/${campaigns.clients.id}`}
-                className="block truncate font-medium hover:underline"
-                style={{ color: "#1e56a0" }}
-              >
-                {campaigns.clients.name}
-              </Link>
-            </dd>
-          </div>
-        )}
-      </dl>
-    </div>
-  )
-}
-
-// Zuordnungen zu Kunden ohne eigene Match-Zeile (z.B. über "+ Weitere Kanzlei
-// hinzufügen" angelegt) - sonst gäbe es keine UI, um Status zu ändern oder zu entfernen.
-// Wiederverwendet dieselbe AssignmentControl wie die Match-Zeilen in matches-section.tsx.
-function OtherAssignmentsSection({
-  assignments,
-  clients,
-}: {
-  assignments: ActiveAssignment[]
-  clients: ClientOption[]
-}) {
-  if (assignments.length === 0) return null
-
-  return (
-    <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-        Weitere Zuordnungen
-      </p>
-      <ul className="flex flex-col gap-3">
-        {assignments.map((a) => {
-          const client = clients.find((c) => c.id === a.clientId)
-          return (
-            <li key={a.id} className="rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Link
-                  href={`/dashboard/clients/${a.clientId}`}
-                  className="truncate text-sm font-medium hover:underline"
-                  style={{ color: "#1e56a0" }}
-                >
-                  {client?.name ?? "Unbekannter Kunde"}
-                </Link>
-                <AssignmentControl assignment={a} />
-              </div>
-            </li>
-          )
-        })}
-      </ul>
-    </div>
   )
 }
 
