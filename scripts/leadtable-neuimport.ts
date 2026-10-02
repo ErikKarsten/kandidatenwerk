@@ -45,6 +45,8 @@ import { mapKanzleistelleBerufsbild } from "../src/lib/sync-kanzleistelle"
 import { getOrCreateLocationForPlz } from "../src/lib/location-clustering"
 import { geocodePlz, nearestPlz } from "../src/lib/geocode-plz"
 import { forwardGeocodeAll } from "../src/lib/forward-geocode"
+import { metaGraphFetch } from "../src/lib/meta-ads-client"
+import { parseGeoLocations } from "../src/lib/meta-campaigns-parse"
 import { placeQueryFromAnswer } from "../src/lib/place-query"
 import { mapLeadFormAnswers } from "../src/lib/leadtable-form-answers"
 
@@ -220,25 +222,93 @@ async function main() {
   const metaIdByCampaignId = new Map(
     (await fetchAllRows(db, "campaigns", (q) => q.eq("kind", "lead"))).map((c) => [c.id as string, c.meta_campaign_id as string | null])
   )
+  const adAreaCoordsByAdset = new Map<string, { lat: number; lng: number }>()
   for (const a of await fetchAllRows(db, "campaign_ad_areas", (q) => q.not("lat", "is", null))) {
+    if (!adAreaCoordsByAdset.has(a.meta_adset_id as string)) adAreaCoordsByAdset.set(a.meta_adset_id as string, { lat: a.lat as number, lng: a.lng as number })
     const metaId = metaIdByCampaignId.get(a.campaign_id as string)
     if (metaId && !adAreaCoordsByMetaCampaign.has(metaId)) adAreaCoordsByMetaCampaign.set(metaId, { lat: a.lat as number, lng: a.lng as number })
   }
 
   const placeCachePath = path.resolve(__dirname, "../backups/place-geocode-cache.json")
   const placeCache: Record<string, { lat: number; lng: number }[]> = fs.existsSync(placeCachePath) ? JSON.parse(fs.readFileSync(placeCachePath, "utf8")) : {}
+  let geocodeCalls = 0
+  async function geocodePlace(query: string): Promise<{ lat: number; lng: number }[]> {
+    const key = query.toLowerCase()
+    if (!(key in placeCache)) {
+      await sleep(1100) // Nominatim: max. 1 Anfrage/s
+      geocodeCalls++
+      placeCache[key] = await forwardGeocodeAll(`${query}, Deutschland`).catch(() => [])
+      if (geocodeCalls % 25 === 0) {
+        console.log(`  Ortssuche: ${geocodeCalls} Orte`)
+        fs.writeFileSync(placeCachePath, JSON.stringify(placeCache))
+      }
+    }
+    return placeCache[key]
+  }
+
+  // Anzeigengruppen alter Kampagnen (anderes Kampagnenziel, daher nicht im Abgleich):
+  // Werbegebiet direkt bei Meta nachladen, 50 je Anfrage, zwischengespeichert.
+  const adsetCachePath = path.resolve(__dirname, "../backups/meta-adset-cache.json")
+  const adsetCache: Record<string, { lat: number; lng: number } | null> = fs.existsSync(adsetCachePath) ? JSON.parse(fs.readFileSync(adsetCachePath, "utf8")) : {}
+  const missingAdsets = [
+    ...new Set(
+      [...byEmail.values()]
+        .flat()
+        .map((a) => (a.lead.funnelData?.profile?.adgroupID?.value ?? a.lead.funnelData?.profile?.["Adgroup ID"]?.value) as string | undefined)
+        .filter((id): id is string => !!id && !adAreaCoordsByAdset.has(id) && !(id in adsetCache))
+    ),
+  ]
+  if (missingAdsets.length > 0) console.log(`\nLade Werbegebiete von ${missingAdsets.length} alten Anzeigengruppen bei Meta…`)
+  // Einzeln: "ids=" ist seit Graph v26 abgeschafft, der adset.id-Filter am Werbekonto
+  // liefert bei alten Anzeigengruppen nichts (geprüft 02.10.2026).
+  for (let i = 0; i < missingAdsets.length; i++) {
+    const id = missingAdsets[i]
+    await sleep(400)
+    let geo: Parameters<typeof parseGeoLocations>[0] | undefined
+    try {
+      geo = (await metaGraphFetch<{ targeting?: { geo_locations?: Parameters<typeof parseGeoLocations>[0] } }>(`/${id}`, { fields: "targeting{geo_locations}" }))
+        .targeting?.geo_locations
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.includes('"code":17') || message.includes('"code":4')) {
+        console.log("  Meta-Anfragelimit erreicht - restliche Anzeigengruppen beim nächsten Lauf.")
+        break
+      }
+      adsetCache[id] = null
+      continue
+    }
+    const areas = parseGeoLocations(geo)
+    let point: { lat: number; lng: number } | null = null
+    const withCoords = areas.find((a) => a.lat !== null && a.lng !== null)
+    const zip = areas.find((a) => a.areaType === "zip" && /\d{5}/.test(a.areaKey ?? a.label))
+    const city = areas.find((a) => a.areaType === "city")
+    if (withCoords) point = { lat: withCoords.lat!, lng: withCoords.lng! }
+    else if (zip) point = geocodePlz((zip.areaKey ?? zip.label).match(/\d{5}/)![0])
+    else if (city) point = (await geocodePlace(city.label.replace(/,\s*(Germany|Deutschland)$/i, "")))[0] ?? null
+    adsetCache[id] = point
+    if ((i + 1) % 25 === 0) {
+      console.log(`  ${i + 1}/${missingAdsets.length} Anzeigengruppen`)
+      fs.writeFileSync(adsetCachePath, JSON.stringify(adsetCache))
+    }
+  }
+  fs.mkdirSync(path.dirname(adsetCachePath), { recursive: true })
+  fs.writeFileSync(adsetCachePath, JSON.stringify(adsetCache))
+  for (const [id, point] of Object.entries(adsetCache)) if (point && !adAreaCoordsByAdset.has(id)) adAreaCoordsByAdset.set(id, point)
   type Location = { plz: string; lat: number; lng: number; how: "angegeben" | "ort" | "werbegebiet" | "kanzlei"; place?: string }
   const locationByEmail = new Map<string, Location>()
   const dist2 = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => (a.lat - b.lat) ** 2 + (a.lng - b.lng) ** 2
-  let geocodeCalls = 0
   for (const [email, apps] of byEmail) {
     const newestFirst = [...apps].sort((a, b) => (b.lead.createdAt ?? "").localeCompare(a.lead.createdAt ?? ""))
     const answers = newestFirst.map((a) => mapLeadFormAnswers(a.lead.funnelData?.profile))
     // Bezugspunkt: Werbegebiet der Meta-Kampagne, sonst Kanzlei der Bewerbung.
     let reference: { point: { lat: number; lng: number }; how: "werbegebiet" | "kanzlei" } | null = null
     for (const a of newestFirst) {
-      const metaCampaignId = a.lead.funnelData?.profile?.campaignID?.value as string | undefined
-      const area = metaCampaignId ? adAreaCoordsByMetaCampaign.get(metaCampaignId) : undefined
+      // Anzeigengruppe (adgroupID) ist genauer als die Kampagne und steht auch bei alten Formularen.
+      const profile = a.lead.funnelData?.profile
+      const adsetId = (profile?.adgroupID?.value ?? profile?.["Adgroup ID"]?.value) as string | undefined
+      const metaCampaignId = profile?.campaignID?.value as string | undefined
+      const area =
+        (adsetId ? adAreaCoordsByAdset.get(adsetId) : undefined) ?? (metaCampaignId ? adAreaCoordsByMetaCampaign.get(metaCampaignId) : undefined)
       if (area) {
         reference = { point: area, how: "werbegebiet" }
         break
@@ -257,17 +327,7 @@ async function main() {
     const placeText = answers.map((r) => r.fields.wohnort_plz).find(Boolean)
     const query = placeText ? placeQueryFromAnswer(placeText) : null
     if (query) {
-      const key = query.toLowerCase()
-      if (!(key in placeCache)) {
-        await sleep(1100) // Nominatim: max. 1 Anfrage/s
-        geocodeCalls++
-        placeCache[key] = await forwardGeocodeAll(`${query}, Deutschland`).catch(() => [])
-        if (geocodeCalls % 25 === 0) {
-          console.log(`  Ortssuche: ${geocodeCalls} Orte`)
-          fs.writeFileSync(placeCachePath, JSON.stringify(placeCache))
-        }
-      }
-      const hits = placeCache[key]
+      const hits = await geocodePlace(query)
       const hit = reference ? [...hits].sort((a, b) => dist2(a, reference!.point) - dist2(b, reference!.point))[0] : hits[0]
       const plz = hit ? nearestPlz(hit.lat, hit.lng) : null
       if (hit && plz) {
