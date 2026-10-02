@@ -132,8 +132,8 @@ export async function processMetaLead(
     // Bewirbt sich ein schon bekannter Kandidat ueber eine ANDERE Kampagne (z.B. eine
     // zweite Anzeige einer anderen Kanzlei), soll diese neue Kanzlei ihn ebenfalls
     // sehen koennen - ueber dieselbe Mehrfachzuordnung wie bei der manuellen Zuordnung
-    // (client_assignments, siehe assignToClientAction in
-    // dashboard/candidates/[id]/actions.ts, seit 20260902000000 ohne
+    // (client_assignments, siehe ensureClientAssignment in
+    // src/lib/client-assignment.ts, seit 20260902000000 ohne
     // Unique-Beschraenkung mehr auf eine aktive Zuordnung pro Kandidat). ensureClientAssignment
     // legt nur an, wenn noch keine AKTIVE Zuordnung zu dieser Kanzlei besteht, sonst wuerden
     // wiederholte Leads/Sync-Laeufe die Zuordnungsliste unnoetig aufblaehen - die History-

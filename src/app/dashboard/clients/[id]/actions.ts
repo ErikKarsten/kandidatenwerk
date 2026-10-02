@@ -620,7 +620,7 @@ export async function searchAvailableCandidatesAction(
 
 // Ein-Klick-Zuordnung aus der Liste "Verfügbar" - idempotent über
 // ensureClientAssignment (kein Doppel-Eintrag bei Doppelklick), gleiche Tabelle wie
-// assignToClientAction auf der Kandidatenseite.
+// assignToCampaignAction auf der Kandidatenseite.
 export async function assignCandidateToClientAction(
   clientId: string,
   candidateId: string

@@ -5,6 +5,8 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getStaffContext, requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
+import { ensureCampaignAssignment } from "@/lib/client-assignment"
+import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { leadtableFetch } from "@/lib/leadtable-client"
 import {
   type LeadtableSyncLead,
@@ -469,34 +471,6 @@ export async function deleteFileAction(
 
 // ── client_assignments (Kanzlei-Zuordnung mit Status-Pipeline) ────────────────────
 
-export async function assignToClientAction(
-  candidateId: string,
-  clientId: string
-): Promise<{ error: string } | null> {
-  const supabase = await createSupabaseServerClient()
-  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return staffError
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Nicht eingeloggt." }
-
-  // Kein Check mehr auf eine bereits bestehende aktive Zuordnung - ein Kandidat kann
-  // jetzt gleichzeitig mehreren Kanzleien zugeordnet sein, siehe
-  // 20260902000000_drop_client_assignments_unique_index.sql (der frühere UNIQUE PARTIAL
-  // INDEX, der das auf DB-Ebene erzwungen hat, wurde entfernt).
-  const { error } = await supabase.from("client_assignments").insert({
-    candidate_id: candidateId,
-    client_id: clientId,
-    created_by: user.id,
-  })
-
-  if (error) return { error: error.message }
-
-  revalidatePath(`/dashboard/candidates/${candidateId}`)
-  return null
-}
-
 export async function removeClientAssignmentAction(
   assignmentId: string
 ): Promise<{ error: string } | null> {
@@ -548,5 +522,80 @@ export async function updateAssignmentStatusAction(
   if (error) return { error: error.message }
 
   revalidatePath(`/dashboard/candidates/${data.candidate_id}`)
+  return null
+}
+
+// ── Berufsbild direkt im Kopf des Kandidatenprofils ändern (Atlas T-34) ──────────
+
+export async function updateCandidateBerufsbildAction(
+  candidateId: string,
+  berufsbild: string | null
+): Promise<{ error: string } | null> {
+  if (berufsbild && !BERUFSBILD_OPTIONS.some((o) => o.value === berufsbild)) {
+    return { error: "Unbekanntes Berufsbild." }
+  }
+
+  const supabase = await createSupabaseServerClient()
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
+
+  const { data: before } = await supabase.from("candidates").select("berufsbild").eq("id", candidateId).maybeSingle()
+  if (!before) return { error: "Kandidat nicht gefunden." }
+  if ((before.berufsbild ?? null) === (berufsbild || null)) return null
+
+  const { error } = await supabase.from("candidates").update({ berufsbild: berufsbild || null }).eq("id", candidateId)
+  if (error) return { error: error.message }
+
+  const label = (value: string | null) => BERUFSBILD_OPTIONS.find((o) => o.value === value)?.label ?? "keins"
+  await supabase.from("candidate_history").insert({
+    candidate_id: candidateId,
+    type: "note",
+    content: `Berufsbild geändert: ${label(before.berufsbild)} → ${label(berufsbild || null)}`,
+    created_by: guard.staff.userId,
+  })
+
+  // Neues Berufsbild -> passende Kanzlei-Kampagnen neu suchen (nicht fatal).
+  try {
+    await matchCandidateToCampaigns(supabase, candidateId)
+  } catch (err) {
+    console.error("Matching nach Berufsbild-Änderung fehlgeschlagen:", err)
+  }
+
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
+  return null
+}
+
+// ── Zuordnung zu einer Kanzlei-Kampagne (Atlas T-35/T-36, 1:n) ────────────────────
+
+export async function assignToCampaignAction(
+  candidateId: string,
+  campaignId: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
+
+  try {
+    await ensureCampaignAssignment(supabase, candidateId, campaignId, guard.staff.userId)
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+
+  const { data: campaign } = await supabase
+    .from("campaigns")
+    .select("title, client_id, clients(name)")
+    .eq("id", campaignId)
+    .maybeSingle()
+  const clientRel = campaign?.clients as { name: string } | { name: string }[] | null | undefined
+  const clientName = Array.isArray(clientRel) ? clientRel[0]?.name : clientRel?.name
+  await supabase.from("candidate_history").insert({
+    candidate_id: candidateId,
+    type: "note",
+    content: `Zugeordnet zu Kampagne „${campaign?.title ?? campaignId}“${clientName ? ` (${clientName})` : ""}`,
+    created_by: guard.staff.userId,
+  })
+
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
+  if (campaign?.client_id) revalidatePath(`/dashboard/clients/${campaign.client_id}`)
   return null
 }
