@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { requireStaffUser } from "@/lib/auth-guards"
+import { syncBugReportWithTaskStatus } from "@/lib/bug-reports/actions"
 
 export async function createTaskAction(
   formData: FormData
@@ -64,6 +65,9 @@ export async function updateTaskStatusAction(
     .eq("id", taskId)
 
   if (error) return { error: error.message }
+
+  // Aufgaben aus "Fehler melden": Meldung mit auf erledigt bzw. zurück auf freigegeben setzen.
+  await syncBugReportWithTaskStatus(taskId, status)
 
   revalidatePath("/dashboard/tasks")
   return null

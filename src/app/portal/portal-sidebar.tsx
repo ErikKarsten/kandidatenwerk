@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { Briefcase, LayoutDashboard, Users, Megaphone, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase"
+import { BugReportButton } from "@/components/bug-report-button"
 
 // Bewusst KEIN wiederverwendetes Sidebar-Component aus components/layout/sidebar.tsx -
 // das Kunden-Portal hat laut Spezifikation eine komplett eigene, stark reduzierte
@@ -81,7 +82,8 @@ export function PortalSidebar({
         </Link>
       </nav>
 
-      <div className="px-3 pb-4">
+      <div className="flex flex-col gap-1 px-3 pb-4">
+        <BugReportButton />
         <button
           type="button"
           onClick={handleLogout}

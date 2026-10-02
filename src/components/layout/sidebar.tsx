@@ -14,11 +14,13 @@ import {
   Star,
   PanelLeftClose,
   PanelLeftOpen,
+  Bug,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLocalStorageValue } from "@/lib/use-local-storage"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { BugReportButton } from "@/components/bug-report-button"
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar_collapsed"
 
@@ -45,6 +47,12 @@ function buildNavItems(
 // DashboardLayout (Sidebar-Zaehler, Auth-Check) automatisch mitbekommt statt eine
 // eigene Layout-Kopie zu brauchen.
 const SETTINGS_ITEM = { href: "/dashboard/einstellungen", label: "Einstellungen", icon: Settings }
+const BUG_REPORTS_HREF = "/dashboard/fehlermeldungen"
+
+function initials(name: string): string {
+  const parts = name.split(/[\s@.]+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?"
+}
 
 interface NavItemProps {
   href: string
@@ -108,12 +116,18 @@ export function Sidebar({
   clientsCount = 0,
   myOpenTasksCount = 0,
   qualifiedCount = 0,
+  userName,
+  isAdmin,
+  openBugReportsCount = 0,
 }: {
   matchesCount?: number
   candidatesCount?: number
   clientsCount?: number
   myOpenTasksCount?: number
   qualifiedCount?: number
+  userName: string
+  isAdmin: boolean
+  openBugReportsCount?: number
 }) {
   const pathname = usePathname()
   const navItems = buildNavItems(matchesCount, candidatesCount, clientsCount, myOpenTasksCount, qualifiedCount)
@@ -186,7 +200,18 @@ export function Sidebar({
 
       <div className="mx-3 mb-3 h-px" style={{ backgroundColor: "rgba(255,255,255,0.08)" }} />
 
-      <div className="px-3 pb-3">
+      <div className="flex flex-col gap-1 px-3 pb-3">
+        <BugReportButton collapsed={collapsed} />
+        {isAdmin && (
+          <NavItem
+            href={BUG_REPORTS_HREF}
+            label="Fehlermeldungen"
+            icon={Bug}
+            badge={openBugReportsCount > 0 ? String(openBugReportsCount) : undefined}
+            collapsed={collapsed}
+            active={pathname === BUG_REPORTS_HREF || pathname.startsWith(BUG_REPORTS_HREF + "/")}
+          />
+        )}
         <NavItem
           {...SETTINGS_ITEM}
           collapsed={collapsed}
@@ -201,13 +226,13 @@ export function Sidebar({
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
           style={{ backgroundColor: "#1e56a0" }}
         >
-          SN
+          {initials(userName)}
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-white">Steffen Neubert</p>
+            <p className="truncate text-sm font-medium text-white">{userName}</p>
             <p className="truncate text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-              Admin
+              {isAdmin ? "Admin" : "Mitarbeiter"}
             </p>
           </div>
         )}

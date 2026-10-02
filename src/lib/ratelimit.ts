@@ -17,6 +17,7 @@ interface RateLimiter {
 interface RateLimitEnv {
   LOGIN_LIMIT_EMAIL?: RateLimiter
   LOGIN_LIMIT_IP?: RateLimiter
+  BUG_REPORT_LIMIT?: RateLimiter
 }
 
 export async function checkLoginRateLimit(email: string, ip: string | null): Promise<boolean> {
@@ -34,4 +35,16 @@ export async function checkLoginRateLimit(email: string, ip: string | null): Pro
 
   const outcomes = await Promise.all(checks)
   return outcomes.every((o) => o.success)
+}
+
+// "Fehler melden" (src/lib/bug-reports/actions.ts): max. 5 Meldungen pro Minute je
+// Nutzer - gegen versehentliches Mehrfachsenden und Mail-Flut bei Portal-Meldungen.
+export async function checkBugReportRateLimit(userId: string): Promise<boolean> {
+  const env = getCloudflareContext().env as unknown as RateLimitEnv
+  if (!env.BUG_REPORT_LIMIT) {
+    console.warn("[ratelimit] BUG_REPORT_LIMIT-Binding fehlt - Fehlermeldungen werden nicht begrenzt.")
+    return true
+  }
+  const { success } = await env.BUG_REPORT_LIMIT.limit({ key: `bug-report:${userId}` })
+  return success
 }
