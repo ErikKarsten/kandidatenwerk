@@ -70,7 +70,16 @@ Der Echtzeit-Webhook für Meta liegt unter `/api/webhooks/meta-leadgen` (Signatu
 ## Datenbank
 
 - Migrationen liegen in [supabase/migrations/](supabase/migrations/) und werden **von Hand im Supabase SQL Editor** ausgeführt, nicht per CLI.
-- Neue Tabellen brauchen eigene `GRANT`s für `authenticated`/`service_role`, sonst schlagen Abfragen trotz passender RLS-Policy fehl.
+- `service_role` bekommt Rechte auf neue Tabellen, Sequenzen und Funktionen seit `20261002000002_default_privileges_service_role.sql` automatisch. Für `authenticated` (alle Logins, auch Portal-Kunden) bleibt jedes Recht bewusst explizit.
+
+### Checkliste für neue Migrationen
+
+1. **RLS einschalten:** `alter table public.<tabelle> enable row level security;`
+2. **Policies schreiben:** Agentur-Daten immer mit `public.current_user_is_staff()` absichern, Portal-Zugriff nur über die Zuordnung zum eigenen Kunden. Ohne Policy für `authenticated` ist die Tabelle für Logins gesperrt (z. B. `bug_reports`, Zugriff nur über Server Actions).
+3. **Rechte für Logins:** nur wenn nötig `grant select[, insert, update, delete] on public.<tabelle> to authenticated;` – in derselben Migration, nicht als Nachzügler.
+4. **Schema-Cache neu laden:** `notify pgrst, 'reload schema';`
+5. **Typen aktualisieren:** `node scripts/gen-types.mjs`
+6. **Im SQL Editor ausführen** und danach im Dashboard bzw. mit einem Skript prüfen, dass Lesen/Schreiben mit der vorgesehenen Rolle klappt.
 - Typen neu erzeugen: `node scripts/gen-types.mjs` (schreibt `src/types/database.ts`).
 
 ## Skripte
