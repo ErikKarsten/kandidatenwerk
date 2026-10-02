@@ -200,6 +200,7 @@ export default async function ClientDetailPage({
       portalUsers={portalUsers}
       client={{
         id: client.id,
+        kanzleistelle_company_id: client.kanzleistelle_company_id ?? null,
         name: client.name,
         contact_email: client.contact_email,
         phone: client.phone,

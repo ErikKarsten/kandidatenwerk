@@ -6,15 +6,11 @@
 // statt sie zweimal zu pflegen.
 import type { SupabaseClient as GenericSupabaseClient } from "@supabase/supabase-js"
 import type { Database, Json } from "@/types/database"
-import { extractMetaContactFields, NAME_KEYS, EMAIL_KEYS, PHONE_KEYS, type MetaLead } from "@/lib/meta-ads-client"
-import { extractCustomFieldsFromDescriptionAI } from "@/lib/leadtable-sync-shared"
+import { extractMetaContactFields, type MetaLead } from "@/lib/meta-ads-client"
 import { extractCleanName } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
-import {
-  getActiveCustomFieldDefinitionsForAgency,
-  recordUnmappedAnswerKeys,
-  type UnmappedAnswer,
-} from "@/lib/custom-field-definitions"
+import { applyFormMapping, loadFormQuestions, rememberFormKeys, resolvePlzFromAnswer } from "@/lib/lead-form-mapping"
+import { nearestPlz } from "@/lib/geocode-plz"
 import { ensureClientAssignment } from "@/lib/client-assignment"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 
@@ -24,62 +20,14 @@ const NOTIFY_MAX_LEAD_AGE_MS = 48 * 60 * 60 * 1000
 
 export const META_FALLBACK_CANDIDATE_STATUS = "neu"
 
-// Meta generiert die Feld-Keys eines Lead-Formulars automatisch aus dem Fragetext
-// (siehe Live-Verifikation vom 16.09.2026, field_data eines echten Testleads) - anders
-// als bei Leadtable (feste, opake question-IDs wie q_gy0zcd) sind sie hier also selbst-
-// sprechend, aber genau deshalb auch NICHT stabil: ändert sich der Fragetext in einem
-// künftigen Formular (andere Formulierung, andere Sprache), ändert sich auch der Key,
-// und diese feste Zuordnung greift dann nicht mehr für dieses Formular. Für unbekannte
-// Keys springt weiterhin die KI-Extraktion (extractCustomFieldsFromDescriptionAI) ein -
-// bei einem neuen Formular mit anders formulierten Fragen hier einfach ergänzen, sobald
-// die tatsächlichen Feld-Keys bekannt sind (z.B. wieder per Live-Testlead prüfen).
-export const META_CUSTOM_FIELD_MAP: Record<string, string> = {
-  "welche_ausbildung_hast_du_absolviert?": "ausbildung",
-  "wann_bist_du_am_besten_telefonisch_erreichbar?": "erreichbarkeit",
-}
-
-// Direkte, KI-freie Zuordnung für die oben bekannten Meta-Feld-Keys - Pendant zu
-// extractLeadtableCustomFields. Übernimmt einen Wert nur, wenn der zugeordnete Feld-Key
-// in der agenturweit gepflegten, aktiven Feldliste auch tatsächlich existiert
-// (Tippfehler-Schutz, ersetzt die frühere FIXED_CUSTOM_FIELD_KEYS-Prüfung seit Schritt
-// 3/3 des Umbaus vom 25.09.2026) und der Wert nicht leer ist.
-export function extractMetaCustomFields(record: Record<string, string>, activeFieldKeys: Set<string>): Record<string, string> {
-  const fields: Record<string, string> = {}
-  for (const [metaKey, fieldName] of Object.entries(META_CUSTOM_FIELD_MAP)) {
-    if (!activeFieldKeys.has(fieldName)) continue
-    const value = record[metaKey]
-    if (typeof value === "string" && value.trim() !== "") {
-      fields[fieldName] = value.trim()
-    }
-  }
-  return fields
-}
-
-// Meta-Feld-Keys, die weder in META_CUSTOM_FIELD_MAP bekannt sind noch zu Name/E-Mail/
-// Telefon gehören - für custom_field_review_queue (Punkt 3 der Anfrage vom 25.09.2026).
-// Anders als bei Leadtable sind Meta-Feld-Keys bereits der Klartext-Fragetext (siehe
-// Kommentar zu META_CUSTOM_FIELD_MAP oben), deshalb hier kein Regex-Filter nötig -
-// alles, was übrig bleibt, ist eine echte, unbekannte Formularfrage.
-const META_CONTACT_KEYS = new Set([...NAME_KEYS, ...EMAIL_KEYS, ...PHONE_KEYS])
-
-export function extractUnmappedMetaKeys(record: Record<string, string>): UnmappedAnswer[] {
-  const knownKeys = new Set(Object.keys(META_CUSTOM_FIELD_MAP))
-  const unmapped: UnmappedAnswer[] = []
-  for (const [key, value] of Object.entries(record)) {
-    if (knownKeys.has(key) || META_CONTACT_KEYS.has(key)) continue
-    const trimmed = value.trim()
-    if (trimmed === "") continue
-    unmapped.push({ rawKey: key, value: trimmed })
-  }
-  return unmapped
-}
-
 export interface MetaSyncCampaign {
   id: string
   title: string
   client_id: string | null
   // Bei Lead-Kampagnen (kind = 'lead', ohne Kunde) kommt die Agentur von hier (T-36).
   agency_id?: string | null
+  // Formular, über das der Lead kam - bestimmt die Feld-Zuordnung (meta_lead_forms).
+  meta_form_id?: string | null
 }
 
 export type ProcessMetaLeadOutcome =
@@ -89,7 +37,7 @@ export type ProcessMetaLeadOutcome =
   | { status: "already_known" }
 
 // Verarbeitet EINEN Meta-Lead für eine Kampagne (Dublettenschutz per meta_lead_id, dann
-// per E-Mail, sonst neuer Kandidat mit KI-Zusatzfelder-Extraktion) - siehe
+// per E-Mail, sonst neuer Kandidat mit Feld-Zuordnung des Formulars) - siehe
 // scripts/meta-leads-sync.ts für den ursprünglichen Kontext/die Kommentare dazu. Wirft
 // bei DB-/KI-Fehlern, statt sie zu schlucken - der Aufrufer (Batch-Sync oder Webhook)
 // entscheidet, wie er damit umgeht.
@@ -108,7 +56,34 @@ export async function processMetaLead(
   if (metaIdLookupError) throw new Error(metaIdLookupError.message)
   if (existingByMetaId) return { status: "already_known" }
 
-  const { name, email, phone, record } = extractMetaContactFields(lead.field_data)
+  const { name: fallbackName, email: fallbackEmail, phone: fallbackPhone, record } = extractMetaContactFields(lead.field_data)
+
+  // Feld-Zuordnung des Formulars (Einstellungen -> Lead-Formulare, Paket 8). Unbekannte
+  // Formulare/Fragen werden mit Vorschlägen vorgemerkt.
+  let agencyId: string | null = campaign.agency_id ?? null
+  if (!agencyId && campaign.client_id) {
+    const { data: clientRow } = await supabase.from("clients").select("agency_id").eq("id", campaign.client_id).maybeSingle()
+    agencyId = clientRow?.agency_id ?? null
+  }
+  const db = supabase as unknown as GenericSupabaseClient
+  const { data: fieldRows } = agencyId
+    ? await supabase.from("custom_field_definitions").select("key").eq("agency_id", agencyId).eq("active", true)
+    : { data: [] }
+  const fieldKeys = new Set((fieldRows ?? []).map((f) => f.key))
+  const questions = campaign.meta_form_id ? await loadFormQuestions(db, campaign.meta_form_id) : null
+  if (campaign.meta_form_id && agencyId) {
+    try {
+      await rememberFormKeys(db, agencyId, campaign.meta_form_id, Object.keys(record), fieldKeys)
+    } catch (err) {
+      console.error(`Formularfragen konnten nicht vorgemerkt werden (${campaign.meta_form_id}):`, err)
+    }
+  }
+  const mapped = applyFormMapping(questions ?? [], record, fieldKeys)
+
+  const email =
+    mapped.email ?? fallbackEmail?.toLowerCase() ?? Object.values(record).find((v) => /^\S+@\S+\.\S+$/.test(v.trim()))?.trim().toLowerCase() ?? null
+  const phone = mapped.phone ?? fallbackPhone
+  const name = mapped.fullName ?? ([mapped.firstName, mapped.lastName].filter(Boolean).join(" ") || fallbackName)
 
   if (!email) return { status: "skipped_no_email" }
 
@@ -165,40 +140,45 @@ export async function processMetaLead(
   }
 
   // 3. Neuer Kandidat: Name bereinigen (gleiche Heuristik wie beim Leadtable-Import),
-  // Zusatzfelder per KI aus den rohen Meta-Formular-Antworten befüllen (record dient
-  // hier als modifiedData-Ersatz).
-  const { firstName, lastName, usedLongNameHeuristic } = extractCleanName(name ?? "")
+  // Zusatzfelder/Beschreibung aus der Formular-Zuordnung.
+  const { firstName, lastName, usedLongNameHeuristic } =
+    mapped.firstName || mapped.lastName
+      ? { firstName: mapped.firstName ?? "", lastName: mapped.lastName ?? "", usedLongNameHeuristic: false }
+      : extractCleanName(name ?? "")
+  const customFields = mapped.fields
 
-  // Agenturweit gepflegte Feldliste des Kunden dieser Kampagne (Schritt 3/3 des Umbaus
-  // vom 25.09.2026) - ohne client_id (noch keinem Kunden zugeordnete Kampagne) bleibt
-  // die Liste leer, KI-Extraktion und die direkte Meta-Feld-Zuordnung finden dann
-  // nichts, was unschädlich ist (Kandidat wird trotzdem angelegt).
-  let agencyId: string | null = campaign.agency_id ?? null
-  if (!agencyId && campaign.client_id) {
-    const { data: clientRow } = await supabase.from("clients").select("agency_id").eq("id", campaign.client_id).maybeSingle()
-    agencyId = clientRow?.agency_id ?? null
-  }
-  const activeFieldDefinitions = agencyId ? await getActiveCustomFieldDefinitionsForAgency(supabase, agencyId) : []
-
-  const aiResult = await extractCustomFieldsFromDescriptionAI(null, record, {}, activeFieldDefinitions)
-  if (aiResult.error) {
-    console.warn(`  [KI-Warnung] Lead ${lead.id}: ${aiResult.error}`)
-  }
-  const activeFieldKeys = new Set(activeFieldDefinitions.map((f) => f.key))
-  // Direkt zugeordnete Werte (bekannte Meta-Feld-Keys, siehe META_CUSTOM_FIELD_MAP)
-  // haben Vorrang vor der KI-Vermutung - deshalb NACH aiResult.fields gespreadet, damit
-  // sie eine unsichere KI-Zuordnung überschreiben. Funktioniert auch, wenn die
-  // KI-Extraktion komplett fehlschlägt (aiResult.fields ist dann nur {}).
-  const customFields = { ...aiResult.fields, ...extractMetaCustomFields(record, activeFieldKeys) }
-
-  // Berufsbild: zuerst aus der eigenen Ausbildungsantwort des Kandidaten ableiten
-  // (verlässlicher als der Kampagnentitel - siehe Diagnose 21.09.2026: vorher wurde
-  // IMMER der Kampagnentitel genutzt, unabhängig davon, was der Kandidat selbst als
-  // Ausbildung angegeben hat). Fallback auf den Kampagnentitel, wenn keine
-  // Ausbildungsantwort vorliegt oder sie sich keinem der vier Berufsbilder zuordnen lässt.
+  // Berufsbild: eigene Angabe (Berufsbild-/Ausbildungsfrage) vor Kampagnentitel.
   const berufsbild =
+    (mapped.berufsbildAnswer && mapKanzleistelleBerufsbild(mapped.berufsbildAnswer)) ||
     (customFields.ausbildung && mapKanzleistelleBerufsbild(customFields.ausbildung)) ||
     mapKanzleistelleBerufsbild(campaign.title)
+
+  // PLZ (wichtigstes Feld fürs Matching): aus der Wohnort-Antwort, sonst geschätzt aus
+  // dem Werbegebiet der Kampagne.
+  let location: { plz: string; lat: number; lng: number } | null = null
+  let locationNote = ""
+  if (mapped.plzAnswer) {
+    const resolved = await resolvePlzFromAnswer(mapped.plzAnswer)
+    if (resolved) {
+      location = resolved
+      if (resolved.fromPlace) locationNote = `PLZ aus Wohnort „${mapped.plzAnswer}“ ermittelt.`
+    }
+  }
+  if (!location) {
+    const { data: area } = await db
+      .from("campaign_ad_areas")
+      .select("lat, lng")
+      .eq("campaign_id", campaign.id)
+      .not("lat", "is", null)
+      .order("adset_active", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const plz = area ? nearestPlz(area.lat, area.lng) : null
+    if (area && plz) {
+      location = { plz, lat: area.lat, lng: area.lng }
+      locationNote = "PLZ geschätzt (kein Wohnort angegeben): Werbegebiet der Meta-Kampagne."
+    }
+  }
 
   const notePrefix = usedLongNameHeuristic ? "[Automatisch bereinigter Name, bitte prüfen] " : ""
 
@@ -210,14 +190,22 @@ export async function processMetaLead(
       email,
       phone: phone ?? null,
       berufsbild,
-      plz: null,
+      plz: location?.plz ?? null,
+      lat: location?.lat ?? null,
+      lng: location?.lng ?? null,
       status: META_FALLBACK_CANDIDATE_STATUS,
       source: "meta_ads",
       campaign_id: campaign.id,
       client_id: campaign.client_id,
       meta_lead_id: lead.id,
       custom_fields: customFields as Json,
-      notes: `${notePrefix}Import direkt aus Meta, Kampagne "${campaign.title}"`,
+      notes: [
+        mapped.descriptionLines.join("\n"),
+        `${notePrefix}Import direkt aus Meta, Kampagne "${campaign.title}"`,
+        locationNote,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
     })
     .select("id")
     .single()
@@ -228,16 +216,6 @@ export async function processMetaLead(
       await ensureClientAssignment(supabase, inserted.id, campaign.client_id)
     } catch (assignmentError) {
       console.error(`Kunden-Zuordnung fehlgeschlagen für Kandidat ${inserted.id}:`, assignmentError)
-    }
-  }
-
-  // Unbekannte Meta-Feld-Keys zur manuellen Prüfung vormerken (Punkt 3 der Anfrage vom
-  // 25.09.2026) - kein automatisches Anlegen neuer Felder.
-  if (agencyId) {
-    try {
-      await recordUnmappedAnswerKeys(supabase, agencyId, inserted.id, extractUnmappedMetaKeys(record))
-    } catch (unmappedError) {
-      console.error(`Unbekannte Zusatzfelder konnten nicht vorgemerkt werden für Kandidat ${inserted.id}:`, unmappedError)
     }
   }
 

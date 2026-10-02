@@ -178,6 +178,60 @@ export async function publishCampaignToKanzleistelle(campaignId: string): Promis
   return { jobId: job.id }
 }
 
+export interface PublishClientResult {
+  firstPublish: boolean
+  published: number
+  errors: { campaign: string; message: string }[]
+}
+
+// Veröffentlicht einen Kunden auf Kanzleistelle24 (Kunden-Stammdaten, Paket 8): legt
+// die Firma an (falls noch nicht geschehen) und veröffentlicht alle aktiven
+// Kanzlei-Kampagnen, die dort noch fehlen. Erneut aufgerufen ("Daten aktualisieren")
+// kommen so neu angelegte Kampagnen dazu.
+export async function publishClientToKanzleistelle(clientId: string): Promise<PublishClientResult> {
+  const kandidatenwerk = createKandidatenwerkClient()
+  const kanzleistelle = createKanzleistelleClient()
+
+  const { data: client, error: clientError } = await kandidatenwerk
+    .from("clients")
+    .select("id, name, kanzleistelle_company_id")
+    .eq("id", clientId)
+    .single()
+  if (clientError || !client) throw new Error(clientError?.message ?? "Kunde nicht gefunden")
+
+  const firstPublish = !client.kanzleistelle_company_id
+  if (firstPublish) {
+    const { data: company, error: companyError } = await kanzleistelle
+      .from("companies")
+      .insert({ name: client.name, is_active: true, user_id: null, admin_notes: "Automatisch aus Kandidatenwerk übernommen" })
+      .select("id")
+      .single()
+    if (companyError) throw new Error(companyError.message)
+    const { error: updateError } = await kandidatenwerk.from("clients").update({ kanzleistelle_company_id: company.id }).eq("id", client.id)
+    if (updateError) throw new Error(updateError.message)
+  }
+
+  const { data: campaigns, error: campaignsError } = await kandidatenwerk
+    .from("campaigns")
+    .select("id, title")
+    .eq("client_id", clientId)
+    .eq("kind", "kanzlei")
+    .eq("status", "active")
+    .is("kanzleistelle_job_id", null)
+  if (campaignsError) throw new Error(campaignsError.message)
+
+  const result: PublishClientResult = { firstPublish, published: 0, errors: [] }
+  for (const campaign of campaigns ?? []) {
+    try {
+      await publishCampaignToKanzleistelle(campaign.id)
+      result.published++
+    } catch (err) {
+      result.errors.push({ campaign: campaign.title, message: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  return result
+}
+
 export type SyncCampaignsError = {
   campaignId: string
   message: string

@@ -12,6 +12,69 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      field_templates: {
+        Row: {
+          id: string
+          agency_id: string
+          name: string
+          field_keys: string[]
+          is_default: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          name: string
+          field_keys?: string[]
+          is_default?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          name?: string
+          field_keys?: string[]
+          is_default?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      meta_lead_forms: {
+        Row: {
+          form_id: string
+          agency_id: string
+          name: string | null
+          page_name: string | null
+          questions: Json
+          reviewed_at: string | null
+          synced_at: string
+          created_at: string
+        }
+        Insert: {
+          form_id: string
+          agency_id: string
+          name?: string | null
+          page_name?: string | null
+          questions?: Json
+          reviewed_at?: string | null
+          synced_at?: string
+          created_at?: string
+        }
+        Update: {
+          form_id?: string
+          agency_id?: string
+          name?: string | null
+          page_name?: string | null
+          questions?: Json
+          reviewed_at?: string | null
+          synced_at?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       client_contacts: {
         Row: {
           id: string
@@ -58,6 +121,7 @@ export type Database = {
           label: string
           sort_order: number
           active: boolean
+          section: string
           created_at: string
           updated_at: string
         }
@@ -68,6 +132,7 @@ export type Database = {
           label: string
           sort_order?: number
           active?: boolean
+          section?: string
           created_at?: string
           updated_at?: string
         }
@@ -78,6 +143,7 @@ export type Database = {
           label?: string
           sort_order?: number
           active?: boolean
+          section?: string
           created_at?: string
           updated_at?: string
         }
@@ -638,6 +704,7 @@ export type Database = {
           lng: number | null
           radius_km: number
           kanzleistelle_job_id: string | null
+          field_template_id: string | null
           leadtable_campaign_id: string | null
           location_id: string | null
           meta_webhook_last_test_at: string | null
@@ -661,6 +728,7 @@ export type Database = {
           lng?: number | null
           radius_km?: number
           kanzleistelle_job_id?: string | null
+          field_template_id?: string | null
           leadtable_campaign_id?: string | null
           location_id?: string | null
           meta_webhook_last_test_at?: string | null
@@ -684,6 +752,7 @@ export type Database = {
           lng?: number | null
           radius_km?: number
           kanzleistelle_job_id?: string | null
+          field_template_id?: string | null
           leadtable_campaign_id?: string | null
           location_id?: string | null
           meta_webhook_last_test_at?: string | null

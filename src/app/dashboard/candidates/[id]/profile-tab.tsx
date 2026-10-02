@@ -21,6 +21,8 @@ export interface CustomFieldDefinition {
   label: string
   sort_order: number
   active: boolean
+  // "stammdaten": steht bei den Stammdaten statt bei den Zusatzfeldern (Paket 8).
+  section?: string
 }
 
 interface ProfileTabProps {
@@ -33,6 +35,8 @@ interface ProfileTabProps {
   plz: string | null
   customFields: Record<string, string> | null
   customFieldDefinitions: CustomFieldDefinition[]
+  // Zusatzfelder laut Feld-Vorlage(n) der zugeordneten Kampagnen, null = alle.
+  templateFieldKeys: string[] | null
 }
 
 export function ProfileTab({
@@ -45,6 +49,7 @@ export function ProfileTab({
   plz,
   customFields,
   customFieldDefinitions,
+  templateFieldKeys,
 }: ProfileTabProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -61,7 +66,16 @@ export function ProfileTab({
   const [newKey, setNewKey] = useState("")
   const [newValue, setNewValue] = useState("")
 
+  const [showHiddenFields, setShowHiddenFields] = useState(false)
   const activeFieldDefinitions = customFieldDefinitions.filter((f) => f.active).sort((a, b) => a.sort_order - b.sort_order)
+  const stammdatenFields = activeFieldDefinitions.filter((f) => f.section === "stammdaten")
+  const zusatzFields = activeFieldDefinitions.filter((f) => f.section !== "stammdaten")
+  // Reihenfolge/Auswahl laut Vorlage; befüllte Felder außerhalb der Vorlage bleiben
+  // über "Weitere Angaben" erreichbar, damit intern nichts verloren wirkt.
+  const shownZusatzFields = templateFieldKeys
+    ? templateFieldKeys.map((k) => zusatzFields.find((f) => f.key === k)).filter((f): f is CustomFieldDefinition => !!f)
+    : zusatzFields
+  const hiddenZusatzFields = zusatzFields.filter((f) => !shownZusatzFields.includes(f) && (localCustom[f.key] ?? "").trim() !== "")
   // ALLE bekannten Keys (auch gerade deaktivierte Felder) - ein Wert unter einem
   // deaktivierten Feld soll nicht fälschlich unter "Weitere Felder" auftauchen,
   // sondern einfach ausgeblendet bleiben, bis das Feld reaktiviert wird.
@@ -83,6 +97,16 @@ export function ProfileTab({
       else next[key] = value
       return next
     })
+  }
+
+  function startEdit() {
+    setLocalFirst(firstName)
+    setLocalLast(lastName)
+    setLocalEmail(email ?? "")
+    setLocalPhone(phone ?? "")
+    setLocalBerufsbild(berufsbild ?? "")
+    setLocalPlz(plz ?? "")
+    setEditMode(true)
   }
 
   function handleCancel() {
@@ -131,7 +155,7 @@ export function ProfileTab({
         <span className="text-sm font-semibold uppercase tracking-wide text-gray-400">Profil</span>
         {!editMode && (
           <button
-            onClick={() => setEditMode(true)}
+            onClick={startEdit}
             className="rounded-md px-3 py-1.5 text-sm font-medium text-white"
             style={{ backgroundColor: "#1e56a0" }}
           >
@@ -148,23 +172,25 @@ export function ProfileTab({
             <FieldRow label="Vorname" editMode={editMode}>
               {editMode ? (
                 <input className={inputClass} style={inputStyle} value={localFirst} onChange={(e) => setLocalFirst(e.target.value)} />
-              ) : (localFirst || "—")}
+              ) : (firstName || "—")}
             </FieldRow>
             <FieldRow label="Nachname" editMode={editMode}>
               {editMode ? (
                 <input className={inputClass} style={inputStyle} value={localLast} onChange={(e) => setLocalLast(e.target.value)} />
-              ) : (localLast || "—")}
+              ) : (lastName || "—")}
             </FieldRow>
             <FieldRow label="E-Mail" editMode={editMode}>
               {editMode ? (
                 <input className={inputClass} style={inputStyle} type="email" value={localEmail} onChange={(e) => setLocalEmail(e.target.value)} />
-              ) : (localEmail || "—")}
+              ) : (email || "—")}
             </FieldRow>
             <FieldRow label="Telefon" editMode={editMode}>
               {editMode ? (
                 <input className={inputClass} style={inputStyle} type="tel" value={localPhone} onChange={(e) => setLocalPhone(e.target.value)} />
-              ) : (localPhone || "—")}
+              ) : (phone || "—")}
             </FieldRow>
+            {/* Anzeige direkt aus den Props: eine Änderung im Berufsbild-Dropdown oben im
+                Kopf steht so sofort auch hier. */}
             <FieldRow label="Berufsbild" editMode={editMode}>
               {editMode ? (
                 <select
@@ -178,13 +204,16 @@ export function ProfileTab({
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
-              ) : (BERUFSBILD_OPTIONS.find((o) => o.value === localBerufsbild)?.label || "—")}
+              ) : (BERUFSBILD_OPTIONS.find((o) => o.value === berufsbild)?.label || "—")}
             </FieldRow>
             <FieldRow label="PLZ" editMode={editMode}>
               {editMode ? (
                 <input className={inputClass} style={inputStyle} value={localPlz} onChange={(e) => setLocalPlz(e.target.value)} maxLength={5} inputMode="numeric" />
-              ) : (localPlz || "—")}
+              ) : (plz || "—")}
             </FieldRow>
+            {stammdatenFields.map(({ key, label }) => (
+              <CustomFieldRow key={key} candidateId={candidateId} fieldKey={key} label={label} value={localCustom[key] ?? ""} onSaved={handleCustomFieldSaved} />
+            ))}
           </dl>
         </fieldset>
 
@@ -193,7 +222,8 @@ export function ProfileTab({
           <legend className="px-1 text-xs font-semibold text-gray-400">Zusatzfelder</legend>
           <dl className="mt-1 flex flex-col gap-3">
             {/* Agenturweit gepflegte, aktive Felder — in der konfigurierten Reihenfolge, direkt inline editierbar */}
-            {activeFieldDefinitions.map(({ key, label }) => (
+            {shownZusatzFields.length === 0 && <p className="text-sm text-gray-400">Die Feld-Vorlage enthält keine Zusatzfelder.</p>}
+            {shownZusatzFields.map(({ key, label }) => (
               <CustomFieldRow
                 key={key}
                 candidateId={candidateId}
@@ -203,6 +233,21 @@ export function ProfileTab({
                 onSaved={handleCustomFieldSaved}
               />
             ))}
+
+            {hiddenZusatzFields.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowHiddenFields(!showHiddenFields)}
+                className="w-fit text-xs font-medium hover:underline"
+                style={{ color: "#1e56a0" }}
+              >
+                {showHiddenFields ? "Weitere Angaben ausblenden" : `Weitere Angaben außerhalb der Vorlage (${hiddenZusatzFields.length})`}
+              </button>
+            )}
+            {showHiddenFields &&
+              hiddenZusatzFields.map(({ key, label }) => (
+                <CustomFieldRow key={key} candidateId={candidateId} fieldKey={key} label={label} value={localCustom[key] ?? ""} onSaved={handleCustomFieldSaved} />
+              ))}
 
             {/* Extra Keys: in custom_fields, aber zu keinem bekannten Feld gehörend (z.B. ältere Imports) */}
             {extraKeys.length > 0 && (

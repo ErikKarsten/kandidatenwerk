@@ -2,14 +2,13 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { RefreshCw, ListTodo } from "lucide-react"
+import { ListTodo } from "lucide-react"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import {
   saveDescriptionAction,
   addNoteAction,
   archiveCandidateAction,
   deleteCandidateAction,
-  refreshLeadtableCandidateAction,
   updateCandidateBerufsbildAction,
 } from "./actions"
 import { ProfileTab, type CustomFieldDefinition } from "./profile-tab"
@@ -65,12 +64,14 @@ interface CandidateDetailProps {
   clientNotes: ClientNote[]
   profiles: ProfileOption[]
   customFieldDefinitions: CustomFieldDefinition[]
+  // Zusatzfelder laut Feld-Vorlage(n), null = alle (Paket 8).
+  templateFieldKeys: string[] | null
   kanzleiCampaigns: KanzleiCampaignOption[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, kanzleiCampaigns }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung">("profil")
@@ -80,8 +81,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
   const [modalError, setModalError] = useState<string | null>(null)
   const [archivePending, startArchiveTransition] = useTransition()
   const [deletePending, startDeleteTransition] = useTransition()
-  const [refreshPending, startRefreshTransition] = useTransition()
-  const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "warning" | "error"; text: string } | null>(null)
   const [taskModalOpen, setTaskModalOpen] = useState(false)
 
   const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
@@ -112,24 +111,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
     startStatusTransition(async () => {
       await updateCandidateStatusAction(candidate.id, newStatus, candidate.campaign_id ?? undefined)
       router.refresh()
-    })
-  }
-
-  function handleLeadtableRefresh() {
-    setRefreshMessage(null)
-    startRefreshTransition(async () => {
-      const result = await refreshLeadtableCandidateAction(candidate.id)
-      if (result.success) {
-        const baseText = result.changedFields.length > 0 ? `Aktualisiert: ${result.changedFields.join(", ")}` : "Bereits aktuell"
-        setRefreshMessage(
-          result.aiWarning
-            ? { type: "warning", text: `${baseText}. ${result.aiWarning}` }
-            : { type: "success", text: baseText }
-        )
-        router.refresh()
-      } else {
-        setRefreshMessage({ type: "error", text: result.error })
-      }
     })
   }
 
@@ -261,18 +242,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
               </select>
               {berufsbildOrigin && <span className="text-xs text-gray-400">{berufsbildOrigin}</span>}
             </div>
-            {candidate.source === "leadtable" && (
-              <button
-                type="button"
-                onClick={handleLeadtableRefresh}
-                disabled={refreshPending}
-                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-                style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-              >
-                <RefreshCw size={12} className={refreshPending ? "animate-spin" : undefined} />
-                {refreshPending ? "Wird aktualisiert…" : "Mit Leadtable aktualisieren"}
-              </button>
-            )}
           </div>
           <button
             onClick={() => { setModalStep("choice"); setModalError(null) }}
@@ -282,17 +251,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             Löschen
           </button>
         </div>
-        {refreshMessage && (
-          <p
-            className="mt-2 text-xs"
-            style={{
-              color:
-                refreshMessage.type === "success" ? "#1a9a6a" : refreshMessage.type === "warning" ? "#b45309" : "#dc2626",
-            }}
-          >
-            {refreshMessage.text}
-          </p>
-        )}
         {!candidate.berufsbild && (
           <p className="mt-2 text-xs font-medium text-red-600">
             Ohne Berufsbild gibt es kein Matching und keine passenden Kanzlei-Kampagnen.
@@ -356,6 +314,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                 plz={candidate.plz}
                 customFields={candidate.custom_fields}
                 customFieldDefinitions={customFieldDefinitions}
+                templateFieldKeys={templateFieldKeys}
               />
             )}
             {tab === "dateien" && (

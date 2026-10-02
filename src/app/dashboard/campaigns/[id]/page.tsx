@@ -20,7 +20,7 @@ export default async function CampaignDetailPage({
     : { data: null }
   const emailTemplates = ownProfile?.agency_id ? await getEmailTemplates(ownProfile.agency_id) : []
 
-  const [{ data: campaign }, { data: candidates }, { data: automations }, { data: clientRows }] = await Promise.all([
+  const [{ data: campaign }, { data: candidates }, { data: automations }, { data: clientRows }, { data: templateRows }] = await Promise.all([
     supabase
       .from("campaigns")
       .select("*, clients(id, name)")
@@ -39,6 +39,7 @@ export default async function CampaignDetailPage({
       .order("created_at", { ascending: true }),
     // Für die "Duplizieren"/"Verschieben"-Kunde-Auswahl (campaign-detail.tsx).
     supabase.from("clients").select("id, name").order("name", { ascending: true }),
+    supabase.from("field_templates").select("id, name, is_default").order("name"),
   ])
 
   if (!campaign) notFound()
@@ -84,6 +85,7 @@ export default async function CampaignDetailPage({
         leadtable_campaign_id: campaign.leadtable_campaign_id ?? null,
         kanzleistelle_job_id: campaign.kanzleistelle_job_id ?? null,
         kind: campaign.kind,
+        field_template_id: campaign.field_template_id ?? null,
         meta_webhook_last_test_at: campaign.meta_webhook_last_test_at ?? null,
         client,
       }}
@@ -92,6 +94,7 @@ export default async function CampaignDetailPage({
       automations={(automations ?? []) as any}
       emailTemplates={emailTemplates}
       clients={clientRows ?? []}
+      fieldTemplates={templateRows ?? []}
     />
   )
 }

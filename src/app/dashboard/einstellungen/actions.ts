@@ -311,6 +311,7 @@ export interface CustomFieldDefinition {
   label: string
   sort_order: number
   active: boolean
+  section: string
 }
 
 async function requireAgencyAdmin(
@@ -338,7 +339,7 @@ export async function getCustomFieldDefinitions(): Promise<CustomFieldDefinition
   if (staffError) return []
   const { data } = await supabase
     .from("custom_field_definitions")
-    .select("id, key, label, sort_order, active")
+    .select("id, key, label, sort_order, active, section")
     .order("sort_order", { ascending: true })
   return data ?? []
 }
@@ -361,7 +362,8 @@ function slugifyFieldKey(label: string): string {
 
 export async function createCustomFieldDefinitionAction(
   agencyId: string,
-  label: string
+  label: string,
+  section: "stammdaten" | "zusatz" = "zusatz"
 ): Promise<{ error: string } | null> {
   const trimmedLabel = label.trim()
   if (!trimmedLabel) return { error: "Bezeichnung ist ein Pflichtfeld." }
@@ -387,6 +389,7 @@ export async function createCustomFieldDefinitionAction(
     key,
     label: trimmedLabel,
     sort_order: nextSortOrder,
+    section: section === "stammdaten" ? "stammdaten" : "zusatz",
   })
   if (error) {
     if (error.code === "23505") {

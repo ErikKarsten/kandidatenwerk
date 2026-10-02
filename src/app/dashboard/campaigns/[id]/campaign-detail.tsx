@@ -3,15 +3,13 @@
 import { useState, useTransition, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronLeft, Plus, Pencil, LayoutGrid, List, Search, RefreshCw, Globe } from "lucide-react"
+import { ChevronLeft, Plus, Pencil, LayoutGrid, List, Search, Globe } from "lucide-react"
 import {
   updateCampaignTitleAction,
   archiveCampaignAction,
   deleteCampaignAction,
   deleteCampaignWithCandidatesAction,
   getCampaignCandidatesForExport,
-  refreshLeadtableCampaignAction,
-  publishCampaignToKanzleistelleAction,
   duplicateCampaignAction,
   moveCampaignToClientAction,
 } from "./actions"
@@ -90,6 +88,7 @@ interface Campaign {
   meta_webhook_last_test_at: string | null
   client: { id: string; name: string } | null
   kind: string
+  field_template_id?: string | null
 }
 
 interface ClientOption {
@@ -103,6 +102,7 @@ interface CampaignDetailProps {
   automations: Automation[]
   emailTemplates: EmailTemplate[]
   clients: ClientOption[]
+  fieldTemplates: { id: string; name: string; is_default: boolean }[]
 }
 
 type ModalStep = null | "choice" | "delete_options"
@@ -132,7 +132,7 @@ function triggerCSVDownload(csv: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function CampaignDetail({ campaign, candidates, automations, emailTemplates, clients }: CampaignDetailProps) {
+export function CampaignDetail({ campaign, candidates, automations, emailTemplates, clients, fieldTemplates }: CampaignDetailProps) {
   const [tab, setTab] = useState<"kandidaten" | "matches" | "einrichtung" | "automatisierungen">("kandidaten")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [selectedOption, setSelectedOption] = useState<CandidateOption | null>(null)
@@ -151,10 +151,6 @@ export function CampaignDetail({ campaign, candidates, automations, emailTemplat
   const [moveIncludeLeads, setMoveIncludeLeads] = useState(false)
   const [moveError, setMoveError] = useState<string | null>(null)
   const [movePending, startMoveTransition] = useTransition()
-  const [refreshPending, startRefreshTransition] = useTransition()
-  const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
-  const [publishPending, startPublishTransition] = useTransition()
-  const [publishMessage, setPublishMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const statusColors = CAMPAIGN_STATUS_COLORS[campaign.status] ?? CAMPAIGN_STATUS_COLORS.completed
   const router = useRouter()
 
@@ -212,38 +208,6 @@ export function CampaignDetail({ campaign, candidates, automations, emailTemplat
     startArchiveTransition(async () => {
       const result = await archiveCampaignAction(campaign.id)
       if (result?.error) setModalError(result.error)
-    })
-  }
-
-  function handleLeadtableRefresh() {
-    setRefreshMessage(null)
-    startRefreshTransition(async () => {
-      const result = await refreshLeadtableCampaignAction(campaign.id)
-      if (result.success) {
-        const parts: string[] = []
-        if (result.newCandidates > 0) parts.push(`${result.newCandidates} neue Kandidat${result.newCandidates !== 1 ? "en" : ""}`)
-        if (result.archived) parts.push("bei Leadtable archiviert")
-        setRefreshMessage({
-          type: "success",
-          text: parts.length > 0 ? parts.join(", ") : "Bereits aktuell",
-        })
-        router.refresh()
-      } else {
-        setRefreshMessage({ type: "error", text: result.error })
-      }
-    })
-  }
-
-  function handlePublishToKanzleistelle() {
-    setPublishMessage(null)
-    startPublishTransition(async () => {
-      const result = await publishCampaignToKanzleistelleAction(campaign.id)
-      if (result.success) {
-        setPublishMessage({ type: "success", text: "Auf Kanzleistelle24 veröffentlicht" })
-        router.refresh()
-      } else {
-        setPublishMessage({ type: "error", text: result.error })
-      }
     })
   }
 
@@ -615,19 +579,8 @@ export function CampaignDetail({ campaign, candidates, automations, emailTemplat
                 <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: statusColors.dot }} />
                 {CAMPAIGN_STATUS_LABEL[campaign.status] ?? campaign.status}
               </span>
-              {campaign.leadtable_campaign_id && (
-                <button
-                  type="button"
-                  onClick={handleLeadtableRefresh}
-                  disabled={refreshPending}
-                  className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-                  style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-                >
-                  <RefreshCw size={12} className={refreshPending ? "animate-spin" : undefined} />
-                  {refreshPending ? "Wird aktualisiert…" : "Mit Leadtable aktualisieren"}
-                </button>
-              )}
-              {campaign.kanzleistelle_job_id ? (
+              {/* Veröffentlichen läuft seit Paket 8 über die Kunden-Stammdaten. */}
+              {campaign.kanzleistelle_job_id && (
                 <span
                   className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
                   style={{ backgroundColor: "#1a9a6a18", color: "#1a9a6a" }}
@@ -635,18 +588,7 @@ export function CampaignDetail({ campaign, candidates, automations, emailTemplat
                   <Globe size={12} />
                   Auf Kanzleistelle24 veröffentlicht
                 </span>
-              ) : campaign.status === "active" ? (
-                <button
-                  type="button"
-                  onClick={handlePublishToKanzleistelle}
-                  disabled={publishPending}
-                  className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-                  style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-                >
-                  <Globe size={12} className={publishPending ? "animate-spin" : undefined} />
-                  {publishPending ? "Wird veröffentlicht…" : "Auf Kanzleistelle24 veröffentlichen"}
-                </button>
-              ) : null}
+              )}
             </div>
             <p className="text-sm text-gray-500">
               {campaign.client?.name ?? "Kein Kunde"}
@@ -654,22 +596,6 @@ export function CampaignDetail({ campaign, candidates, automations, emailTemplat
             </p>
             {campaign.description && (
               <p className="mt-1 text-sm text-gray-600">{campaign.description}</p>
-            )}
-            {refreshMessage && (
-              <p
-                className="mt-1 text-xs"
-                style={{ color: refreshMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
-              >
-                {refreshMessage.text}
-              </p>
-            )}
-            {publishMessage && (
-              <p
-                className="mt-1 text-xs"
-                style={{ color: publishMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
-              >
-                {publishMessage.text}
-              </p>
             )}
           </div>
 
@@ -975,6 +901,9 @@ export function CampaignDetail({ campaign, candidates, automations, emailTemplat
             plz={campaign.plz}
             radiusKm={campaign.radius_km}
             metaWebhookLastTestAt={campaign.meta_webhook_last_test_at}
+            kind={campaign.kind}
+            fieldTemplateId={campaign.field_template_id ?? null}
+            fieldTemplates={fieldTemplates}
           />
         </div>
       )}

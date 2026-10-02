@@ -14,11 +14,8 @@ import {
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
-import { matchCampaignToCandidates, matchCandidateToCampaigns } from "@/lib/matching"
-import { fetchAllCampaigns } from "@/lib/leadtable-import-customers"
-import { importLeadtableCampaign } from "@/lib/leadtable-import"
+import { matchCampaignToCandidates } from "@/lib/matching"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
-import { publishCampaignToKanzleistelle } from "@/lib/sync-kanzleistelle-jobs"
 import { fetchMetaPages, fetchMetaLeadForms, createMetaTestLead, buildFormToPageAccessTokenMap, type MetaPage, type MetaLeadForm } from "@/lib/meta-ads-client"
 import { ensureClientAssignment } from "@/lib/client-assignment"
 import type { TablesUpdate } from "@/types/database"
@@ -171,10 +168,13 @@ export async function updateCampaignSettingsAction(
     .eq("id", campaignId)
     .single()
 
-  const update: TablesUpdate<"campaigns"> = {
-    meta_form_id: meta_form_id || null,
-    meta_form_name: meta_form_name || null,
-    meta_field_mapping,
+  // Meta-Formular nur bei Lead-Kampagnen (Kanzlei-Kampagnen schicken stattdessen die
+  // Feld-Vorlage, Paket 8).
+  const update: TablesUpdate<"campaigns"> = formData.has("meta_form_id")
+    ? { meta_form_id: meta_form_id || null, meta_form_name: meta_form_name || null, meta_field_mapping }
+    : {}
+  if (formData.has("field_template_id")) {
+    update.field_template_id = (formData.get("field_template_id") as string) || null
   }
 
   let matchingRelevantChanged = false
@@ -225,113 +225,6 @@ export async function updateCampaignSettingsAction(
 }
 
 
-// Veröffentlicht eine Kampagne als Jobangebot auf Kanzleistelle24 (Direct-DB-Insert über
-// den Service-Key, siehe publishCampaignToKanzleistelle) - manuell ausgelöst über den
-// Button auf der Kampagnen-Detailseite, siehe campaign-detail.tsx.
-export async function publishCampaignToKanzleistelleAction(
-  campaignId: string
-): Promise<{ success: true } | { success: false; error: string }> {
-  const supabase = await createSupabaseServerClient()
-
-  // Nur Staff - ruft externe Dienste bzw. schreibt mit Service-Role-Rechten
-  // (Security-Review 02.10.2026).
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return { success: false, error: staffError.error }
-
-  try {
-    await publishCampaignToKanzleistelle(campaignId)
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) }
-  }
-
-  revalidatePath(`/dashboard/campaigns/${campaignId}`)
-  return { success: true }
-}
-
-export async function refreshLeadtableCampaignAction(
-  campaignId: string
-): Promise<
-  { success: true; newCandidates: number; archived: boolean } | { success: false; error: string }
-> {
-  const supabase = await createSupabaseServerClient()
-
-  // Nur Staff - ruft externe Dienste bzw. schreibt mit Service-Role-Rechten
-  // (Security-Review 02.10.2026).
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return { success: false, error: staffError.error }
-
-  const { data: campaign, error: fetchError } = await supabase
-    .from("campaigns")
-    .select("id, title, status, leadtable_campaign_id, client_id, clients(leadtable_customer_id)")
-    .eq("id", campaignId)
-    .single()
-
-  if (fetchError || !campaign) return { success: false, error: "Kampagne nicht gefunden." }
-  if (!campaign.leadtable_campaign_id) {
-    return { success: false, error: "Keine Leadtable-Kampagnen-ID hinterlegt, kein Abgleich möglich." }
-  }
-
-  const clientRow = Array.isArray(campaign.clients) ? campaign.clients[0] : campaign.clients
-  const leadtableCustomerId = clientRow?.leadtable_customer_id ?? null
-
-  // Archiviert-Status: es gibt bei Leadtable keinen Single-Item-GET für eine Kampagne,
-  // nur /campaign/all/{customerId} als Liste (siehe fetchAllCampaigns) - deshalb wird
-  // hier die komplette Kampagnenliste des zugehörigen Kunden geladen und per _id
-  // gefiltert. Ohne bekannte Leadtable-Kunden-ID (Client nicht verknüpft oder ohne
-  // eigene leadtable_customer_id) wird der Archiviert-Check übersprungen, statt den
-  // ganzen Abgleich abzubrechen - das Nachholen neuer Kandidaten funktioniert davon
-  // unabhängig.
-  let archived = false
-
-  if (leadtableCustomerId) {
-    try {
-      const leadtableCampaigns = await fetchAllCampaigns(leadtableCustomerId)
-      const match = leadtableCampaigns.find((c) => c._id === campaign.leadtable_campaign_id)
-      archived = match?.archived ?? false
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      return { success: false, error: `Leadtable-API-Fehler beim Archiviert-Check: ${message}` }
-    }
-
-    if (archived && campaign.status !== ARCHIVED_STATUS) {
-      const { error: archiveError } = await supabase
-        .from("campaigns")
-        .update({ status: ARCHIVED_STATUS })
-        .eq("id", campaignId)
-      if (archiveError) return { success: false, error: `Fehler beim Archivieren: ${archiveError.message}` }
-    }
-  }
-
-  let importResult
-  try {
-    importResult = await importLeadtableCampaign(
-      campaign.leadtable_campaign_id,
-      campaign.title,
-      campaign.id
-    )
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { success: false, error: `Import neuer Kandidaten fehlgeschlagen: ${message}` }
-  }
-
-  // Matching pro neuem Kandidaten einzeln anstoßen (nicht fatal, falls ein einzelner
-  // Match-Lauf fehlschlägt - siehe gleiches Muster in updateCampaignSettingsAction oben).
-  for (const candidateId of importResult.createdCandidateIds) {
-    try {
-      await matchCandidateToCampaigns(supabase, candidateId)
-    } catch (matchError) {
-      console.error("Matching fehlgeschlagen für neuen Kandidaten", candidateId, matchError)
-    }
-  }
-
-  revalidatePath(`/dashboard/campaigns/${campaignId}`)
-
-  return { success: true, newCandidates: importResult.created, archived }
-}
-
-// Für den Seite-/Formular-Auswähler im Meta-Lead-Form-Feld (settings-tab.tsx) -
-// analog zum Leadtable-Direktintegrations-Dialog: erst Seite wählen, dann Formular
-// dieser Seite, statt eine rohe Formular-ID von Hand einzutippen.
 export async function listMetaPagesAction(): Promise<
   { success: true; pages: MetaPage[] } | { success: false; error: string }
 > {

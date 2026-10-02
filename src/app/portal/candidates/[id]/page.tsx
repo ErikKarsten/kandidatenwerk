@@ -6,6 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { NotesSection, type Note } from "./notes-section"
 import { PortalFilesList, type PortalFile } from "./files-list"
 import { PortalStatusSelector } from "./status-selector"
+import { resolveTemplateFieldKeys } from "@/lib/field-templates"
 
 export default async function PortalCandidateDetailPage({
   params,
@@ -22,7 +23,7 @@ export default async function PortalCandidateDetailPage({
     supabase.from("candidates").select("*").eq("id", id).single(),
     supabase
       .from("client_assignments")
-      .select("id, status, client_id")
+      .select("id, status, client_id, campaign_id")
       .eq("candidate_id", id)
       .is("removed_at", null)
       .limit(1)
@@ -47,12 +48,31 @@ export default async function PortalCandidateDetailPage({
   const { data: customFieldDefinitionRows } = assignedClient?.agency_id
     ? await admin
         .from("custom_field_definitions")
-        .select("id, key, label, sort_order")
+        .select("id, key, label, sort_order, section")
         .eq("agency_id", assignedClient.agency_id)
         .eq("active", true)
         .order("sort_order", { ascending: true })
     : { data: [] }
-  const customFieldDefinitions = customFieldDefinitionRows ?? []
+  const allFieldDefinitions = customFieldDefinitionRows ?? []
+
+  // Feld-Vorlage der Kanzlei-Kampagne, über die der Kandidat zugeordnet ist (Paket 8).
+  const [{ data: templateRows }, { data: assignmentCampaign }] = await Promise.all([
+    assignedClient?.agency_id
+      ? admin.from("field_templates").select("id, field_keys, is_default").eq("agency_id", assignedClient.agency_id)
+      : Promise.resolve({ data: [] }),
+    assignment.campaign_id
+      ? admin.from("campaigns").select("field_template_id").eq("id", assignment.campaign_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+  const templateKeys = resolveTemplateFieldKeys(
+    templateRows ?? [],
+    assignment.campaign_id ? [assignmentCampaign?.field_template_id ?? null] : []
+  )
+  const stammdatenFieldDefinitions = allFieldDefinitions.filter((f) => f.section === "stammdaten")
+  const zusatzFieldDefinitions = allFieldDefinitions.filter((f) => f.section !== "stammdaten")
+  const customFieldDefinitions = templateKeys
+    ? templateKeys.map((k) => zusatzFieldDefinitions.find((f) => f.key === k)).filter((f): f is (typeof zusatzFieldDefinitions)[number] => !!f)
+    : zusatzFieldDefinitions
 
   const { data: fileRows } = await supabase
     .from("candidate_files")
@@ -116,6 +136,11 @@ export default async function PortalCandidateDetailPage({
           <FieldRow label="E-Mail">{candidate.email || "—"}</FieldRow>
           <FieldRow label="Telefon">{candidate.phone || "—"}</FieldRow>
           <FieldRow label="PLZ">{candidate.plz || "—"}</FieldRow>
+          {stammdatenFieldDefinitions.map((f) => (
+            <FieldRow key={f.key} label={f.label}>
+              {customFields[f.key]?.trim() || "—"}
+            </FieldRow>
+          ))}
         </div>
       </div>
 

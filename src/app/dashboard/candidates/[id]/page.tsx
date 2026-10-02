@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CandidateDetail } from "./candidate-detail"
+import { resolveTemplateFieldKeys } from "@/lib/field-templates"
 
 export default async function CandidateDetailPage({
   params,
@@ -39,7 +40,7 @@ export default async function CandidateDetailPage({
     // gleichzeitig mehreren Kanzleien zugeordnet sein, siehe assignToCampaignAction.
     supabase
       .from("client_assignments")
-      .select("id, status, client_id, campaign_id, campaigns(title)")
+      .select("id, status, client_id, campaign_id, campaigns(title, field_template_id)")
       .eq("candidate_id", id)
       .is("removed_at", null),
     supabase
@@ -56,7 +57,7 @@ export default async function CandidateDetailPage({
     // einem gerade deaktivierten Feld nicht fälschlich unter "Weitere Felder" auftaucht.
     supabase
       .from("custom_field_definitions")
-      .select("id, key, label, sort_order, active")
+      .select("id, key, label, sort_order, active, section")
       .order("sort_order", { ascending: true }),
     // Ziele für "Weiterschieben" im Reiter Zuordnung: alle aktiven Kanzlei-Kampagnen.
     supabase
@@ -179,6 +180,15 @@ export default async function CandidateDetailPage({
     }
   })
 
+  // Feld-Vorlagen der zugeordneten Kanzlei-Kampagnen bestimmen die Zusatzfelder (Paket 8).
+  const { data: templateRows } = await supabase.from("field_templates").select("id, field_keys, is_default")
+  const templateFieldKeys = resolveTemplateFieldKeys(
+    templateRows ?? [],
+    (assignmentRows ?? [])
+      .filter((a) => a.campaign_id)
+      .map((a) => (Array.isArray(a.campaigns) ? a.campaigns[0] : a.campaigns)?.field_template_id ?? null)
+  )
+
   const clients = (clientRows ?? []).map((c) => ({ id: c.id, name: c.name }))
   const profiles = (profileRows ?? []).map((p) => ({ id: p.id, full_name: p.full_name }))
 
@@ -192,6 +202,7 @@ export default async function CandidateDetailPage({
       clientNotes={clientNotes}
       profiles={profiles}
       customFieldDefinitions={customFieldDefinitionRows ?? []}
+      templateFieldKeys={templateFieldKeys}
       kanzleiCampaigns={kanzleiCampaigns}
     />
   )
