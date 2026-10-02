@@ -17,7 +17,7 @@ import { PortalAccessSection, type PortalUser } from "./portal-access-section"
 import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import type { DashboardKpis } from "@/lib/kpis"
-import { AvailableCandidatesPanel } from "./available-candidates-panel"
+import { AvailableCandidatesPanel, type KanzleiCampaign } from "./available-candidates-panel"
 import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import {
   Table,
@@ -92,6 +92,8 @@ interface AssignedCandidate {
   lastName: string
   berufsbild: string | null
   campaignTitle: string | null
+  assignmentCampaignId: string | null
+  assignmentCampaignTitle: string | null
 }
 
 interface ClientDetailProps {
@@ -107,7 +109,7 @@ interface ClientDetailProps {
   files: ClientFileItem[]
   portalUsers: PortalUser[]
   assignedCandidates: AssignedCandidate[]
-  activeCampaignCount: number
+  kanzleiCampaigns: KanzleiCampaign[]
   kpis: DashboardKpis
 }
 
@@ -126,7 +128,7 @@ export function ClientDetail({
   files,
   portalUsers,
   assignedCandidates,
-  activeCampaignCount,
+  kanzleiCampaigns,
   kpis,
 }: ClientDetailProps) {
   const router = useRouter()
@@ -476,8 +478,7 @@ export function ClientDetail({
             <KandidatenTab
               clientId={client.id}
               candidates={assignedCandidates}
-              activeCampaignCount={activeCampaignCount}
-              clientHasLocation={client.lat !== null && client.lng !== null}
+              kanzleiCampaigns={kanzleiCampaigns}
             />
           )}
           {tab === "stammdaten" && (
@@ -712,15 +713,42 @@ function KampagnenTab({
 function KandidatenTab({
   clientId,
   candidates,
-  activeCampaignCount,
-  clientHasLocation,
+  kanzleiCampaigns,
 }: {
   clientId: string
   candidates: AssignedCandidate[]
-  activeCampaignCount: number
-  clientHasLocation: boolean
+  kanzleiCampaigns: KanzleiCampaign[]
 }) {
-  const [view, setView] = useState<"zugeordnet" | "verfuegbar">(candidates.length === 0 ? "verfuegbar" : "zugeordnet")
+  const [view, setView] = useState<"zugeordnet" | "verfuegbar">(
+    candidates.length === 0 && kanzleiCampaigns.length > 0 ? "verfuegbar" : "zugeordnet"
+  )
+
+  // Zuordnungen nach Kanzlei-Kampagne gruppiert (Atlas T-33); ältere Zuordnungen ohne
+  // Kampagne unter "Kanzlei allgemein".
+  const sortedCandidates = [...candidates].sort((a, b) => {
+    if (!a.assignmentCampaignTitle !== !b.assignmentCampaignTitle) return a.assignmentCampaignTitle ? -1 : 1
+    return (a.assignmentCampaignTitle ?? "").localeCompare(b.assignmentCampaignTitle ?? "")
+  })
+
+  // Ohne aktive Kanzlei-Kampagne ist noch nicht beschrieben, wen die Kanzlei sucht -
+  // deshalb keine Kandidatensuche, sondern der Weg zur Kampagne.
+  if (kanzleiCampaigns.length === 0 && candidates.length === 0) {
+    return (
+      <div className="flex flex-col items-start gap-3 rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
+        <p className="text-sm text-gray-700">
+          Für diesen Kunden ist noch keine aktive Kampagne angelegt. Erst die Kampagne legt fest, welches Berufsbild
+          an welchem Standort gesucht wird – danach lassen sich hier passende Kandidaten finden und zuordnen.
+        </p>
+        <Link
+          href={`/dashboard/campaigns/new?client_id=${clientId}`}
+          className="rounded-md px-4 py-2 text-sm font-medium text-white"
+          style={{ backgroundColor: "#1e56a0" }}
+        >
+          Kampagne anlegen
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -745,15 +773,18 @@ function KandidatenTab({
         ))}
       </div>
 
-      {activeCampaignCount === 0 && (
-        <p className="rounded-md border px-3 py-2 text-xs" style={{ borderColor: "#fcd34d", backgroundColor: "#fffbeb", color: "#92400e" }}>
-          Dieser Kunde hat keine aktive Kampagne. Das automatische Matching läuft über Kampagnen und findet ihn
-          deshalb nicht - über „Verfügbare Kandidaten finden“ lassen sich trotzdem Kandidaten zuordnen.
-        </p>
-      )}
-
       {view === "verfuegbar" ? (
-        <AvailableCandidatesPanel clientId={clientId} clientHasLocation={clientHasLocation} />
+        kanzleiCampaigns.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            Keine aktive Kampagne –{" "}
+            <Link href={`/dashboard/campaigns/new?client_id=${clientId}`} className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
+              Kampagne anlegen
+            </Link>
+            , um passende Kandidaten zu finden.
+          </p>
+        ) : (
+          <AvailableCandidatesPanel clientId={clientId} campaigns={kanzleiCampaigns} />
+        )
       ) : (
       <>
       <p className="text-sm text-gray-500">
@@ -771,13 +802,14 @@ function KandidatenTab({
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Berufsbild</TableHead>
-                <TableHead>Kampagne</TableHead>
+                <TableHead>Kanzlei-Kampagne</TableHead>
+                <TableHead>Herkunft</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Zugeordnet seit</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {candidates.map((c) => (
+              {sortedCandidates.map((c) => (
                 <TableRow key={c.assignmentId}>
                   <TableCell>
                     <Link
@@ -789,7 +821,8 @@ function KandidatenTab({
                     </Link>
                   </TableCell>
                   <TableCell className="text-gray-600">{c.berufsbild || "—"}</TableCell>
-                  <TableCell className="text-gray-600">{c.campaignTitle || "—"}</TableCell>
+                  <TableCell className="text-gray-600">{c.assignmentCampaignTitle ?? "Kanzlei allgemein"}</TableCell>
+                  <TableCell className="text-gray-400">{c.campaignTitle || "—"}</TableCell>
                   <TableCell>
                     <span
                       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"

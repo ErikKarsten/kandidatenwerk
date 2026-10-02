@@ -51,7 +51,7 @@ export default async function ClientDetailPage({
     .order("id", { ascending: false })
     .range(campaignFrom, campaignFrom + campaignPageSize - 1)
 
-  const [{ data: client }, { data: campaigns, count: campaignTotalCount }, { data: contacts }, { data: fileRows }, { data: assignments }, kpis, { count: activeCampaignCount }] = await Promise.all([
+  const [{ data: client }, { data: campaigns, count: campaignTotalCount }, { data: contacts }, { data: fileRows }, { data: assignments }, kpis, { data: kanzleiCampaignRows }] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
     campaignsQuery,
     supabase
@@ -69,13 +69,19 @@ export default async function ClientDetailPage({
     // sollen hier nicht als "aktuell zugeordnete Kandidaten" auftauchen.
     supabase
       .from("client_assignments")
-      .select("id, status, created_at, candidates(id, first_name, last_name, berufsbild, campaigns(title))")
+      .select("id, status, created_at, campaign_id, campaigns(title), candidates(id, first_name, last_name, berufsbild, campaigns(title))")
       .eq("client_id", id)
       .is("removed_at", null)
       .order("created_at", { ascending: false }),
     getDashboardKpis(supabase, id),
-    // Für den Hinweis im Kandidaten-Reiter: ohne aktive Kampagne kein automatisches Matching.
-    supabase.from("campaigns").select("id", { count: "exact", head: true }).eq("client_id", id).eq("status", "active"),
+    // Aktive Kanzlei-Kampagnen des Kunden: Grundlage für "Verfügbare Kandidaten" (T-33).
+    supabase
+      .from("campaigns")
+      .select("id, title, berufsbild, radius_km, plz")
+      .eq("client_id", id)
+      .eq("kind", "kanzlei")
+      .eq("status", "active")
+      .order("title", { ascending: true }),
   ])
 
   if (!client) notFound()
@@ -150,6 +156,7 @@ export default async function ClientDetailPage({
       const candidate = firstOrSelf(a.candidates)
       if (!candidate) return null
       const campaign = firstOrSelf(candidate.campaigns)
+      const assignmentCampaign = firstOrSelf(a.campaigns)
       return {
         assignmentId: a.id,
         assignmentStatus: a.status,
@@ -159,6 +166,8 @@ export default async function ClientDetailPage({
         lastName: candidate.last_name,
         berufsbild: candidate.berufsbild,
         campaignTitle: campaign?.title ?? null,
+        assignmentCampaignId: a.campaign_id,
+        assignmentCampaignTitle: assignmentCampaign?.title ?? null,
       }
     })
     .filter((a): a is NonNullable<typeof a> => a !== null)
@@ -200,7 +209,7 @@ export default async function ClientDetailPage({
       }))}
       files={files}
       assignedCandidates={assignedCandidates}
-      activeCampaignCount={activeCampaignCount ?? 0}
+      kanzleiCampaigns={kanzleiCampaignRows ?? []}
       kpis={kpis}
     />
   )
