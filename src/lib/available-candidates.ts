@@ -1,13 +1,12 @@
 import { haversineDistanceKm } from "@/lib/matching"
 
-// Verfügbare Kandidaten im Kundenprofil (Atlas T-29): Kandidaten aus der gesamten
-// Datenbank, die einem Kunden noch nicht aktiv zugeordnet sind - sortiert nach
-// Entfernung zum Kundenstandort oder nach Eingang. Bewusst unabhängig von Kampagnen:
-// das automatische Matching (matching.ts) läuft nur über aktive Kampagnen und findet
-// Kunden ohne Kampagne deshalb nie.
+// Passende Kandidaten einer Kanzlei-Kampagne (Atlas T-40): Kandidaten, die der
+// Kampagne noch nicht zugeordnet sind - sortiert nach Entfernung zum Standort der
+// Kampagne oder nach Eingang. Ergänzt das gespeicherte Matching (candidate_campaign_
+// matches), das nur bei bestimmten Ereignissen neu berechnet wird.
 //
 // Reine Funktion ohne Datenbankzugriff (Filter/Sortierung/Seiten), damit sie testbar
-// ist - die Action in clients/[id]/actions.ts lädt die Rohdaten.
+// ist - die Action in campaigns/[id]/actions.ts lädt die Rohdaten.
 
 export type AvailableSort = "distance" | "newest"
 
@@ -35,6 +34,8 @@ export interface AvailableCandidate {
   source: string
   createdAt: string
   distanceKm: number | null
+  lat: number | null
+  lng: number | null
 }
 
 export interface RankOptions {
@@ -64,6 +65,8 @@ export function rankAvailableCandidates(
       status: r.status,
       source: r.source,
       createdAt: r.created_at,
+      lat: r.lat,
+      lng: r.lng,
       distanceKm:
         hasClientLocation && r.lat !== null && r.lng !== null
           ? haversineDistanceKm(opts.clientLat!, opts.clientLng!, r.lat, r.lng)

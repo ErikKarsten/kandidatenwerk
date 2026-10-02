@@ -4,19 +4,23 @@ import { useEffect, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Search } from "lucide-react"
-import { assignCandidateToClientCampaignAction, searchAvailableCandidatesAction } from "./actions"
+import dynamic from "next/dynamic"
+import { assignCandidateToCampaignAction, searchAvailableCandidatesAction } from "./actions"
+import type { MapPoint } from "@/components/dashboard/matches-map"
 import type { AvailableCandidate, AvailableSort } from "@/lib/available-candidates"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 
-export interface KanzleiCampaign {
-  id: string
-  title: string
-  berufsbild: string | null
-  radius_km: number
-  plz: string | null
-}
+// Leaflet greift beim Import auf Browser-Globals zu - nur clientseitig laden.
+const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").then((m) => m.MatchesMap), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center rounded-xl border bg-white py-12 text-sm text-gray-400" style={{ borderColor: "#dde3ea" }}>
+      Karte wird geladen…
+    </div>
+  ),
+})
 
 const RADIUS_OPTIONS = [
   { value: "kampagne", label: "Umkreis der Kampagne" },
@@ -42,18 +46,17 @@ function berufsbildLabel(value: string | null): string {
   return BERUFSBILD_OPTIONS.find((o) => o.value === value)?.label ?? "ohne Berufsbild"
 }
 
-// "Verfügbare Kandidaten" im Kundenprofil (Atlas T-33): immer für eine Kanzlei-Kampagne
-// dieses Kunden - Kandidaten mit gleichem Berufsbild im Umkreis der Kampagne, die ihr
-// noch nicht zugeordnet sind, mit Ein-Klick-Zuordnung zur Kampagne.
+// Reiter "Passende Kandidaten" einer Kanzlei-Kampagne (Atlas T-40): Kandidaten mit
+// gleichem Berufsbild im Umkreis der Kampagne, die ihr noch nicht zugeordnet sind, mit
+// Ein-Klick-Zuordnung. Einziger Ort, an dem Kandidaten Kanzlei-Kampagnen zugeordnet
+// werden (außer "Weiterschieben" im Kandidatenprofil).
 export function AvailableCandidatesPanel({
-  clientId,
-  campaigns,
+  campaign,
 }: {
-  clientId: string
-  campaigns: KanzleiCampaign[]
+  campaign: { id: string; title: string; berufsbild: string | null; radius_km: number | null; lat: number | null; lng: number | null }
 }) {
   const router = useRouter()
-  const [campaignId, setCampaignId] = useState(campaigns[0]?.id ?? "")
+  const campaignId = campaign.id
   const [q, setQ] = useState("")
   const [debouncedQ, setDebouncedQ] = useState("")
   const [status, setStatus] = useState("alle")
@@ -66,8 +69,6 @@ export function AvailableCandidatesPanel({
   const [assigningId, setAssigningId] = useState<string | null>(null)
   const [assignedKeys, setAssignedKeys] = useState<Set<string>>(new Set())
 
-  const campaign = campaigns.find((c) => c.id === campaignId) ?? null
-
   // Suche erst 300 ms nach dem letzten Tastendruck auslösen.
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 300)
@@ -75,10 +76,8 @@ export function AvailableCandidatesPanel({
   }, [q])
 
   useEffect(() => {
-    if (!campaignId) return
     startLoading(async () => {
-      const res = await searchAvailableCandidatesAction(clientId, {
-        campaignId,
+      const res = await searchAvailableCandidatesAction(campaignId, {
         q: debouncedQ,
         status,
         radius: radius === "kampagne" || radius === "alle" ? radius : Number(radius),
@@ -93,7 +92,7 @@ export function AvailableCandidatesPanel({
       setError(null)
       setResult(res)
     })
-  }, [clientId, campaignId, debouncedQ, status, radius, sort, page])
+  }, [campaignId, debouncedQ, status, radius, sort, page])
 
   // Jede Filteränderung startet wieder auf Seite 1.
   function changeFilter(update: () => void) {
@@ -103,35 +102,29 @@ export function AvailableCandidatesPanel({
 
   async function handleAssign(candidateId: string) {
     setAssigningId(candidateId)
-    const res = await assignCandidateToClientCampaignAction(clientId, campaignId, candidateId)
+    const res = await assignCandidateToCampaignAction(campaignId, candidateId)
     setAssigningId(null)
     if (res?.error) {
       setError(res.error)
       return
     }
     // Zeile bleibt mit "Zugeordnet" stehen (sichtbare Bestätigung); refresh()
-    // aktualisiert den Zähler "Zugeordnet (n)".
+    // aktualisiert den Reiter "Kandidaten" der Kampagne.
     setAssignedKeys((prev) => new Set(prev).add(`${campaignId}:${candidateId}`))
     router.refresh()
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-xs font-medium text-gray-600">Für Kampagne</label>
-        <select
-          value={campaignId}
-          onChange={(e) => changeFilter(() => setCampaignId(e.target.value))}
-          className={`${selectClass} min-w-[240px]`}
-          style={borderStyle}
-        >
-          {campaigns.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title} ({berufsbildLabel(c.berufsbild)}, {c.radius_km} km)
-            </option>
-          ))}
-        </select>
-      </div>
+      {!campaign.berufsbild ? (
+        <p className="text-sm text-red-600">
+          Für diese Kampagne ist kein Berufsbild hinterlegt – bitte unter „Einrichtung“ ergänzen, dann erscheinen hier passende Kandidaten.
+        </p>
+      ) : (
+        <p className="text-xs text-gray-500">
+          Kandidaten mit Berufsbild „{berufsbildLabel(campaign.berufsbild)}“, die dieser Kampagne noch nicht zugeordnet sind.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1">
@@ -153,7 +146,7 @@ export function AvailableCandidatesPanel({
         <select value={radius} onChange={(e) => changeFilter(() => setRadius(e.target.value))} className={selectClass} style={borderStyle}>
           {RADIUS_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
-              {o.value === "kampagne" && campaign ? `Umkreis der Kampagne (${campaign.radius_km} km)` : o.label}
+              {o.value === "kampagne" && campaign.radius_km ? `Umkreis der Kampagne (${campaign.radius_km} km)` : o.label}
             </option>
           ))}
         </select>
@@ -170,12 +163,21 @@ export function AvailableCandidatesPanel({
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}
 
+      {result && result.items.length > 0 && (
+        <MatchesMap
+          points={[
+            { lat: campaign.lat, lng: campaign.lng, label: campaign.title, isSelf: true } as MapPoint,
+            ...result.items.map((c) => ({ lat: c.lat, lng: c.lng, label: c.name, sublabel: c.plz ?? undefined })),
+          ]}
+        />
+      )}
+
       <div className="overflow-x-auto rounded-xl border bg-white" style={borderStyle}>
         {!result ? (
           <p className="p-6 text-sm text-gray-400">{loading ? "Suche läuft…" : ""}</p>
         ) : result.items.length === 0 ? (
           <p className="p-6 text-sm text-gray-400">
-            Keine passenden Kandidaten ({berufsbildLabel(campaign?.berufsbild ?? null)}
+            Keine passenden Kandidaten ({berufsbildLabel(campaign.berufsbild)}
             {result.effectiveRadiusKm !== null ? `, ${result.effectiveRadiusKm} km Umkreis` : ""}).
           </p>
         ) : (

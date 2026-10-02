@@ -17,7 +17,6 @@ import { PortalAccessSection, type PortalUser } from "./portal-access-section"
 import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import type { DashboardKpis } from "@/lib/kpis"
-import { AvailableCandidatesPanel, type KanzleiCampaign } from "./available-candidates-panel"
 import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import {
   Table,
@@ -81,6 +80,15 @@ interface Client {
   lng: number | null
   ort: string | null
   auto_forward_enabled: boolean
+}
+
+// Aktive Kanzlei-Kampagne des Kunden - für Leerzustand und Links im Reiter Kandidaten.
+interface KanzleiCampaign {
+  id: string
+  title: string
+  berufsbild: string | null
+  radius_km: number
+  plz: string | null
 }
 
 interface AssignedCandidate {
@@ -719,84 +727,62 @@ function KandidatenTab({
   candidates: AssignedCandidate[]
   kanzleiCampaigns: KanzleiCampaign[]
 }) {
-  const [view, setView] = useState<"zugeordnet" | "verfuegbar">(
-    candidates.length === 0 && kanzleiCampaigns.length > 0 ? "verfuegbar" : "zugeordnet"
-  )
-
-  // Zuordnungen nach Kanzlei-Kampagne gruppiert (Atlas T-33); ältere Zuordnungen ohne
-  // Kampagne unter "Kanzlei allgemein".
+  // Sortiert nach Kanzlei-Kampagne; ältere Zuordnungen ohne Kampagne ans Ende.
   const sortedCandidates = [...candidates].sort((a, b) => {
     if (!a.assignmentCampaignTitle !== !b.assignmentCampaignTitle) return a.assignmentCampaignTitle ? -1 : 1
     return (a.assignmentCampaignTitle ?? "").localeCompare(b.assignmentCampaignTitle ?? "")
   })
 
-  // Ohne aktive Kanzlei-Kampagne ist noch nicht beschrieben, wen die Kanzlei sucht -
-  // deshalb keine Kandidatensuche, sondern der Weg zur Kampagne.
-  if (kanzleiCampaigns.length === 0 && candidates.length === 0) {
+  // Zugeordnet wird ausschließlich in der Kanzlei-Kampagne über "Passende Kandidaten"
+  // (Atlas T-40) - hier nur die Übersicht und der Weg dorthin.
+  if (candidates.length === 0) {
     return (
       <div className="flex flex-col items-start gap-3 rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
-        <p className="text-sm text-gray-700">
-          Für diesen Kunden ist noch keine aktive Kampagne angelegt. Erst die Kampagne legt fest, welches Berufsbild
-          an welchem Standort gesucht wird – danach lassen sich hier passende Kandidaten finden und zuordnen.
-        </p>
-        <Link
-          href={`/dashboard/campaigns/new?client_id=${clientId}`}
-          className="rounded-md px-4 py-2 text-sm font-medium text-white"
-          style={{ backgroundColor: "#1e56a0" }}
-        >
-          Kampagne anlegen
-        </Link>
+        {kanzleiCampaigns.length === 0 ? (
+          <>
+            <p className="text-sm text-gray-700">
+              Für diesen Kunden ist noch keine aktive Kampagne angelegt. Erst die Kampagne legt fest, welches
+              Berufsbild an welchem Standort gesucht wird – danach lassen sich in der Kampagne unter „Passende
+              Kandidaten“ Kandidaten zuordnen.
+            </p>
+            <Link
+              href={`/dashboard/campaigns/new?client_id=${clientId}`}
+              className="rounded-md px-4 py-2 text-sm font-medium text-white"
+              style={{ backgroundColor: "#1e56a0" }}
+            >
+              Kampagne anlegen
+            </Link>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-gray-700">
+              Noch keine Kandidaten zugeordnet. Zugeordnet wird in der jeweiligen Kampagne unter „Passende Kandidaten“:
+            </p>
+            <ul className="flex flex-col gap-1">
+              {kanzleiCampaigns.map((c) => (
+                <li key={c.id}>
+                  <Link href={`/dashboard/campaigns/${c.id}`} className="text-sm font-medium hover:underline" style={{ color: "#1e56a0" }}>
+                    {c.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {([
-          ["zugeordnet", `Zugeordnet (${candidates.length})`],
-          ["verfuegbar", "Verfügbare Kandidaten finden"],
-        ] as const).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setView(value)}
-            className="rounded-full border px-3 py-1 text-xs font-medium"
-            style={
-              view === value
-                ? { backgroundColor: "#1e56a0", borderColor: "#1e56a0", color: "white" }
-                : { backgroundColor: "white", borderColor: "#dde3ea", color: "#374151" }
-            }
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {view === "verfuegbar" ? (
-        kanzleiCampaigns.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            Keine aktive Kampagne –{" "}
-            <Link href={`/dashboard/campaigns/new?client_id=${clientId}`} className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
-              Kampagne anlegen
-            </Link>
-            , um passende Kandidaten zu finden.
-          </p>
-        ) : (
-          <AvailableCandidatesPanel clientId={clientId} campaigns={kanzleiCampaigns} />
-        )
-      ) : (
-      <>
+      <p className="text-xs text-gray-500">
+        Zugeordnet wird in der jeweiligen Kampagne unter „Passende Kandidaten“.
+      </p>
       <p className="text-sm text-gray-500">
         {candidates.length} zugeordnete{candidates.length === 1 ? "r" : ""} Kandidat{candidates.length !== 1 ? "en" : ""}
       </p>
 
-      {candidates.length === 0 ? (
-        <div className="rounded-xl border bg-white py-12 text-center text-sm text-gray-400" style={{ borderColor: "#dde3ea" }}>
-          Noch keine Kandidaten zugeordnet.
-        </div>
-      ) : (
-        <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#dde3ea" }}>
+      <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#dde3ea" }}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -840,10 +826,7 @@ function KandidatenTab({
               ))}
             </TableBody>
           </Table>
-        </div>
-      )}
-      </>
-      )}
+      </div>
     </div>
   )
 }
