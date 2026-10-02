@@ -397,11 +397,13 @@ async function main() {
       leadtable_lead_id: newest.lead._id,
       meta_lead_id: metaLeadId,
       custom_fields: Object.keys(customFields).length > 0 ? customFields : null,
-      description: descriptionBlocks.length > 0 ? descriptionBlocks.join("\n\n") : null,
+      // Sichtbare "Beschreibung" im Kandidatenprofil ist candidates.notes (description
+      // erscheint nur im Verlauf) - Formularangaben und Notizen daher nach notes.
+      description: null,
       plz: location?.plz ?? null,
       lat: location?.lat ?? null,
       lng: location?.lng ?? null,
-      notes,
+      notes: [...descriptionBlocks, notes].join("\n\n"),
       created_at: newest.lead.createdAt ?? undefined,
       campaign_id: null,
       client_id: null,
@@ -434,7 +436,7 @@ async function main() {
   console.log(
     `PLZ: ${countHow("angegeben")} angegeben, ${countHow("ort")} aus Ort ermittelt, ${countHow("werbegebiet")} geschätzt aus Werbegebiet, ` +
       `${countHow("kanzlei")} geschätzt aus Kanzlei-Standort, ${candidateRows.length - locationByEmail.size} ohne PLZ\n` +
-      `Mit Meta-Lead-ID: ${withMetaLeadId}, mit Beschreibung: ${candidateRows.filter((r) => r.description).length}`
+      `Mit Meta-Lead-ID: ${withMetaLeadId}, mit Formularangaben/Notizen: ${[...byEmail.keys()].length}`
   )
   console.log("Zusatzfelder befüllt:", fieldCounts)
   const statusCounts: Record<string, number> = {}
@@ -475,7 +477,8 @@ async function main() {
   await del("client_assignments", all)
   await del("candidate_campaign_matches", all)
   await del("qualified_candidates", all)
-  await del("campaign_automation_runs", all)
+  // campaign_automation_runs: kein DELETE-Recht für service_role, verschwindet per ON
+  // DELETE CASCADE mit Automationen/Kandidaten.
   await del("campaign_automations", all)
   await del("tasks", (q) => q.not("candidate_id", "is", null))
   await del("candidates", all)
