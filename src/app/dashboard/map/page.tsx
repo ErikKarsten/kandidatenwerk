@@ -1,5 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { MapOverview, type MapClientPoint, type MapCandidatePoint } from "./map-overview"
+import { getActiveAdAreas } from "@/lib/meta-campaigns-queries"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 export default async function MapPage() {
   const supabase = await createSupabaseServerClient()
@@ -11,7 +13,7 @@ export default async function MapPage() {
   // trivial günstig. campaigns wird nur für die client_id-Zuordnung gebraucht (Kandidat
   // -> Kampagne -> Kunde), nicht für die Kampagnen-eigenen Koordinaten - der
   // Näherungswert soll laut Vorgabe explizit vom Kanzlei-/Kundenstandort kommen.
-  const [{ data: clients }, { data: candidates }, { data: campaigns }] = await Promise.all([
+  const [{ data: clients }, { data: candidates }, { data: campaigns }, adAreas] = await Promise.all([
     supabase
       .from("clients")
       .select("id, name, lat, lng")
@@ -19,6 +21,8 @@ export default async function MapPage() {
       .not("lng", "is", null),
     supabase.from("candidates").select("id, first_name, last_name, lat, lng, campaign_id"),
     supabase.from("campaigns").select("id, client_id"),
+    // Werbegebiete laufender Meta-Kampagnen (Atlas T-38) für die Ebene "Werbegebiete".
+    getActiveAdAreas(supabase as unknown as SupabaseClient),
   ])
 
   const clientList = clients ?? []
@@ -69,7 +73,7 @@ export default async function MapPage() {
         <p className="mt-1 text-sm text-gray-500">Übersicht aller Kanzlei-Standorte und Kandidaten</p>
       </div>
 
-      <MapOverview clients={clientPoints} candidates={candidatePoints} />
+      <MapOverview clients={clientPoints} candidates={candidatePoints} adAreas={adAreas} />
     </div>
   )
 }

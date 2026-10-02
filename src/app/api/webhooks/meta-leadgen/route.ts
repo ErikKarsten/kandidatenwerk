@@ -91,8 +91,12 @@ async function handleLeadgenEvent(value: LeadgenChangeValue) {
   try {
     const { data: campaign, error: campaignError } = await supabase
       .from("campaigns")
-      .select("id, title, status, client_id, agency_id")
+      .select("id, title, status, client_id, agency_id, kind")
       .eq("meta_form_id", value.form_id)
+      // Dasselbe Formular kann an einer alten Kanzlei-Kampagne UND einer importierten
+      // Lead-Kampagne hängen (T-38) - dann gewinnt die Lead-Kampagne ("lead" < "kanzlei").
+      .order("kind", { ascending: true })
+      .limit(1)
       .maybeSingle()
     if (campaignError) throw new Error(campaignError.message)
     if (!campaign || campaign.status === ARCHIVED_STATUS) {

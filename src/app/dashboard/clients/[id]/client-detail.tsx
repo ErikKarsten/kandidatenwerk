@@ -118,6 +118,8 @@ interface ClientDetailProps {
   portalUsers: PortalUser[]
   assignedCandidates: AssignedCandidate[]
   kanzleiCampaigns: KanzleiCampaign[]
+  adCoverage: { campaignId: string; campaignTitle: string; label: string; radiusKm: number | null; distanceKm: number }[]
+  adAreasKnown: boolean
   kpis: DashboardKpis
 }
 
@@ -137,6 +139,8 @@ export function ClientDetail({
   portalUsers,
   assignedCandidates,
   kanzleiCampaigns,
+  adCoverage,
+  adAreasKnown,
   kpis,
 }: ClientDetailProps) {
   const router = useRouter()
@@ -451,6 +455,37 @@ export function ClientDetail({
         <KpiCard icon={Send} label="Weitergeleitet" value={kpis.forwarded} iconColor="#8b5cf6" />
         <KpiCard icon={ClipboardCheck} label="Bearbeitet" value={kpis.processed} iconColor="#1a9a6a" />
       </div>
+
+      {/* Abdeckung durch laufende Meta-Kampagnen (Atlas T-38) - nur sinnvoll mit Standort
+          und wenn überhaupt Werbegebiete importiert sind. */}
+      {adAreasKnown && client.lat !== null && client.lng !== null && (
+        <div
+          className="rounded-lg border px-4 py-2.5 text-sm"
+          style={
+            adCoverage.length > 0
+              ? { borderColor: "#86efac", backgroundColor: "#f0fdf4", color: "#166534" }
+              : { borderColor: "#fcd34d", backgroundColor: "#fffbeb", color: "#92400e" }
+          }
+        >
+          {adCoverage.length > 0 ? (
+            <>
+              Werbegebiet abgedeckt durch{" "}
+              {adCoverage.slice(0, 3).map((a, i) => (
+                <span key={`${a.campaignId}-${a.label}`}>
+                  {i > 0 && ", "}
+                  <Link href={`/dashboard/campaigns/${a.campaignId}`} className="font-medium hover:underline">
+                    {a.campaignTitle}
+                  </Link>{" "}
+                  ({a.label}, {Math.round(a.distanceKm)} km entfernt, Radius {a.radiusKm} km)
+                </span>
+              ))}
+              {adCoverage.length > 3 && ` und ${adCoverage.length - 3} weitere`}
+            </>
+          ) : (
+            "Dieser Standort liegt in keinem Werbegebiet einer laufenden Meta-Kampagne – ggf. neue Kampagne nötig."
+          )}
+        </div>
+      )}
 
       {/* ── Tabs ── */}
       <div>

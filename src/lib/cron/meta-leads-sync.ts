@@ -48,18 +48,31 @@ export interface MetaLeadsSyncResult {
   errors: { campaignId: string; leadId: string; message: string }[]
 }
 
-async function loadCampaigns(supabase: Supabase, campaignId: string | null): Promise<CampaignRow[]> {
+async function loadCampaigns(
+  supabase: Supabase,
+  campaignId: string | null,
+  includeInactiveLeadCampaigns: boolean
+): Promise<CampaignRow[]> {
   let query = supabase
     .from("campaigns")
-    .select("id, title, status, client_id, agency_id, meta_form_id")
+    .select("id, title, status, kind, client_id, agency_id, meta_form_id")
     .not("meta_form_id", "is", null)
+    // Lead-Kampagnen zuerst ("lead" < "kanzlei"), siehe Formular-Dedup in syncMetaLeads.
+    .order("kind", { ascending: true })
 
   if (campaignId) query = query.eq("id", campaignId)
 
   const { data, error } = await query
   if (error) throw new Error(error.message)
 
-  return (data ?? []).filter((c) => c.status !== ARCHIVED_STATUS)
+  // Importierte Meta-Lead-Kampagnen (T-38) regulär nur, solange sie laufen - die
+  // Altbestände pausierter/beendeter Kampagnen holt man einmalig per
+  // "npx tsx scripts/meta-leads-sync.ts --alle".
+  return (data ?? []).filter(
+    (c) =>
+      c.status !== ARCHIVED_STATUS &&
+      (c.kind !== "lead" || c.status === "active" || includeInactiveLeadCampaigns || campaignId !== null)
+  )
 }
 
 // limit: max. Leads pro Formular (kleiner Testlauf), campaignId: nur diese Kampagne.
@@ -68,8 +81,14 @@ export async function syncMetaLeads(
   {
     limit = null,
     campaignId = null,
+    includeInactiveLeadCampaigns = false,
     log = console.log,
-  }: { limit?: number | null; campaignId?: string | null; log?: (message: string) => void } = {}
+  }: {
+    limit?: number | null
+    campaignId?: string | null
+    includeInactiveLeadCampaigns?: boolean
+    log?: (message: string) => void
+  } = {}
 ): Promise<MetaLeadsSyncResult> {
   const result: MetaLeadsSyncResult = {
     campaignsProcessed: 0,
@@ -79,7 +98,7 @@ export async function syncMetaLeads(
     errors: [],
   }
 
-  const campaigns = await loadCampaigns(supabase, campaignId)
+  const campaigns = await loadCampaigns(supabase, campaignId, includeInactiveLeadCampaigns)
   log(`${campaigns.length} Kampagne(n) mit Meta-Formular gefunden.`)
 
   // Seitengebundene Endpunkte (leads) verlangen zwingend den Page-Access-Token DIESER
@@ -88,7 +107,16 @@ export async function syncMetaLeads(
   // erneut alle Seiten abzufragen.
   const formToPageToken = await buildFormToPageAccessTokenMap()
 
+  // Hängt dasselbe Formular an mehreren Kampagnen (alte Kanzlei-Kampagne + importierte
+  // Lead-Kampagne, T-38), nur einmal verarbeiten - über die zuerst geladene (Lead-)Kampagne.
+  const processedFormIds = new Set<string>()
+
   for (const campaign of campaigns) {
+    if (processedFormIds.has(campaign.meta_form_id!)) {
+      log(`\n→ Kampagne "${campaign.title}": Formular ${campaign.meta_form_id} bereits über eine andere Kampagne verarbeitet, übersprungen.`)
+      continue
+    }
+    processedFormIds.add(campaign.meta_form_id!)
     log(`\n→ Kampagne "${campaign.title}" (Formular ${campaign.meta_form_id})`)
     const pageAccessToken = formToPageToken.get(campaign.meta_form_id!)
     if (!pageAccessToken) {
@@ -111,8 +139,10 @@ export async function syncMetaLeads(
     log(`  ${leads.length} Lead(s) von Meta geladen.`)
 
     for (const lead of leads) {
+      let alreadyKnown = false
       try {
         const outcome = await processMetaLead(supabase, campaign, lead)
+        alreadyKnown = outcome.status === "already_known"
         if (outcome.status === "created") result.created++
         else if (outcome.status === "linked_existing") result.linkedExisting++
         else if (outcome.status === "skipped_no_email") result.skippedNoEmail++
@@ -122,7 +152,9 @@ export async function syncMetaLeads(
         console.error(`  Fehler bei Lead ${lead.id}: ${message}`)
         result.errors.push({ campaignId: campaign.id, leadId: lead.id, message })
       }
-      await sleep(DELAY_MS)
+      // Pause nur nach echter Verarbeitung (Anlage, KI-Extraktion) - bereits bekannte
+      // Leads kosten keine weiteren API-Aufrufe.
+      if (!alreadyKnown) await sleep(DELAY_MS)
     }
 
     result.campaignsProcessed++

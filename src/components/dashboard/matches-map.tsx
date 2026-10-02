@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react"
 import Link from "next/link"
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, Popup, Circle } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 
@@ -25,6 +25,17 @@ export interface MapPoint {
 }
 
 type ValidMapPoint = MapPoint & { lat: number; lng: number }
+
+// Optionale Kreis-Ebene, z.B. Werbegebiete der Meta-Kampagnen (Atlas T-38). Kreise
+// beeinflussen den Kartenausschnitt nicht - der richtet sich weiter nach den Punkten.
+export interface MapCircle {
+  lat: number
+  lng: number
+  radiusKm: number
+  label: string
+  sublabel?: string
+  color?: string
+}
 
 // Einfache farbige Punkt-Icons statt Leaflets Standard-Marker-Bildern - vermeidet das
 // bekannte Problem kaputter Icon-Pfade beim Bundling und passt visuell besser zu den
@@ -146,9 +157,10 @@ export interface MatchesMapHandle {
 
 export const MatchesMap = forwardRef<MatchesMapHandle, {
   points: MapPoint[]
+  circles?: MapCircle[]
   height?: string
   scrollWheelZoom?: boolean
-}>(function MatchesMap({ points, height = "280px", scrollWheelZoom = false }, ref) {
+}>(function MatchesMap({ points, circles = [], height = "280px", scrollWheelZoom = false }, ref) {
   const validPoints = useMemo(() => points.filter(hasCoords), [points])
   const groups = useMemo(() => groupByLocation(validPoints), [validPoints])
   // Referenziell stabil, solange sich die Punktmenge nicht ändert - sonst würde JEDER
@@ -220,6 +232,19 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        {circles.map((c, i) => (
+          <Circle
+            key={`circle-${i}`}
+            center={[c.lat, c.lng]}
+            radius={c.radiusKm * 1000}
+            pathOptions={{ color: c.color ?? "#f59e0b", weight: 1.5, fillOpacity: 0.08 }}
+          >
+            <Popup>
+              <p className="text-sm font-semibold text-gray-900">{c.label}</p>
+              {c.sublabel && <p className="text-xs text-gray-500">{c.sublabel}</p>}
+            </Popup>
+          </Circle>
+        ))}
         {groups.map((group) => {
           // Einzelner Punkt an diesem Standort: Verhalten exakt wie vor der Gruppierung.
           if (group.points.length === 1) {

@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { syncMetaCampaigns } from "@/lib/meta-campaigns-sync"
+import { runTrackedCronJob } from "@/lib/cron/job-runs"
 import { requireAgencyAdmin as getAgencyAdminContext, requireStaffUser } from "@/lib/auth-guards"
 
 const MIN_PASSWORD_LENGTH = 8
@@ -506,4 +508,28 @@ export async function markCustomFieldReviewQueueEntryDoneAction(id: string): Pro
   if (staffError) return staffError
 
   return setReviewQueueStatus(id, "mapped")
+}
+
+// "Jetzt von Meta abgleichen" in Einstellungen -> Meta-Kampagnen (Atlas T-38). Läuft
+// sonst stündlich per Cron; wird genauso protokolliert (cron_job_runs), damit ein
+// Fehlschlag auch hier die Admin-Mail auslöst. Nur Agentur-Admins.
+export async function syncMetaCampaignsNowAction(): Promise<
+  { error: string } | { created: number; updated: number; formsLinked: number; areas: number; errors: string[] }
+> {
+  const supabase = await createSupabaseServerClient()
+  const guard = await getAgencyAdminContext(supabase)
+  if ("error" in guard) return guard
+
+  const admin = createSupabaseAdminClient()
+  try {
+    const result = await runTrackedCronJob(admin, "meta-campaigns-sync", async () => {
+      const r = await syncMetaCampaigns(admin)
+      return { result: r, ok: r.errors.length === 0 }
+    })
+    revalidatePath("/dashboard/einstellungen")
+    revalidatePath("/dashboard/map")
+    return { created: result.created, updated: result.updated, formsLinked: result.formsLinked, areas: result.areas, errors: result.errors.slice(0, 5) }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
 }

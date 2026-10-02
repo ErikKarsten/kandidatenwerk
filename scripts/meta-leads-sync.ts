@@ -7,6 +7,8 @@
 //   npx tsx scripts/meta-leads-sync.ts                              (voller Lauf, alle Kampagnen mit meta_form_id)
 //   npx tsx scripts/meta-leads-sync.ts --limit=5                    (kleiner Testlauf, max. 5 Leads pro Formular)
 //   npx tsx scripts/meta-leads-sync.ts --campaignId=<uuid>          (nur eine bestimmte Kampagne)
+//   npx tsx scripts/meta-leads-sync.ts --alle                       (auch pausierte/beendete Meta-Lead-Kampagnen,
+//                                                                    einmaliger Import der Altbestände)
 
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -36,7 +38,7 @@ async function main() {
     process.env.SUPABASE_SECRET_KEY!
   )
 
-  const result = await syncMetaLeads(supabase, { limit, campaignId })
+  const result = await syncMetaLeads(supabase, { limit, campaignId, includeInactiveLeadCampaigns: process.argv.includes("--alle") })
 
   console.log("\n── Zusammenfassung ──────────────────────────")
   console.log(`Kampagnen verarbeitet: ${result.campaignsProcessed}`)

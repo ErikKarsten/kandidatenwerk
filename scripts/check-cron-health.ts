@@ -28,6 +28,7 @@ const MAX_AGE_MINUTES: Record<string, number> = {
   "run-automations": 30, // alle 5 Min.
   "meta-leads-sync": 120, // alle 30 Min.
   "sync-kanzleistelle": 180, // stündlich
+  "meta-campaigns-sync": 180, // stündlich
   "task-reminders": 1800, // täglich 06:00 UTC, Wächter läuft ebenfalls täglich (mit GitHub-Verzögerung)
 }
 

@@ -3,7 +3,8 @@
 import { useMemo, useRef, useState, useTransition } from "react"
 import dynamic from "next/dynamic"
 import { Search } from "lucide-react"
-import type { MapPoint, MatchesMapHandle } from "@/components/dashboard/matches-map"
+import type { MapCircle, MapPoint, MatchesMapHandle } from "@/components/dashboard/matches-map"
+import type { AdArea } from "@/lib/meta-campaigns-queries"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { searchLocationAction } from "./actions"
 
@@ -64,14 +65,35 @@ const ACCURACY_OPTIONS: { value: AccuracyFilter; label: string }[] = [
 const CLIENT_COLOR = "#dc2626"
 const CANDIDATE_COLOR = "#1e56a0"
 
+const AD_AREA_COLOR = "#f59e0b"
+
 export function MapOverview({
   clients,
   candidates,
+  adAreas = [],
 }: {
   clients: MapClientPoint[]
   candidates: MapCandidatePoint[]
+  adAreas?: AdArea[]
 }) {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all")
+  // Ebene "Werbegebiete" (Atlas T-38): Radius jeder aktiven Anzeigengruppe laufender
+  // Meta-Kampagnen, ein-/ausblendbar.
+  const [showAdAreas, setShowAdAreas] = useState(false)
+  const adCircles = useMemo<MapCircle[]>(
+    () =>
+      adAreas
+        .filter((a) => a.lat !== null && a.lng !== null && a.radiusKm !== null)
+        .map((a) => ({
+          lat: a.lat!,
+          lng: a.lng!,
+          radiusKm: a.radiusKm!,
+          label: a.campaignTitle,
+          sublabel: `${a.label} · ${a.radiusKm} km`,
+          color: AD_AREA_COLOR,
+        })),
+    [adAreas]
+  )
   const [accuracyFilter, setAccuracyFilter] = useState<AccuracyFilter>("all")
 
   const mapRef = useRef<MatchesMapHandle>(null)
@@ -215,6 +237,11 @@ export function MapOverview({
             ))}
           </div>
 
+          <label className="flex items-center gap-1.5 text-xs text-gray-600">
+            <input type="checkbox" checked={showAdAreas} onChange={(e) => setShowAdAreas(e.target.checked)} />
+            Werbegebiete laufender Meta-Kampagnen ({adCircles.length})
+          </label>
+
           {includeCandidates && (
             <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: "#dde3ea" }}>
               {ACCURACY_OPTIONS.map((opt) => (
@@ -252,10 +279,16 @@ export function MapOverview({
             />
             Kandidat (ungefährer Standort)
           </span>
+          {showAdAreas && (
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ border: `2px solid ${AD_AREA_COLOR}`, backgroundColor: `${AD_AREA_COLOR}22` }} />
+              Werbegebiet
+            </span>
+          )}
         </div>
       </div>
 
-      <MatchesMap ref={mapRef} points={points} height="600px" scrollWheelZoom />
+      <MatchesMap ref={mapRef} points={points} circles={showAdAreas ? adCircles : []} height="600px" scrollWheelZoom />
     </div>
   )
 }

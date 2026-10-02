@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { MetaCampaignsTab } from "./meta-campaigns-tab"
+import type { LeadCampaignOverview } from "@/lib/meta-campaigns-queries"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Clock, RefreshCw as SyncIcon, Send, Plus, Pencil, Trash2 } from "lucide-react"
@@ -43,11 +45,12 @@ interface EinstellungenDetailProps {
   leadNotificationRecipientIds: string[]
   customFieldDefinitions: CustomFieldDefinition[]
   customFieldReviewQueue: CustomFieldReviewQueueEntry[]
+  metaCampaigns: LeadCampaignOverview[]
 }
 
-type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen" | "zusatzfelder"
+type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen" | "zusatzfelder" | "meta"
 
-export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue }: EinstellungenDetailProps) {
+export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
 
   return (
@@ -64,10 +67,12 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
           <TabButton active={tab === "vorlagen"} onClick={() => setTab("vorlagen")}>E-Mail-Vorlagen ({emailTemplates.length})</TabButton>
           <TabButton active={tab === "automatisierung"} onClick={() => setTab("automatisierung")}>Automatisierung</TabButton>
           <TabButton active={tab === "zusatzfelder"} onClick={() => setTab("zusatzfelder")}>Zusatzfelder ({customFieldDefinitions.filter((f) => f.active).length})</TabButton>
+          <TabButton active={tab === "meta"} onClick={() => setTab("meta")}>Meta-Kampagnen ({metaCampaigns.filter((c) => c.status === "active").length})</TabButton>
         </div>
 
         <div className="mt-4 max-w-lg">
           {tab === "konto" && <KontoTab ownProfile={ownProfile} />}
+          {tab === "meta" && <MetaCampaignsTab campaigns={metaCampaigns} isAdmin={ownProfile.role === "agency_admin"} />}
           {tab === "team" && <TeamTab team={team} ownProfileId={ownProfile.id} />}
           {tab === "agentur" && <AgenturTab agencyName={agencyName} />}
           {tab === "vorlagen" && agencyId && <EmailVorlagenTab agencyId={agencyId} templates={emailTemplates} />}
