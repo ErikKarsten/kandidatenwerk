@@ -11,7 +11,6 @@ import {
   ListTodo,
   Settings,
   Briefcase,
-  Star,
   PanelLeftClose,
   PanelLeftOpen,
   Bug,
@@ -28,14 +27,12 @@ function buildNavItems(
   matchesCount: number,
   candidatesCount: number,
   clientsCount: number,
-  myOpenTasksCount: number,
-  qualifiedCount: number
+  myOpenTasksCount: number
 ) {
   return [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/dashboard/clients", label: "Kunden", icon: Users, badge: String(clientsCount) },
     { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: String(candidatesCount) },
-    { href: "/dashboard/qualified-candidates", label: "Qualifizierte Kandidaten", icon: Star, badge: String(qualifiedCount) },
     { href: "/dashboard/matches", label: "Matching", icon: GitCompare, badge: String(matchesCount) },
     { href: "/dashboard/tasks", label: "Aufgaben", icon: ListTodo, badge: String(myOpenTasksCount) },
     { href: "/dashboard/map", label: "Karte", icon: MapPin },
@@ -115,7 +112,6 @@ export function Sidebar({
   candidatesCount = 0,
   clientsCount = 0,
   myOpenTasksCount = 0,
-  qualifiedCount = 0,
   userName,
   isAdmin,
   openBugReportsCount = 0,
@@ -124,13 +120,12 @@ export function Sidebar({
   candidatesCount?: number
   clientsCount?: number
   myOpenTasksCount?: number
-  qualifiedCount?: number
   userName: string
   isAdmin: boolean
   openBugReportsCount?: number
 }) {
   const pathname = usePathname()
-  const navItems = buildNavItems(matchesCount, candidatesCount, clientsCount, myOpenTasksCount, qualifiedCount)
+  const navItems = buildNavItems(matchesCount, candidatesCount, clientsCount, myOpenTasksCount)
 
   // Start bewusst ausgeklappt (= Server-/Erstrender-Zustand), der localStorage-Wert wird
   // erst nach dem Mount übernommen - sonst Hydration-Mismatch, da localStorage auf dem

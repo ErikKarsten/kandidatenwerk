@@ -58,7 +58,6 @@ npm run deploy               # opennextjs-cloudflare build + deploy
 | Kanzleistelle24-Sync | stündlich | Cloudflare Cron → `/api/cron/sync-kanzleistelle` |
 | Erinnerung an fällige Aufgaben | täglich 06:00 UTC | Cloudflare Cron → `/api/cron/task-reminders` |
 | Cron-Wächter | täglich | GitHub Actions (`scripts/check-cron-health.ts`) |
-| Qualifizierte Kandidaten | alle 4 Std. | GitHub Actions |
 | Kampagnen-Rematch | täglich | GitHub Actions |
 | Dublettenprüfung | täglich | GitHub Actions |
 | Leadtable Full-Sync | – | GitHub Actions, **bewusst deaktiviert** (seit 25.09.2026) |
