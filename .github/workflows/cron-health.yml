@@ -1,0 +1,26 @@
+name: Cron-Wächter
+on:
+  schedule:
+    # Einmal täglich. Prüft unabhängig von Cloudflare, ob die Cloudflare-Cron-Jobs
+    # zuletzt rechtzeitig erfolgreich liefen (scripts/check-cron-health.ts) - fällt
+    # damit auch auf, wenn die Crons im Worker komplett stehen bleiben.
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Abhängigkeiten installieren
+        run: npm ci
+      - name: Cron-Gesundheit prüfen
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+        run: npx tsx scripts/check-cron-health.ts
