@@ -17,6 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { metaGraphFetch } from "@/lib/meta-ads-client"
 import { forwardGeocode } from "@/lib/forward-geocode"
+import { syncMetaLeadForms } from "@/lib/lead-form-mapping"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import {
   extractLeadFormId,
@@ -66,6 +67,10 @@ export interface MetaCampaignsSyncResult {
   areas: number
   geocoded: number
   geocodePending: number
+  // Neu eingelesene Lead-Formulare (Einstellungen -> Lead-Formulare) und Hinweise dazu -
+  // Hinweise zählen nicht als Fehler (z.B. Seite dem Systemnutzer nicht freigegeben).
+  leadFormsAdded: number
+  leadFormWarnings: string[]
   errors: string[]
 }
 
@@ -133,6 +138,8 @@ export async function syncMetaCampaigns(
     areas: 0,
     geocoded: 0,
     geocodePending: 0,
+    leadFormsAdded: 0,
+    leadFormWarnings: [],
     errors: [],
   }
 
@@ -365,6 +372,24 @@ export async function syncMetaCampaigns(
       }
     }
     result.areas += rows.length
+  }
+
+  // Formulare laufender Kampagnen, die noch nicht eingelesen sind (Fragen für die
+  // Feld-Zuordnung). Nur unbekannte - bekannte pflegt man in den Einstellungen.
+  try {
+    const { data: formRows } = await db.from("campaigns").select("meta_form_id").eq("kind", "lead").eq("status", "active").not("meta_form_id", "is", null)
+    const { data: fieldRows } = await db.from("custom_field_definitions").select("key").eq("agency_id", agencyId).eq("active", true)
+    const forms = await syncMetaLeadForms(
+      db,
+      agencyId,
+      (formRows ?? []).map((r) => r.meta_form_id as string),
+      new Set((fieldRows ?? []).map((r) => r.key as string)),
+      { onlyMissing: true }
+    )
+    result.leadFormsAdded = forms.added
+    result.leadFormWarnings = forms.errors
+  } catch (err) {
+    result.leadFormWarnings.push(`Lead-Formulare: ${err instanceof Error ? err.message : String(err)}`)
   }
 
   return result

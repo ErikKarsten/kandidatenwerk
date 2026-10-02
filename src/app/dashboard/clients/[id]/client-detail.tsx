@@ -3,14 +3,14 @@
 import { useState, useTransition, useEffect } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { RefreshCw, Inbox, Send, ClipboardCheck, Search } from "lucide-react"
+import { Inbox, Send, ClipboardCheck, Search, Globe } from "lucide-react"
 import {
   updateClientAction,
   archiveClientAction,
   unarchiveClientAction,
   deleteClientPermanentlyAction,
   uploadClientLogoAction,
-  refreshLeadtableClientAction,
+  publishClientToKanzleistelleAction,
 } from "./actions"
 import { ContactsSection, type Contact } from "./contacts-section"
 import { PortalAccessSection, type PortalUser } from "./portal-access-section"
@@ -81,6 +81,7 @@ interface Client {
   lng: number | null
   ort: string | null
   auto_forward_enabled: boolean
+  kanzleistelle_company_id: string | null
 }
 
 // Aktive Kanzlei-Kampagne des Kunden - für Leerzustand und Links im Reiter Kandidaten.
@@ -156,8 +157,6 @@ export function ClientDetail({
   const [archivePending, startArchiveTransition] = useTransition()
   const [deletePending, startDeleteTransition] = useTransition()
   const [unarchivePending, startUnarchiveTransition] = useTransition()
-  const [refreshPending, startRefreshTransition] = useTransition()
-  const [refreshMessage, setRefreshMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   function openModal() {
     setModalStep("choice")
@@ -183,25 +182,6 @@ export function ClientDetail({
     startUnarchiveTransition(async () => {
       const result = await unarchiveClientAction(client.id)
       if (!result?.error) router.refresh()
-    })
-  }
-
-  function handleLeadtableRefresh() {
-    setRefreshMessage(null)
-    startRefreshTransition(async () => {
-      const result = await refreshLeadtableClientAction(client.id)
-      if (result.success) {
-        const parts: string[] = []
-        if (result.newCampaigns > 0) parts.push(`${result.newCampaigns} neue Kampagne${result.newCampaigns !== 1 ? "n" : ""}`)
-        if (result.archived) parts.push("bei Leadtable archiviert")
-        setRefreshMessage({
-          type: "success",
-          text: parts.length > 0 ? parts.join(", ") : "Bereits aktuell",
-        })
-        router.refresh()
-      } else {
-        setRefreshMessage({ type: "error", text: result.error })
-      }
     })
   }
 
@@ -412,19 +392,6 @@ export function ClientDetail({
             </>
           )}
 
-          {client.leadtable_customer_id && (
-            <button
-              type="button"
-              onClick={handleLeadtableRefresh}
-              disabled={refreshPending}
-              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-              style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-            >
-              <RefreshCw size={12} className={refreshPending ? "animate-spin" : undefined} />
-              {refreshPending ? "Wird aktualisiert…" : "Mit Leadtable aktualisieren"}
-            </button>
-          )}
-
           <button
             onClick={openModal}
             className="ml-auto rounded-md border px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
@@ -440,14 +407,6 @@ export function ClientDetail({
             Bearbeiten
           </button>
         </div>
-        {refreshMessage && (
-          <p
-            className="mt-2 text-xs"
-            style={{ color: refreshMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}
-          >
-            {refreshMessage.text}
-          </p>
-        )}
       </div>
 
       {/* ── KPIs ── */}
@@ -873,6 +832,53 @@ function KandidatenTab({
   )
 }
 
+// Kanzleistelle24 (Paket 8): einmal veröffentlichen (Firma + aktive Kanzlei-Kampagnen),
+// danach "aktualisieren" für neu hinzugekommene Kampagnen.
+function KanzleistellePublishCard({ clientId, published }: { clientId: string; published: boolean }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+
+  function handleClick() {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await publishClientToKanzleistelleAction(clientId)
+      if (!result.success) return setMessage({ ok: false, text: result.error })
+      const base = result.firstPublish
+        ? `Auf Kanzleistelle24 veröffentlicht, ${result.published} Kampagne${result.published === 1 ? "" : "n"}.`
+        : result.published > 0
+          ? `${result.published} neue Kampagne${result.published === 1 ? "" : "n"} auf Kanzleistelle24 veröffentlicht.`
+          : "Kanzleistelle24 ist bereits aktuell."
+      setMessage(result.errors.length > 0 ? { ok: false, text: `${base} Fehler: ${result.errors.join(" · ")}` } : { ok: true, text: base })
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white px-6 py-4" style={{ borderColor: "#dde3ea" }}>
+      <div>
+        <p className="text-sm font-medium text-gray-900">Kanzleistelle24</p>
+        <p className="text-xs text-gray-500">{published ? "Kunde ist veröffentlicht." : "Noch nicht veröffentlicht."}</p>
+        {message && (
+          <p className="mt-1 text-xs" style={{ color: message.ok ? "#1a9a6a" : "#dc2626" }}>
+            {message.text}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={pending}
+        className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+        style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+      >
+        <Globe size={12} className={pending ? "animate-spin" : undefined} />
+        {pending ? "Wird übertragen…" : published ? "Daten auf Kanzleistelle24 aktualisieren" : "Auf Kanzleistelle24 veröffentlichen"}
+      </button>
+    </div>
+  )
+}
+
 function StammdatenTab({
   client,
   editMode,
@@ -953,6 +959,7 @@ function StammdatenTab({
 
   return (
     <div className="flex flex-col gap-4 max-w-lg">
+      <KanzleistellePublishCard clientId={client.id} published={!!client.kanzleistelle_company_id} />
       <div className="rounded-xl border bg-white p-6 flex flex-col gap-4" style={{ borderColor: "#dde3ea" }}>
         <FieldRow label="Logo" editMode={editMode}>
           {editMode ? (

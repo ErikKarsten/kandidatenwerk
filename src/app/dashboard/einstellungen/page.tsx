@@ -8,6 +8,7 @@ import {
   getPendingCustomFieldReviewQueue,
 } from "./actions"
 import { EinstellungenDetail } from "./einstellungen-detail"
+import { getFieldTemplates, getLeadForms } from "./field-actions"
 import { getLeadCampaignsOverview } from "@/lib/meta-campaigns-queries"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -40,6 +41,7 @@ export default async function EinstellungenPage() {
   const customFieldDefinitions = ownProfile.agency_id ? await getCustomFieldDefinitions() : []
   const customFieldReviewQueue = ownProfile.agency_id ? await getPendingCustomFieldReviewQueue() : []
   const metaCampaigns = ownProfile.agency_id ? await getLeadCampaignsOverview(supabase as unknown as SupabaseClient) : []
+  const [fieldTemplates, leadForms] = ownProfile.agency_id ? await Promise.all([getFieldTemplates(), getLeadForms()]) : [[], []]
 
   return (
     <EinstellungenDetail
@@ -57,6 +59,8 @@ export default async function EinstellungenPage() {
       customFieldDefinitions={customFieldDefinitions}
       customFieldReviewQueue={customFieldReviewQueue}
       metaCampaigns={metaCampaigns}
+      fieldTemplates={fieldTemplates}
+      leadForms={leadForms}
     />
   )
 }

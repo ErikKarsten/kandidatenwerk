@@ -43,7 +43,7 @@ const TECHNICAL_TITLES = new Set([
   "campaignid", "campaignname", "platform", "eventid", "createdtime", "id",
 ])
 
-function normalizeTitle(title: string): string {
+export function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/_/g, " ").replace(/[?:]+/g, " ").replace(/\s+/g, " ").trim()
 }
 
@@ -61,6 +61,18 @@ function cleanAnswer(value: unknown): string | null {
 function displayTitle(title: string): string {
   const t = title.replace(/_/g, " ").replace(/\s+/g, " ").trim()
   return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
+// Vorschlag für eine Formularfrage: passende Zusatzfeld-Keys, "kontakt" (Name/E-Mail/
+// Telefon), "ignorieren" (technisch/leer) oder null (kein Treffer). Genutzt auch für die
+// Vorbelegung der Meta-Formular-Zuordnung (lead-form-mapping.ts).
+export function suggestForTitle(title: string): { kind: "fields"; keys: string[] } | { kind: "kontakt" | "ignorieren" } | null {
+  const norm = normalizeTitle(title)
+  const compact = norm.replace(/\s/g, "")
+  if (TECHNICAL_TITLES.has(compact) || compact === "leadgenid" || IGNORED_TITLES.test(norm)) return { kind: "ignorieren" }
+  if (CORE_TITLES.test(norm)) return { kind: "kontakt" }
+  const rule = FIELD_RULES.find((r) => r.test.test(norm))
+  return rule ? { kind: "fields", keys: rule.keys } : null
 }
 
 export function mapLeadFormAnswers(profile: Record<string, { title?: string; value?: unknown }> | undefined | null): FormAnswersResult {

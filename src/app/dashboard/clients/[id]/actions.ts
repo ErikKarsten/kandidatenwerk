@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { requireStaffUser } from "@/lib/auth-guards"
-import { fetchAllCustomers, importNewLeadtableCampaignsForClient } from "@/lib/leadtable-import-customers"
+import { publishClientToKanzleistelle } from "@/lib/sync-kanzleistelle-jobs"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { reverseGeocodeCity } from "@/lib/reverse-geocode"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
@@ -224,63 +224,28 @@ export async function deleteClientPermanentlyAction(clientId: string): Promise<{
   return null
 }
 
-export async function refreshLeadtableClientAction(
+// Kunden-Stammdaten -> "Auf Kanzleistelle24 veröffentlichen" bzw. danach "Daten auf
+// Kanzleistelle24 aktualisieren" (Paket 8).
+export async function publishClientToKanzleistelleAction(
   clientId: string
-): Promise<
-  { success: true; newCampaigns: number; archived: boolean } | { success: false; error: string }
-> {
+): Promise<{ success: true; firstPublish: boolean; published: number; errors: string[] } | { success: false; error: string }> {
   const supabase = await createSupabaseServerClient()
-
-  // Nur Staff - ruft externe Dienste bzw. schreibt mit Service-Role-Rechten
-  // (Security-Review 02.10.2026).
+  // Nur Staff - schreibt in die Kanzleistelle24-Datenbank (Security-Review 02.10.2026).
   const staffError = await requireStaffUser(supabase)
   if (staffError) return { success: false, error: staffError.error }
 
-  const { data: client, error: fetchError } = await supabase
-    .from("clients")
-    .select("id, active, leadtable_customer_id")
-    .eq("id", clientId)
-    .single()
-
-  if (fetchError || !client) return { success: false, error: "Kunde nicht gefunden." }
-  if (!client.leadtable_customer_id) {
-    return { success: false, error: "Keine Leadtable-Kunden-ID hinterlegt, kein Abgleich möglich." }
-  }
-
-  // Archiviert-Status: kein Single-Item-GET bei Leadtable für einen Kunden, nur
-  // /customer/all als Liste (siehe fetchAllCustomers) - deshalb komplette Kundenliste
-  // laden und per _id filtern (gleiches Muster wie bei fetchAllCampaigns).
-  let archived = false
-
   try {
-    const leadtableCustomers = await fetchAllCustomers()
-    const match = leadtableCustomers.find((c) => c._id === client.leadtable_customer_id)
-    archived = match?.archived ?? false
+    const result = await publishClientToKanzleistelle(clientId)
+    revalidatePath(`/dashboard/clients/${clientId}`)
+    return {
+      success: true,
+      firstPublish: result.firstPublish,
+      published: result.published,
+      errors: result.errors.map((e) => `${e.campaign}: ${e.message}`),
+    }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { success: false, error: `Leadtable-API-Fehler beim Archiviert-Check: ${message}` }
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
   }
-
-  if (archived && client.active) {
-    const { error: archiveError } = await supabase
-      .from("clients")
-      .update({ active: false })
-      .eq("id", clientId)
-    if (archiveError) return { success: false, error: `Fehler beim Archivieren: ${archiveError.message}` }
-  }
-
-  let importResult
-  try {
-    importResult = await importNewLeadtableCampaignsForClient(clientId, client.leadtable_customer_id)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { success: false, error: `Import neuer Kampagnen fehlgeschlagen: ${message}` }
-  }
-
-  revalidatePath(`/dashboard/clients/${clientId}`)
-  revalidatePath("/dashboard/clients")
-
-  return { success: true, newCampaigns: importResult.campaignsCreated, archived }
 }
 
 // ── client_contacts ──────────────────────────────────────────────────────────

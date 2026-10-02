@@ -133,6 +133,8 @@ async function handleLeadgenEvent(value: LeadgenChangeValue) {
       id: campaign.id,
       title: campaign.title,
       client_id: campaign.client_id,
+      agency_id: campaign.agency_id,
+      meta_form_id: value.form_id,
     }
     const outcome = await processMetaLead(supabase, campaignForProcessing, lead)
     console.log(`[meta-webhook] Lead ${value.leadgen_id} (Kampagne "${campaign.title}"): ${outcome.status}`)

@@ -2,6 +2,9 @@
 
 import { useState, useTransition } from "react"
 import { MetaCampaignsTab } from "./meta-campaigns-tab"
+import { setCustomFieldSectionAction, type FieldTemplate, type LeadFormOverview } from "./field-actions"
+import { FieldTemplatesTab } from "./field-templates-tab"
+import { LeadFormsTab } from "./lead-forms-tab"
 import type { LeadCampaignOverview } from "@/lib/meta-campaigns-queries"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -46,32 +49,52 @@ interface EinstellungenDetailProps {
   customFieldDefinitions: CustomFieldDefinition[]
   customFieldReviewQueue: CustomFieldReviewQueueEntry[]
   metaCampaigns: LeadCampaignOverview[]
+  fieldTemplates: FieldTemplate[]
+  leadForms: LeadFormOverview[]
 }
 
-type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen" | "zusatzfelder" | "meta"
+type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen" | "zusatzfelder" | "feldvorlagen" | "leadformulare" | "meta"
 
-export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns }: EinstellungenDetailProps) {
+export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
 
   return (
-    <div className="flex flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex min-w-0 flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Einstellungen</h1>
       </div>
 
       <div>
-        <div className="flex gap-0 border-b" style={{ borderColor: "#dde3ea" }}>
+        <div className="flex gap-0 overflow-x-auto border-b" style={{ borderColor: "#dde3ea" }}>
           <TabButton active={tab === "konto"} onClick={() => setTab("konto")}>Mein Konto</TabButton>
           <TabButton active={tab === "team"} onClick={() => setTab("team")}>Team ({team.length})</TabButton>
           <TabButton active={tab === "agentur"} onClick={() => setTab("agentur")}>Agentur</TabButton>
           <TabButton active={tab === "vorlagen"} onClick={() => setTab("vorlagen")}>E-Mail-Vorlagen ({emailTemplates.length})</TabButton>
           <TabButton active={tab === "automatisierung"} onClick={() => setTab("automatisierung")}>Automatisierung</TabButton>
-          <TabButton active={tab === "zusatzfelder"} onClick={() => setTab("zusatzfelder")}>Zusatzfelder ({customFieldDefinitions.filter((f) => f.active).length})</TabButton>
+          <TabButton active={tab === "zusatzfelder"} onClick={() => setTab("zusatzfelder")}>Felder ({customFieldDefinitions.filter((f) => f.active).length})</TabButton>
+          <TabButton active={tab === "feldvorlagen"} onClick={() => setTab("feldvorlagen")}>Feld-Vorlagen ({fieldTemplates.length})</TabButton>
+          <TabButton active={tab === "leadformulare"} onClick={() => setTab("leadformulare")}>
+            Lead-Formulare ({leadForms.filter((f) => f.campaigns.length > 0).length})
+          </TabButton>
           <TabButton active={tab === "meta"} onClick={() => setTab("meta")}>Meta-Kampagnen ({metaCampaigns.filter((c) => c.status === "active").length})</TabButton>
         </div>
 
-        <div className="mt-4 max-w-lg">
+        <div className={tab === "leadformulare" || tab === "feldvorlagen" || tab === "meta" ? "mt-4 max-w-4xl" : "mt-4 max-w-lg"}>
           {tab === "konto" && <KontoTab ownProfile={ownProfile} />}
+          {tab === "feldvorlagen" && (
+            <FieldTemplatesTab
+              templates={fieldTemplates}
+              fields={customFieldDefinitions.filter((f) => f.active && f.section !== "stammdaten")}
+              isAdmin={ownProfile.role === "agency_admin"}
+            />
+          )}
+          {tab === "leadformulare" && (
+            <LeadFormsTab
+              forms={leadForms}
+              fields={customFieldDefinitions.filter((f) => f.active)}
+              isAdmin={ownProfile.role === "agency_admin"}
+            />
+          )}
           {tab === "meta" && <MetaCampaignsTab campaigns={metaCampaigns} isAdmin={ownProfile.role === "agency_admin"} />}
           {tab === "team" && <TeamTab team={team} ownProfileId={ownProfile.id} />}
           {tab === "agentur" && <AgenturTab agencyName={agencyName} />}
@@ -97,7 +120,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className="px-4 py-2.5 text-sm font-medium transition-colors"
+      className="shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors"
       style={{
         color: active ? "#1e56a0" : "#6b7280",
         borderBottom: active ? "2px solid #1e56a0" : "2px solid transparent",
@@ -731,6 +754,7 @@ function ZusatzfelderTab({
 }) {
   const router = useRouter()
   const [newLabel, setNewLabel] = useState("")
+  const [newSection, setNewSection] = useState<"stammdaten" | "zusatz">("zusatz")
   const [formError, setFormError] = useState<string | null>(null)
   const [createPending, startCreateTransition] = useTransition()
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -766,7 +790,7 @@ function ZusatzfelderTab({
     if (!newLabel.trim()) { setFormError("Bezeichnung ist ein Pflichtfeld."); return }
     setFormError(null)
     startCreateTransition(async () => {
-      const result = await createCustomFieldDefinitionAction(agencyId, newLabel)
+      const result = await createCustomFieldDefinitionAction(agencyId, newLabel, newSection)
       if (result?.error) { setFormError(result.error); return }
       setNewLabel("")
       router.refresh()
@@ -791,6 +815,16 @@ function ZusatzfelderTab({
     })
   }
 
+  function handleToggleSection(field: CustomFieldDefinition) {
+    setTogglePendingId(field.id)
+    startToggleTransition(async () => {
+      const result = await setCustomFieldSectionAction(field.id, field.section === "stammdaten" ? "zusatz" : "stammdaten")
+      if (result?.error) setFormError(result.error)
+      setTogglePendingId(null)
+      router.refresh()
+    })
+  }
+
   function handleToggleActive(field: CustomFieldDefinition) {
     setTogglePendingId(field.id)
     startToggleTransition(async () => {
@@ -804,11 +838,12 @@ function ZusatzfelderTab({
     <div className="flex flex-col gap-4">
       <Card>
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">Zusatzfelder</h2>
+          <h2 className="text-sm font-semibold text-gray-900">Felder</h2>
           <p className="mt-1 text-xs text-gray-500">
-            Diese Felder erscheinen auf jedem Kandidatenprofil (intern und im
-            Kunden-Portal) und werden bei der Leadtable-/Meta-Übernahme automatisch
-            befüllt, sofern erkennbar.
+            Eigene Felder für Kandidaten. „Stammdaten“-Felder stehen im Profil oben bei
+            Name, E-Mail und PLZ und werden immer angezeigt. Welche Zusatzfelder zu sehen
+            sind, bestimmt die Feld-Vorlage der Kanzlei-Kampagne. Befüllt werden sie über
+            die Zuordnung unter „Lead-Formulare“.
           </p>
         </div>
 
@@ -845,11 +880,26 @@ function ZusatzfelderTab({
               ) : (
                 <>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{field.label}</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {field.label}
+                      {field.section === "stammdaten" && (
+                        <span className="ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
+                          Stammdaten
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-gray-400">{field.key}</p>
                   </div>
                   {isAgencyAdmin && (
                     <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        onClick={() => handleToggleSection(field)}
+                        disabled={togglePendingId === field.id}
+                        className="text-xs font-medium hover:underline disabled:opacity-50"
+                        style={{ color: "#1e56a0" }}
+                      >
+                        {field.section === "stammdaten" ? "Zu Zusatzfeldern" : "In Stammdaten"}
+                      </button>
                       <button
                         onClick={() => startEdit(field)}
                         className="rounded p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
@@ -877,10 +927,20 @@ function ZusatzfelderTab({
             <input
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
-              placeholder="Neues Zusatzfeld, z.B. Führerschein"
+              placeholder="Neues Feld, z.B. Führerschein"
               className="flex-1 rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
               style={{ borderColor: "#dde3ea" }}
             />
+            <select
+              value={newSection}
+              onChange={(e) => setNewSection(e.target.value as "stammdaten" | "zusatz")}
+              className="rounded-md border px-2 py-1.5 text-xs"
+              style={{ borderColor: "#dde3ea" }}
+              aria-label="Bereich"
+            >
+              <option value="zusatz">Zusatzfeld</option>
+              <option value="stammdaten">Stammdaten</option>
+            </select>
             <button
               onClick={handleCreate}
               disabled={createPending}

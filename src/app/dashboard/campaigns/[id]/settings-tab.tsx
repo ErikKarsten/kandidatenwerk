@@ -25,9 +25,16 @@ interface SettingsTabProps {
   // zeigt, dass die Anfrage bei Meta erfolgreich RAUSGEGANGEN ist, nicht dass sie
   // tatsaechlich zugestellt wurde.
   metaWebhookLastTestAt: string | null
+  // Kanzlei-Kampagnen: Feld-Vorlage statt Meta-Formular (Paket 8) - Leads kommen nur
+  // noch über Lead-Kampagnen.
+  kind: string
+  fieldTemplateId: string | null
+  fieldTemplates: { id: string; name: string; is_default: boolean }[]
 }
 
-export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, plz, radiusKm, metaWebhookLastTestAt }: SettingsTabProps) {
+export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, plz, radiusKm, metaWebhookLastTestAt, kind, fieldTemplateId, fieldTemplates }: SettingsTabProps) {
+  const isKanzlei = kind === "kanzlei"
+  const [localTemplateId, setLocalTemplateId] = useState(fieldTemplateId ?? "")
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -110,11 +117,13 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
     setError(null)
     setSaved(false)
     const fd = new FormData()
-    fd.append("meta_form_id", localFormId)
-    fd.append("meta_form_name", selectedFormLabel ?? "")
-    // Zusatzfelder werden jetzt automatisch per KI aus den Meta-Formular-Antworten
-    // befüllt (siehe scripts/meta-leads-sync.ts) - keine manuelle Feldliste mehr nötig.
-    fd.append("meta_field_mapping_json", "[]")
+    if (isKanzlei) {
+      fd.append("field_template_id", localTemplateId)
+    } else {
+      fd.append("meta_form_id", localFormId)
+      fd.append("meta_form_name", selectedFormLabel ?? "")
+      fd.append("meta_field_mapping_json", "[]")
+    }
     fd.append("berufsbild", localBerufsbild)
     fd.append("plz", localPlz)
     fd.append("radius_km", localRadiusKm)
@@ -201,7 +210,33 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
 
       <div className="h-px" style={{ backgroundColor: "#dde3ea" }} />
 
-      {/* Meta Form ID */}
+      {isKanzlei && (
+        <section>
+          <h3 className="mb-1 text-sm font-semibold text-gray-700">Feld-Vorlage</h3>
+          <p className="mb-3 text-xs text-gray-400">
+            Welche Zusatzfelder bei Kandidaten dieser Kampagne angezeigt werden (Profil und Kundenportal). Vorlagen pflegst du
+            unter Einstellungen → Feld-Vorlagen.
+          </p>
+          <select
+            value={localTemplateId}
+            onChange={(e) => setLocalTemplateId(e.target.value)}
+            className="max-w-sm rounded-md border px-3 py-2 text-sm"
+            style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
+          >
+            <option value="">
+              Standardvorlage{fieldTemplates.find((t) => t.is_default) ? ` (${fieldTemplates.find((t) => t.is_default)!.name})` : " (alle Zusatzfelder)"}
+            </option>
+            {fieldTemplates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </section>
+      )}
+
+      {/* Meta Form ID - nur Lead-Kampagnen */}
+      {!isKanzlei && (
       <section>
         <h3 className="mb-1 text-sm font-semibold text-gray-700">Meta Lead Form</h3>
         <p className="mb-3 text-xs text-gray-400">
@@ -334,6 +369,7 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
           </div>
         )}
       </section>
+      )}
 
       {error && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
