@@ -168,7 +168,7 @@ async function importNewCandidates(
           .maybeSingle()
 
         const result = await withRetry(() =>
-          importLeadtableCampaign(customer._id, campaign._id, campaignName, campaignRecord?.id)
+          importLeadtableCampaign(campaign._id, campaignName, campaignRecord?.id)
         )
         newCandidates += result.created
         errors += result.errors.length

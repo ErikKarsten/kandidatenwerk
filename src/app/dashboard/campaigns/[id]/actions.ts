@@ -277,7 +277,6 @@ export async function refreshLeadtableCampaignAction(
   let importResult
   try {
     importResult = await importLeadtableCampaign(
-      leadtableCustomerId ?? "",
       campaign.leadtable_campaign_id,
       campaign.title,
       campaign.id

@@ -77,7 +77,6 @@ async function main() {
     try {
       await sleep(DELAY_MS)
       const result = await importLeadtableCampaign(
-        "", // customerId wird von importLeadtableCampaign aktuell nicht genutzt (void customerId)
         campaign.leadtable_campaign_id!,
         campaign.title,
         campaign.id
