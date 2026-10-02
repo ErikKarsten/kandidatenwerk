@@ -51,7 +51,7 @@ export default async function ClientDetailPage({
     .order("id", { ascending: false })
     .range(campaignFrom, campaignFrom + campaignPageSize - 1)
 
-  const [{ data: client }, { data: campaigns, count: campaignTotalCount }, { data: contacts }, { data: fileRows }, { data: portalProfiles }, { data: assignments }, kpis] = await Promise.all([
+  const [{ data: client }, { data: campaigns, count: campaignTotalCount }, { data: contacts }, { data: fileRows }, { data: assignments }, kpis] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
     campaignsQuery,
     supabase
@@ -64,12 +64,6 @@ export default async function ClientDetailPage({
       .select("*")
       .eq("client_id", id)
       .order("created_at", { ascending: false }),
-    supabase
-      .from("profiles")
-      .select("id, email")
-      .eq("client_id", id)
-      .eq("role", "client")
-      .order("created_at", { ascending: true }),
     // Nur AKTIVE Zuordnungen (removed_at is null) - gleiche Definition wie im
     // Kunden-Portal selbst (client_portal_rls_foundation.sql). Beendete Zuordnungen
     // sollen hier nicht als "aktuell zugeordnete Kandidaten" auftauchen.
@@ -84,10 +78,22 @@ export default async function ClientDetailPage({
 
   if (!client) notFound()
 
+  // Portal-Zugänge per Admin-Client statt über die RLS-Session: Portal-Profile haben
+  // bewusst agency_id = NULL (Sicherheitsvorfall 22.09.2026), die "Profile der eigenen
+  // Agentur"-Policy zeigt sie dem Team deshalb nicht - die Liste war dadurch immer leer.
+  // Sicher, weil erst hier nach dem RLS-geprüften Laden des Kunden (sonst notFound
+  // oben) und streng auf diesen Kunden und role "client" gefiltert wird.
+  //
   // Aktiv/eingeladen laesst sich nicht aus profiles ablesen (dort steht nur, DASS ein
   // Portal-Profil existiert) - dafuer muss der zugehoerige Auth-User per Admin-API
   // abgefragt werden (last_sign_in_at gesetzt => hat sich schon mal eingeloggt).
   const admin = createSupabaseAdminClient()
+  const { data: portalProfiles } = await admin
+    .from("profiles")
+    .select("id, email")
+    .eq("client_id", client.id)
+    .eq("role", "client")
+    .order("created_at", { ascending: true })
   const portalUsers = await Promise.all(
     (portalProfiles ?? []).map(async (p) => {
       const { data } = await admin.auth.admin.getUserById(p.id)
