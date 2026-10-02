@@ -1,5 +1,8 @@
 import { Sidebar } from "@/components/layout/sidebar"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { OPEN_BUG_REPORT_STATUSES } from "@/lib/bug-reports/shared"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient()
@@ -24,13 +27,31 @@ export default async function DashboardLayout({ children }: { children: React.Re
     supabase.auth.getUser(),
   ])
 
-  const { count: myOpenTasksCount } = user
-    ? await supabase
-        .from("tasks")
-        .select("id", { count: "exact", head: true })
-        .eq("assigned_to", user.id)
-        .eq("status", "offen")
-    : { count: 0 }
+  const [{ count: myOpenTasksCount }, { data: profile }] = user
+    ? await Promise.all([
+        supabase
+          .from("tasks")
+          .select("id", { count: "exact", head: true })
+          .eq("assigned_to", user.id)
+          .eq("status", "offen"),
+        supabase.from("profiles").select("full_name, email, role, agency_id").eq("id", user.id).single(),
+      ])
+    : [{ count: 0 }, { data: null }]
+
+  // Offene Fehlermeldungen nur für Admins zählen - bug_reports ist ohne RLS-Policy für
+  // Logins (siehe 20261002000001_bug_reports.sql), daher per Admin-Client, aber streng
+  // auf die eigene Agentur gefiltert. Fehlt die Tabelle noch, bleibt der Zähler 0.
+  const isAdmin = profile?.role === "agency_admin"
+  let openBugReportsCount = 0
+  if (isAdmin && profile?.agency_id) {
+    const db = createSupabaseAdminClient() as unknown as SupabaseClient
+    const { count } = await db
+      .from("bug_reports")
+      .select("id", { count: "exact", head: true })
+      .eq("agency_id", profile.agency_id)
+      .in("status", OPEN_BUG_REPORT_STATUSES)
+    openBugReportsCount = count ?? 0
+  }
 
   return (
     <div className="flex h-full">
@@ -40,6 +61,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
         clientsCount={clientsCount ?? 0}
         myOpenTasksCount={myOpenTasksCount ?? 0}
         qualifiedCount={qualifiedCount ?? 0}
+        userName={profile?.full_name || profile?.email || "Unbekannt"}
+        isAdmin={isAdmin}
+        openBugReportsCount={openBugReportsCount}
       />
       <main className="flex-1 overflow-y-auto">{children}</main>
     </div>

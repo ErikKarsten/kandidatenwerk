@@ -20,20 +20,48 @@ function escapeHtml(s: string): string {
 // Admin-API nachschlagen (gleiches Muster wie getTeamMembers in
 // einstellungen/actions.ts - profiles.email ist bei bestehenden Team-Profilen NULL).
 //
-// Aktuell bewusst OHNE Agentur-Filter beim Lesen der Empfänger (es gibt aktuell nur
-// eine einzige Agentur im System, siehe gleiche Vereinfachung in
-// 20260907000004_candidates_visible_without_link.sql) - bei mehreren Agenturen müsste
-// hier zusätzlich nach der agency_id der Kampagne/des Kunden gefiltert werden.
+// Empfänger werden auf die Agentur des Kandidaten gefiltert (über Kunde bzw. Kampagne
+// -> clients.agency_id, Atlas T-11, 02.10.2026). Lässt sich keine Agentur ermitteln
+// (z.B. manuell angelegt ohne Kampagne/Kunde), gehen wie bisher alle konfigurierten
+// Empfänger raus - lieber eine Mail zu viel als ein verpasster Lead.
 //
 // Wirft bei Fehlern, statt sie zu schlucken - der Aufrufer entscheidet (wie bei
 // ensureClientAssignment), ob und wie das geloggt wird, damit ein Fehler hier nie die
 // eigentliche Kandidatenanlage scheitern lässt.
+async function resolveCandidateAgencyId(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  candidateId: string
+): Promise<string | null> {
+  const { data: candidate } = await admin
+    .from("candidates")
+    .select("client_id, campaign_id")
+    .eq("id", candidateId)
+    .maybeSingle()
+  if (!candidate) return null
+
+  let clientId = candidate.client_id
+  if (!clientId && candidate.campaign_id) {
+    const { data: campaign } = await admin
+      .from("campaigns")
+      .select("client_id")
+      .eq("id", candidate.campaign_id)
+      .maybeSingle()
+    clientId = campaign?.client_id ?? null
+  }
+  if (!clientId) return null
+
+  const { data: client } = await admin.from("clients").select("agency_id").eq("id", clientId).maybeSingle()
+  return client?.agency_id ?? null
+}
+
 export async function notifyLeadRecipients(candidateId: string, candidateName: string): Promise<void> {
   const admin = createSupabaseAdminClient()
 
-  const { data: recipientRows, error: recipientsError } = await admin
-    .from("lead_notification_recipients")
-    .select("profile_id")
+  const agencyId = await resolveCandidateAgencyId(admin, candidateId)
+  let recipientsQuery = admin.from("lead_notification_recipients").select("profile_id")
+  if (agencyId) recipientsQuery = recipientsQuery.eq("agency_id", agencyId)
+
+  const { data: recipientRows, error: recipientsError } = await recipientsQuery
   if (recipientsError) throw new Error(recipientsError.message)
   if (!recipientRows || recipientRows.length === 0) return
 

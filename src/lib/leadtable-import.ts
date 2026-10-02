@@ -184,13 +184,15 @@ export type ImportLeadtableCampaignResult = {
   createdCandidateIds: string[]
 }
 
+// Die Kunden-Zuordnung läuft über campaignRecordId (Kandidatenwerk-Kampagne ->
+// campaigns.client_id), nicht über die Leadtable-Kunden-ID - der frühere, nie genutzte
+// customerId-Parameter wurde am 02.10.2026 entfernt (Atlas T-10). Ohne campaignRecordId
+// (nur noch scripts/leadtable-bulk-import.ts) entstehen Kandidaten ohne Kunde/Kampagne.
 export async function importLeadtableCampaign(
-  customerId: string,
   campaignId: string,
   campaignName: string,
   campaignRecordId?: string
 ): Promise<ImportLeadtableCampaignResult> {
-  void customerId // aktuell ohne Kandidatenwerk-Client-Zuordnung, für spätere Erweiterung vorgesehen
 
   const kandidatenwerk = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

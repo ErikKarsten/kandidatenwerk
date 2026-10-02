@@ -132,7 +132,7 @@ async function main() {
       const campaignName = campaign.occupation ?? "(ohne Namen)"
       try {
         await sleep(DELAY_MS)
-        const result = await importLeadtableCampaign(customer._id, campaign._id, campaignName)
+        const result = await importLeadtableCampaign(campaign._id, campaignName)
 
         totals.created += result.created
         totals.skippedAbsage += result.skippedAbsage

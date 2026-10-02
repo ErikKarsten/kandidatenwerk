@@ -35,6 +35,7 @@ const CRON_ROUTES: Record<string, string> = {
   "*/5 * * * *": "/api/cron/run-automations",
   "*/30 * * * *": "/api/cron/meta-leads-sync",
   "0 * * * *": "/api/cron/sync-kanzleistelle",
+  "0 6 * * *": "/api/cron/task-reminders",
 }
 
 const APP_ORIGIN = "https://kandidatenwerk.kanzleistelle24.de"
