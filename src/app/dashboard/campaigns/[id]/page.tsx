@@ -20,7 +20,7 @@ export default async function CampaignDetailPage({
     : { data: null }
   const emailTemplates = ownProfile?.agency_id ? await getEmailTemplates(ownProfile.agency_id) : []
 
-  const [{ data: campaign }, { data: candidates }, { data: automations }, { data: matchRows }, { data: clientRows }] = await Promise.all([
+  const [{ data: campaign }, { data: candidates }, { data: automations }, { data: clientRows }] = await Promise.all([
     supabase
       .from("campaigns")
       .select("*, clients(id, name)")
@@ -37,11 +37,6 @@ export default async function CampaignDetailPage({
       .select("*")
       .eq("campaign_id", id)
       .order("created_at", { ascending: true }),
-    supabase
-      .from("candidate_campaign_matches")
-      .select("id, distance_km, status, matched_at, candidates(id, first_name, last_name, berufsbild, lat, lng)")
-      .eq("campaign_id", id)
-      .order("matched_at", { ascending: false }),
     // Für die "Duplizieren"/"Verschieben"-Kunde-Auswahl (campaign-detail.tsx).
     supabase.from("clients").select("id, name").order("name", { ascending: true }),
   ])
@@ -70,30 +65,6 @@ export default async function CampaignDetailPage({
     ? campaign.clients[0] ?? null
     : (campaign.clients as { id: string; name: string } | null)
 
-  type MatchCandidateJoin = {
-    id: string
-    first_name: string
-    last_name: string
-    berufsbild: string | null
-    lat: number | null
-    lng: number | null
-  } | null
-  const matches = (matchRows ?? []).map((m) => {
-    const matchCandidate = m.candidates as MatchCandidateJoin
-    return {
-      id: m.id,
-      candidateId: matchCandidate?.id ?? "",
-      firstName: matchCandidate?.first_name ?? "Unbekannt",
-      lastName: matchCandidate?.last_name ?? "",
-      distanceKm: m.distance_km,
-      status: m.status,
-      matchedAt: m.matched_at,
-      berufsbild: matchCandidate?.berufsbild ?? null,
-      lat: matchCandidate?.lat ?? null,
-      lng: matchCandidate?.lng ?? null,
-    }
-  })
-
   return (
     <CampaignDetail
       campaign={{
@@ -119,7 +90,6 @@ export default async function CampaignDetailPage({
       candidates={shownCandidates}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       automations={(automations ?? []) as any}
-      matches={matches}
       emailTemplates={emailTemplates}
       clients={clientRows ?? []}
     />

@@ -14,12 +14,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // die Query erst mit der user.id aus auth.getUser() gestellt werden kann - keine
   // vermeidbare Sequenzialität, sondern eine echte Abhängigkeit.
   const [
-    { count: matchesCount },
     { count: candidatesCount },
     { count: clientsCount },
     { data: { user } },
   ] = await Promise.all([
-    supabase.from("candidate_campaign_matches").select("id", { count: "exact", head: true }),
     supabase.from("candidates").select("id", { count: "exact", head: true }),
     supabase.from("clients").select("id", { count: "exact", head: true }),
     supabase.auth.getUser(),
@@ -54,7 +52,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="flex h-full">
       <Sidebar
-        matchesCount={matchesCount ?? 0}
         candidatesCount={candidatesCount ?? 0}
         clientsCount={clientsCount ?? 0}
         myOpenTasksCount={myOpenTasksCount ?? 0}

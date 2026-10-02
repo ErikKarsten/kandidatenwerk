@@ -28,7 +28,6 @@ import {
 import { CandidateStatusSelect } from "./candidate-status-select"
 import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
-import { MatchesTab } from "./matches-tab"
 import { AvailableCandidatesPanel } from "./available-candidates-panel"
 import type { EmailTemplate } from "../../einstellungen/actions"
 import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
@@ -98,24 +97,10 @@ interface ClientOption {
   name: string
 }
 
-interface CandidateMatch {
-  id: string
-  candidateId: string
-  firstName: string
-  lastName: string
-  distanceKm: number | null
-  status: string
-  matchedAt: string
-  berufsbild: string | null
-  lat: number | null
-  lng: number | null
-}
-
 interface CampaignDetailProps {
   campaign: Campaign
   candidates: Candidate[]
   automations: Automation[]
-  matches: CandidateMatch[]
   emailTemplates: EmailTemplate[]
   clients: ClientOption[]
 }
@@ -147,7 +132,7 @@ function triggerCSVDownload(csv: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function CampaignDetail({ campaign, candidates, automations, matches, emailTemplates, clients }: CampaignDetailProps) {
+export function CampaignDetail({ campaign, candidates, automations, emailTemplates, clients }: CampaignDetailProps) {
   const [tab, setTab] = useState<"kandidaten" | "matches" | "einrichtung" | "automatisierungen">("kandidaten")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [selectedOption, setSelectedOption] = useState<CandidateOption | null>(null)
@@ -728,14 +713,11 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
             ({candidates.length})
           </span>
         </TabButton>
-        <TabButton active={tab === "matches"} onClick={() => setTab("matches")}>
-          Passende Kandidaten
-          {campaign.kind !== "kanzlei" && (
-            <span className="ml-1 text-xs font-normal" style={{ opacity: 0.7 }}>
-              ({matches.length})
-            </span>
-          )}
-        </TabButton>
+        {campaign.kind === "kanzlei" && (
+          <TabButton active={tab === "matches"} onClick={() => setTab("matches")}>
+            Passende Kandidaten
+          </TabButton>
+        )}
         <TabButton active={tab === "einrichtung"} onClick={() => setTab("einrichtung")}>
           Einrichtung
         </TabButton>
@@ -962,10 +944,8 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
         </div>
       )}
 
-      {/* Matches-Tab: bei Kanzlei-Kampagnen Suche mit "Zuordnen" (Atlas T-40), sonst die
-          gespeicherten Treffer. */}
-      {tab === "matches" &&
-        (campaign.kind === "kanzlei" ? (
+      {/* Passende Kandidaten: nur Kanzlei-Kampagnen, Suche mit "Zuordnen" (Atlas T-40). */}
+      {tab === "matches" && campaign.kind === "kanzlei" && (
           <AvailableCandidatesPanel
             campaign={{
               id: campaign.id,
@@ -976,14 +956,7 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
               lng: campaign.lng,
             }}
           />
-        ) : (
-          <MatchesTab
-            matches={matches}
-            selfLat={campaign.lat}
-            selfLng={campaign.lng}
-            selfLabel={campaign.title}
-          />
-        ))}
+      )}
 
       {/* Automatisierungen-Tab */}
       {tab === "automatisierungen" && (

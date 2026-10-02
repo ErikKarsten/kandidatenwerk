@@ -19,7 +19,7 @@ import { ClientNotesSection, type ClientNote } from "./client-notes-section"
 import { type ClientOption } from "./client-assignment-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
-import { AssignmentTab, type CampaignMatch, type KanzleiCampaignOption } from "./assignment-tab"
+import { AssignmentTab, type KanzleiCampaignOption } from "./assignment-tab"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
@@ -60,7 +60,6 @@ interface CandidateDetailProps {
   candidate: Candidate
   history: HistoryEntry[]
   files: FileItem[]
-  matches: CampaignMatch[]
   activeAssignments: ActiveAssignment[]
   clients: ClientOption[]
   clientNotes: ClientNote[]
@@ -71,7 +70,7 @@ interface CandidateDetailProps {
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, matches, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, kanzleiCampaigns }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, kanzleiCampaigns }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung">("profil")
@@ -365,10 +364,7 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
             {tab === "zuordnung" && (
               <AssignmentTab
                 candidateId={candidate.id}
-                candidateName={`${candidate.first_name} ${candidate.last_name}`}
                 berufsbild={candidate.berufsbild}
-                selfLat={candidate.lat}
-                selfLng={candidate.lng}
                 origin={{
                   campaignId: candidate.campaign_id,
                   title: candidate.campaigns?.title ?? null,
@@ -376,7 +372,6 @@ export function CandidateDetail({ candidate, history, files, matches, activeAssi
                   clientId: candidate.campaigns?.clients?.id ?? null,
                   clientName: candidate.campaigns?.clients?.name ?? null,
                 }}
-                matches={matches}
                 activeAssignments={activeAssignments}
                 clients={clients}
                 kanzleiCampaigns={kanzleiCampaigns}
