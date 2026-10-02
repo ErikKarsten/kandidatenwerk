@@ -1,19 +1,21 @@
 "use server"
 
 import { redirect } from "next/navigation"
+import { headers } from "next/headers"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { candidateLoginSchema } from "@/lib/schemas"
-import { checkRateLimit } from "@/lib/ratelimit"
+import { checkLoginRateLimit } from "@/lib/ratelimit"
 import { z } from "zod"
 
 export async function loginAction(_prevState: string | null, formData: FormData) {
   const email = formData.get("email") as string
   const password = formData.get("password") as string
 
-  // ✅ RATE LIMITING CHECK
-  const rateLimit = await checkRateLimit(email, 5, 3600000) // 5 Versuche pro Stunde
-  if (!rateLimit.success) {
-    return "Zu viele Login-Versuche. Versuche es in 1 Stunde erneut."
+  // Rate Limiting: max. 5 Versuche/Minute je E-Mail und 20/Minute je IP (siehe
+  // src/lib/ratelimit.ts). cf-connecting-ip setzt Cloudflare selbst, nicht der Client.
+  const ip = (await headers()).get("cf-connecting-ip")
+  if (!(await checkLoginRateLimit(email ?? "", ip))) {
+    return "Zu viele Login-Versuche. Bitte warte eine Minute und versuche es dann erneut."
   }
 
   // ✅ INPUT VALIDATION MIT ZOD
