@@ -11,7 +11,7 @@ interface LeadtableLeadsPages {
   currentPage: number
   leadsPerPage: number
 }
-interface LeadtableLead {
+export interface LeadtableLead {
   _id: string
   name?: string
   email?: string | null
@@ -125,7 +125,7 @@ export function extractCleanName(rawName: string): {
 // "erika@example.com erika@example.com", vermutlich ein Formularfeld-Mapping-Problem auf
 // Leadtable-Seite, siehe Live-Audit vom 24.09.2026, Fälle Erika Sadzanski/Julia May) -
 // hier bereinigen, bevor der Wert für Dublettenprüfung ODER Insert genutzt wird.
-function cleanLeadtableEmail(raw: string): string {
+export function cleanLeadtableEmail(raw: string): string {
   const trimmed = raw.trim()
   const parts = trimmed.split(/\s+/)
   if (parts.length === 2 && parts[0].toLowerCase() === parts[1].toLowerCase()) return parts[0]
@@ -139,7 +139,7 @@ function cleanLeadtableEmail(raw: string): string {
 // Test-Lead durchlaufen lässt, immer wieder fälschlich umgehängt (siehe Live-Test vom
 // 24.09.2026, Kampagne "Braunschweig - SFA").
 const KNOWN_TEST_LEAD_EMAILS = new Set(["test@meta.com"])
-function isTestLead(lead: LeadtableLead): boolean {
+export function isTestLead(lead: LeadtableLead): boolean {
   return KNOWN_TEST_LEAD_EMAILS.has((lead.email ?? "").trim().toLowerCase())
 }
 

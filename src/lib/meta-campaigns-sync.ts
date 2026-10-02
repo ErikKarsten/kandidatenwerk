@@ -137,8 +137,7 @@ export async function syncMetaCampaigns(
   }
 
   const campaigns = await fetchAll<MetaCampaign>(`${act}/campaigns`, { fields: "id,name,effective_status,objective" })
-  const leadCampaigns = campaigns.filter((c) => !c.objective || LEAD_OBJECTIVES.has(c.objective))
-  result.metaCampaigns = leadCampaigns.length
+  const allLeadCampaigns = campaigns.filter((c) => !c.objective || LEAD_OBJECTIVES.has(c.objective))
 
   const { data: existingRows, error: existingError } = await db
     .from("campaigns")
@@ -148,14 +147,21 @@ export async function syncMetaCampaigns(
   if (existingError) throw new Error(existingError.message)
   const existingByMetaId = new Map((existingRows ?? []).map((r) => [r.meta_campaign_id as string, r]))
 
+  // Nur laufende Kampagnen abgleichen (Wunsch 02.10.2026) - pausierte/beendete sind
+  // egal. Zusätzlich die bei uns noch als laufend geführten, damit ihr Status auf
+  // pausiert/beendet springt, sobald sie bei Meta nicht mehr laufen.
+  const leadCampaigns = allLeadCampaigns.filter(
+    (c) => c.effective_status === "ACTIVE" || existingByMetaId.get(c.id)?.status === "active"
+  )
+  result.metaCampaigns = leadCampaigns.filter((c) => c.effective_status === "ACTIVE").length
+
   // Meta begrenzt API-Aufrufe je Werbekonto stark (Fehler 17 "User request limit
   // reached" schon nach zwei Voll-Läufen). Deshalb nur nachladen, was sich ändern kann:
   // - Anzeigen (-> Lead-Formular) nur für Kampagnen ohne verknüpftes Formular,
-  // - Anzeigengruppen (-> Werbegebiete) nur für neue und nicht beendete Kampagnen.
-  const needsFormIds = leadCampaigns.filter((c) => !existingByMetaId.get(c.id)?.meta_form_id).map((c) => c.id)
-  const needsAreasIds = leadCampaigns
-    .filter((c) => !existingByMetaId.has(c.id) || mapMetaStatus(c.effective_status) !== "completed")
-    .map((c) => c.id)
+  // - Anzeigengruppen (-> Werbegebiete) nur für laufende Kampagnen.
+  const running = leadCampaigns.filter((c) => c.effective_status === "ACTIVE")
+  const needsFormIds = running.filter((c) => !existingByMetaId.get(c.id)?.meta_form_id).map((c) => c.id)
+  const needsAreasIds = running.map((c) => c.id)
 
   const ads = await fetchForCampaigns<MetaAd>(
     `${act}/ads`,

@@ -44,8 +44,10 @@ export default async function ClientDetailPage({
 
   let campaignsQuery = supabase
     .from("campaigns")
-    .select("id, title, status, created_at, candidates(count)", { count: "exact" })
+    .select("id, title, status, created_at, candidates(count), client_assignments(count)", { count: "exact" })
     .eq("client_id", id)
+    // Nur aktive Zuordnungen zählen (entfernte haben removed_at).
+    .is("client_assignments.removed_at", null)
   if (campaignSearch) campaignsQuery = campaignsQuery.ilike("title", `%${campaignSearch}%`)
   if (campaignStatusFilter !== "alle") campaignsQuery = campaignsQuery.eq("status", campaignStatusFilter)
   const campaignFrom = (campaignPage - 1) * campaignPageSize
@@ -148,12 +150,15 @@ export default async function ClientDetailPage({
   const campaignList = (campaigns ?? []).map((c) => {
     const countRow = Array.isArray(c.candidates) ? c.candidates[0] : null
     const leads_count = countRow ? Number((countRow as { count: number | string }).count) : 0
+    const assignedRow = Array.isArray(c.client_assignments) ? c.client_assignments[0] : null
+    const assigned_count = assignedRow ? Number((assignedRow as { count: number | string }).count) : 0
     return {
       id: c.id,
       title: c.title,
       status: c.status,
       created_at: c.created_at,
       leads_count,
+      assigned_count,
     }
   })
 

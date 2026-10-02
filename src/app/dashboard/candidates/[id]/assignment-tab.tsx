@@ -3,35 +3,10 @@
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import dynamic from "next/dynamic"
 import { assignToCampaignAction } from "./actions"
 import { AssignmentControl, assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
 import type { ClientOption } from "./client-assignment-section"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
-import type { MapPoint } from "@/components/dashboard/matches-map"
-
-// Leaflet greift beim Import auf Browser-Globals zu - nur clientseitig laden.
-const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").then((m) => m.MatchesMap), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center rounded-lg border py-10 text-sm text-gray-400" style={{ borderColor: "#dde3ea" }}>
-      Karte wird geladen…
-    </div>
-  ),
-})
-
-export interface CampaignMatch {
-  id: string
-  campaignId: string
-  campaignTitle: string
-  clientId: string | null
-  clientName: string | null
-  distanceKm: number | null
-  status: string
-  matchedAt: string
-  lat: number | null
-  lng: number | null
-}
 
 export interface KanzleiCampaignOption {
   id: string
@@ -54,38 +29,26 @@ function berufsbildLabel(value: string | null): string {
 }
 
 // Reiter "Zuordnung" im Kandidatenprofil (Atlas T-35, Zielbild T-31): Herkunft des
-// Leads, Zuordnungen zu Kanzlei-Kampagnen (1:n), passende Kanzlei-Kampagnen aus dem
-// Matching und "Weiterschieben" an beliebige weitere Kanzlei-Kampagnen.
+// Leads, Zuordnungen zu Kanzlei-Kampagnen (1:n) und "Weiterschieben" an beliebige
+// weitere Kanzlei-Kampagnen. Die Matching-Anzeige wurde am 02.10.2026 entfernt -
+// passende Kandidaten findet man in der Kanzlei-Kampagne.
 export function AssignmentTab({
   candidateId,
-  candidateName,
   berufsbild,
-  selfLat,
-  selfLng,
   origin,
-  matches,
   activeAssignments,
   clients,
   kanzleiCampaigns,
 }: {
   candidateId: string
-  candidateName: string
   berufsbild: string | null
-  selfLat: number | null
-  selfLng: number | null
   origin: Origin
-  matches: CampaignMatch[]
   activeAssignments: ActiveAssignment[]
   clients: ClientOption[]
   kanzleiCampaigns: KanzleiCampaignOption[]
 }) {
   const assignedCampaignIds = new Set(activeAssignments.map((a) => a.campaignId).filter(Boolean) as string[])
   const clientName = (id: string) => clients.find((c) => c.id === id)?.name ?? "Unbekannter Kunde"
-
-  const mapPoints: MapPoint[] = [
-    { lat: selfLat, lng: selfLng, label: candidateName, isSelf: true },
-    ...matches.map((m) => ({ lat: m.lat, lng: m.lng, label: m.campaignTitle, sublabel: m.clientName ?? undefined })),
-  ]
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,34 +88,6 @@ export function AssignmentTab({
                 </li>
               )
             })}
-          </ul>
-        )}
-      </Section>
-
-      <Section title={`Passende Kanzlei-Kampagnen (${matches.length})`}>
-        {!berufsbild && (
-          <p className="mb-2 text-xs text-amber-700">Ohne Berufsbild findet das Matching keine Kampagnen – Berufsbild oben setzen.</p>
-        )}
-        <div className="mb-3">
-          <MatchesMap points={mapPoints} />
-        </div>
-        {matches.length === 0 ? (
-          <p className="text-sm text-gray-400">Keine passenden Kanzlei-Kampagnen im Umkreis.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {matches.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
-                <div className="min-w-0">
-                  <Link href={`/dashboard/campaigns/${m.campaignId}`} className="block truncate text-sm font-medium hover:underline" style={{ color: "#1e56a0" }}>
-                    {m.campaignTitle}
-                  </Link>
-                  <p className="truncate text-xs text-gray-500">
-                    {m.clientName ?? "Kein Kunde"} · {m.distanceKm !== null ? `${m.distanceKm.toFixed(1)} km` : "Entfernung unbekannt"}
-                  </p>
-                </div>
-                <AssignButton candidateId={candidateId} campaignId={m.campaignId} assigned={assignedCampaignIds.has(m.campaignId)} />
-              </li>
-            ))}
           </ul>
         )}
       </Section>

@@ -30,3 +30,22 @@ export async function forwardGeocode(query: string): Promise<{ lat: number; lng:
   const first = results[0]
   return first ? { lat: Number(first.lat), lng: Number(first.lon) } : null
 }
+
+// Mehrere Treffer (für mehrdeutige Ortsnamen wie "Neuenkirchen"), damit der Aufrufer
+// den passendsten wählen kann - gleiche Drossel-Pflicht wie oben.
+export async function forwardGeocodeAll(query: string, limit = 5): Promise<{ lat: number; lng: number }[]> {
+  const url = new URL("https://nominatim.openstreetmap.org/search")
+  url.searchParams.set("q", query)
+  url.searchParams.set("countrycodes", "de")
+  url.searchParams.set("format", "json")
+  url.searchParams.set("limit", String(limit))
+
+  const response = await fetch(url, {
+    headers: { "User-Agent": NOMINATIM_USER_AGENT },
+    signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+  })
+  if (!response.ok) throw new Error(`Nominatim antwortet mit ${response.status}`)
+
+  const results = (await response.json()) as NominatimSearchResult[]
+  return results.map((r) => ({ lat: Number(r.lat), lng: Number(r.lon) }))
+}

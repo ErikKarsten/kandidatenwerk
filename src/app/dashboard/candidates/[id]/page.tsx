@@ -14,7 +14,6 @@ export default async function CandidateDetailPage({
     { data: candidate },
     { data: history },
     { data: fileRows },
-    { data: matchRows },
     { data: assignmentRows },
     { data: clientRows },
     { data: profileRows },
@@ -36,11 +35,6 @@ export default async function CandidateDetailPage({
       .select("*")
       .eq("candidate_id", id)
       .order("created_at", { ascending: false }),
-    supabase
-      .from("candidate_campaign_matches")
-      .select("id, distance_km, status, matched_at, campaigns(id, title, kind, lat, lng, clients(id, name))")
-      .eq("candidate_id", id)
-      .order("matched_at", { ascending: false }),
     // Alle aktiven Zuordnungen (nicht mehr nur eine) - ein Kandidat kann jetzt
     // gleichzeitig mehreren Kanzleien zugeordnet sein, siehe assignToCampaignAction.
     supabase
@@ -142,32 +136,6 @@ export default async function CandidateDetailPage({
   } | null
   const campaigns = candidate.campaigns as CampaignJoin
 
-  type MatchCampaignJoin = {
-    id: string
-    title: string
-    kind: string
-    lat: number | null
-    lng: number | null
-    clients: { id: string; name: string } | null
-  } | null
-  // Nur Kanzlei-Kampagnen sind Zuordnungsziele (Lead-Kampagnen werden seit T-36 nicht
-  // mehr gematcht; ältere Treffer auf solche Kampagnen werden ausgeblendet).
-  const matches = (matchRows ?? []).filter((m) => (m.campaigns as MatchCampaignJoin)?.kind !== "lead").map((m) => {
-    const matchCampaign = m.campaigns as MatchCampaignJoin
-    return {
-      id: m.id,
-      campaignId: matchCampaign?.id ?? "",
-      campaignTitle: matchCampaign?.title ?? "Unbekannte Kampagne",
-      clientId: matchCampaign?.clients?.id ?? null,
-      clientName: matchCampaign?.clients?.name ?? null,
-      distanceKm: m.distance_km,
-      status: m.status,
-      matchedAt: m.matched_at,
-      lat: matchCampaign?.lat ?? null,
-      lng: matchCampaign?.lng ?? null,
-    }
-  })
-
   const candidateData = {
     id: candidate.id,
     first_name: candidate.first_name,
@@ -219,7 +187,6 @@ export default async function CandidateDetailPage({
       candidate={candidateData}
       history={historyWithCreatorNames}
       files={files}
-      matches={matches}
       activeAssignments={activeAssignments}
       clients={clients}
       clientNotes={clientNotes}
