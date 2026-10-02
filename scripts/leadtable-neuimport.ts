@@ -11,16 +11,19 @@
 //      per leadtable_customer_id / leadtable_campaign_id aus dem alten Stand übernommen.
 //   4. Kandidaten: alle Leads ALLER Leadtable-Kunden (auch archivierter), eine Person je
 //      E-Mail, OHNE Kunden-/Kampagnen-Zuordnung (Matching folgt danach) und ohne
-//      Benachrichtigungs-Mails.
+//      Benachrichtigungs-Mails. Abgesagte Bewerbungen nicht. Formularantworten ->
+//      Zusatzfelder, Wohnort-PLZ -> Standort, Rest + Leadtable-Notizen -> Beschreibung
+//      (src/lib/leadtable-form-answers.ts).
 //
-// Danach (eigene Skripte, siehe Ausgabe am Ende): Leadtable-Beschreibungen nachladen,
-// ganz am Ende Meta-Altleads (--alle).
+// Danach ganz am Ende: Meta-Altleads (--alle).
 //
 // Läuft bewusst lokal (nicht im Worker) wegen Cloudflares Unteranfragen-Limit.
 //
 // Usage:
 //   npx tsx scripts/leadtable-neuimport.ts                (Trockenlauf: zählt nur, ändert nichts)
 //   npx tsx scripts/leadtable-neuimport.ts --ausfuehren   (Sicherung, Löschen, Import)
+//   --cache: Leadtable-Daten aus backups/leadtable-cache.json statt neu laden (jeder Lauf
+//            schreibt die Datei; spart die wegen Drosselung langsame Ladephase)
 
 import fs from "node:fs"
 import path from "node:path"
@@ -29,16 +32,19 @@ import dotenv from "dotenv"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "../src/types/database"
 import { leadtableFetch } from "../src/lib/leadtable-client"
-import { fetchAllCustomers, fetchAllCampaigns, type LeadtableCampaign } from "../src/lib/leadtable-import-customers"
+import { fetchAllCustomers, fetchAllCampaigns, type LeadtableCampaign, type LeadtableCustomerListItem } from "../src/lib/leadtable-import-customers"
 import { cleanLeadtableEmail, extractCleanName, isTestLead, type LeadtableLead } from "../src/lib/leadtable-import"
 import {
   extractLeadtableCustomFields,
+  htmlDescriptionToPlainText,
   LEADTABLE_STATUS_MAP,
   leadtableStatusName,
   sleep,
 } from "../src/lib/leadtable-sync-shared"
 import { mapKanzleistelleBerufsbild } from "../src/lib/sync-kanzleistelle"
 import { getOrCreateLocationForPlz } from "../src/lib/location-clustering"
+import { geocodePlz } from "../src/lib/geocode-plz"
+import { mapLeadFormAnswers } from "../src/lib/leadtable-form-answers"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true })
@@ -46,6 +52,7 @@ dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true })
 const DEFAULT_AGENCY_ID = "00000000-0000-0000-0000-000000000001"
 const DELAY_MS = 300
 const INSERT_CHUNK = 200
+const REJECTED_STATUSES = new Set(["Absage", "Absage mit Mitteilung"])
 
 type Db = SupabaseClient
 type Row = Record<string, unknown>
@@ -66,7 +73,13 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 10): Promise<T> {
 }
 
 interface LeadWithContext {
-  lead: LeadtableLead & { createdAt?: string; deleted?: boolean; statusID?: { name?: string }; modifiedData?: Record<string, unknown> }
+  lead: LeadtableLead & {
+    createdAt?: string
+    deleted?: { state?: boolean }
+    statusID?: { name?: string }
+    modifiedData?: Record<string, unknown>
+    funnelData?: { profile?: Record<string, { title?: string; value?: unknown }> }
+  }
   customerName: string
   occupation: string
 }
@@ -105,42 +118,64 @@ async function main() {
   const db = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!) as unknown as Db
   console.log(execute ? "=== AUSFÜHRUNG: Sicherung, Löschen, Neuimport ===" : "=== TROCKENLAUF (ändert nichts) ===")
 
-  // ── Leadtable laden ───────────────────────────────────────────────────────
-  console.log("\nLade Leadtable-Kunden und -Kampagnen…")
-  const customers = await withRetry(() => fetchAllCustomers())
-  const activeCustomers = customers.filter((c) => c.archived === false)
-  const campaignsByCustomer = new Map<string, LeadtableCampaign[]>()
-  for (const c of customers) {
-    await sleep(DELAY_MS)
-    campaignsByCustomer.set(c._id, await withRetry(() => fetchAllCampaigns(c._id)))
-  }
-  const allCampaigns = [...campaignsByCustomer.values()].flat()
-  console.log(`${customers.length} Kunden (${activeCustomers.length} aktiv), ${allCampaigns.length} Kampagnen.`)
-
-  console.log("Lade alle Leads…")
-  const leads: LeadWithContext[] = []
-  let done = 0
-  for (const c of customers) {
-    for (const camp of campaignsByCustomer.get(c._id) ?? []) {
+  // ── Leadtable laden (oder aus dem Zwischenspeicher) ──────────────────────
+  const cachePath = path.resolve(__dirname, "../backups/leadtable-cache.json")
+  type Cache = { loadedAt: string; customers: LeadtableCustomerListItem[]; campaigns: [string, LeadtableCampaign[]][]; leads: LeadWithContext[] }
+  let customers: LeadtableCustomerListItem[]
+  let campaignsByCustomer: Map<string, LeadtableCampaign[]>
+  let leads: LeadWithContext[]
+  if (process.argv.includes("--cache") && fs.existsSync(cachePath)) {
+    const cache = JSON.parse(fs.readFileSync(cachePath, "utf8")) as Cache
+    console.log(`\nLeadtable-Daten aus Zwischenspeicher vom ${new Date(cache.loadedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}.`)
+    customers = cache.customers
+    campaignsByCustomer = new Map(cache.campaigns)
+    leads = cache.leads
+  } else {
+    console.log("\nLade Leadtable-Kunden und -Kampagnen…")
+    customers = await withRetry(() => fetchAllCustomers())
+    campaignsByCustomer = new Map()
+    for (const c of customers) {
       await sleep(DELAY_MS)
-      for (const lead of await fetchCampaignLeads(camp._id)) {
-        leads.push({ lead, customerName: c.name, occupation: camp.occupation ?? "" })
-      }
-      if (++done % 50 === 0) console.log(`  ${done}/${allCampaigns.length} Kampagnen, ${leads.length} Leads`)
+      campaignsByCustomer.set(c._id, await withRetry(() => fetchAllCampaigns(c._id)))
     }
+    console.log("Lade alle Leads…")
+    leads = []
+    let done = 0
+    const total = [...campaignsByCustomer.values()].flat().length
+    for (const c of customers) {
+      for (const camp of campaignsByCustomer.get(c._id) ?? []) {
+        await sleep(DELAY_MS)
+        for (const lead of await fetchCampaignLeads(camp._id)) {
+          leads.push({ lead, customerName: c.name, occupation: camp.occupation ?? "" })
+        }
+        if (++done % 50 === 0) console.log(`  ${done}/${total} Kampagnen, ${leads.length} Leads`)
+      }
+    }
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true })
+    fs.writeFileSync(cachePath, JSON.stringify({ loadedAt: new Date().toISOString(), customers, campaigns: [...campaignsByCustomer], leads } satisfies Cache))
   }
+  const activeCustomers = customers.filter((c) => c.archived === false)
+  const allCampaigns = [...campaignsByCustomer.values()].flat()
+  console.log(`${customers.length} Kunden (${activeCustomers.length} aktiv), ${allCampaigns.length} Kampagnen, ${leads.length} Leads.`)
 
   // ── Kandidaten bilden: eine Person je E-Mail, neueste Bewerbung führt ─────
+  // Abgesagte Bewerbungen werden nicht übernommen (Entscheidung 02.10.2026); wer sich
+  // daneben noch anderswo beworben hat, kommt über diese Bewerbung trotzdem rein.
+  let skippedRejected = 0
   let skippedTest = 0
   let skippedNoEmail = 0
   let skippedDeleted = 0
   const byEmail = new Map<string, LeadWithContext[]>()
   for (const l of leads) {
-    if (l.lead.deleted) {
+    if (l.lead.deleted?.state === true) {
       skippedDeleted++
       continue
     }
-    if (isTestLead(l.lead)) {
+    if (REJECTED_STATUSES.has(leadtableStatusName(l.lead))) {
+      skippedRejected++
+      continue
+    }
+    if (isTestLead(l.lead) || mapLeadFormAnswers(l.lead.funnelData?.profile).isTestLead) {
       skippedTest++
       continue
     }
@@ -152,14 +187,55 @@ async function main() {
     byEmail.set(email, [...(byEmail.get(email) ?? []), l])
   }
 
+  // Leadtable-Notizen (Freitext des Teams) gibt es nur je Lead einzeln - zwischengespeichert.
+  const notesCachePath = path.resolve(__dirname, "../backups/leadtable-notes-cache.json")
+  const notesByLeadId: Record<string, string> = fs.existsSync(notesCachePath) ? JSON.parse(fs.readFileSync(notesCachePath, "utf8")) : {}
+  const neededLeadIds = [...byEmail.values()].flat().map((a) => a.lead._id).filter((id) => !(id in notesByLeadId))
+  if (neededLeadIds.length > 0) console.log(`\nLade Leadtable-Notizen für ${neededLeadIds.length} Bewerbungen…`)
+  for (let n = 0; n < neededLeadIds.length; n++) {
+    await sleep(DELAY_MS)
+    const resp = await withRetry(() => leadtableFetch<{ lead?: { description?: string } }>(`/lead/${neededLeadIds[n]}`))
+    const html = resp.lead?.description?.trim() ?? ""
+    notesByLeadId[neededLeadIds[n]] = html ? htmlDescriptionToPlainText(html) : ""
+    if ((n + 1) % 100 === 0) {
+      console.log(`  ${n + 1}/${neededLeadIds.length}`)
+      fs.writeFileSync(notesCachePath, JSON.stringify(notesByLeadId))
+    }
+  }
+  fs.mkdirSync(path.dirname(notesCachePath), { recursive: true })
+  fs.writeFileSync(notesCachePath, JSON.stringify(notesByLeadId))
+
+  let withPlz = 0
+  let withMetaLeadId = 0
   const candidateRows = [...byEmail.entries()].map(([email, apps]) => {
     apps.sort((a, b) => (b.lead.createdAt ?? "").localeCompare(a.lead.createdAt ?? ""))
     const newest = apps[0]
     const { firstName, lastName, usedLongNameHeuristic } = extractCleanName(newest.lead.name ?? "")
     const berufsbild = apps.map((a) => mapKanzleistelleBerufsbild(a.occupation)).find(Boolean) ?? null
-    // Ältere Antworten zuerst, neuere überschreiben.
+
+    // Zusatzfelder: ältere Bewerbungen zuerst, neuere überschreiben. Formularfragen ohne
+    // passendes Feld sowie die Leadtable-Notizen kommen in die Beschreibung.
     const customFields: Record<string, string> = {}
-    for (const a of [...apps].reverse()) Object.assign(customFields, extractLeadtableCustomFields(a.lead.modifiedData).fields)
+    let plz: string | null = null
+    let metaLeadId: string | null = null
+    const descriptionBlocks: string[] = []
+    for (const a of [...apps].reverse()) {
+      const answers = mapLeadFormAnswers(a.lead.funnelData?.profile)
+      Object.assign(customFields, extractLeadtableCustomFields(a.lead.modifiedData).fields, answers.fields)
+      plz = answers.plz ?? plz
+      metaLeadId = answers.metaLeadId ?? metaLeadId
+      const lines = [
+        ...answers.extras.map((e) => `${e.question}: ${e.answer}`),
+        ...(notesByLeadId[a.lead._id] ? [`Notizen:\n${notesByLeadId[a.lead._id]}`] : []),
+      ]
+      if (lines.length > 0) {
+        descriptionBlocks.unshift(`Bewerbung ${fmtDate(a.lead.createdAt)} – ${a.customerName} (${a.occupation || "?"}):\n${lines.join("\n")}`)
+      }
+    }
+    const coords = plz ? geocodePlz(plz) : null
+    if (plz) withPlz++
+    if (metaLeadId) withMetaLeadId++
+
     const history = apps
       .slice(0, 10)
       .map((a) => `${fmtDate(a.lead.createdAt)}: ${a.customerName} – ${a.occupation || "?"} (${leadtableStatusName(a.lead) || "?"})`)
@@ -176,7 +252,12 @@ async function main() {
       status: LEADTABLE_STATUS_MAP[leadtableStatusName(newest.lead)] ?? "neu",
       source: "leadtable",
       leadtable_lead_id: newest.lead._id,
+      meta_lead_id: metaLeadId,
       custom_fields: Object.keys(customFields).length > 0 ? customFields : null,
+      description: descriptionBlocks.length > 0 ? descriptionBlocks.join("\n\n") : null,
+      plz,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
       notes,
       created_at: newest.lead.createdAt ?? undefined,
       campaign_id: null,
@@ -203,9 +284,15 @@ async function main() {
       `${newKanzleiCampaigns.length} Kanzlei-Kampagnen, ${candidateRows.length} Kandidaten`
   )
   console.log(
-    `Leads gesamt ${leads.length}; übersprungen: ${skippedDeleted} gelöscht, ${skippedTest} Test-Leads, ${skippedNoEmail} ohne E-Mail; ` +
-      `${leads.length - skippedDeleted - skippedTest - skippedNoEmail - candidateRows.length} Mehrfach-Bewerbungen zusammengeführt`
+    `Leads gesamt ${leads.length}; übersprungen: ${skippedRejected} abgesagt, ${skippedDeleted} gelöscht, ${skippedTest} Test-Leads, ` +
+      `${skippedNoEmail} ohne E-Mail; ${leads.length - skippedRejected - skippedDeleted - skippedTest - skippedNoEmail - candidateRows.length} Mehrfach-Bewerbungen zusammengeführt`
   )
+  const fieldCounts: Record<string, number> = {}
+  for (const r of candidateRows) for (const k of Object.keys(r.custom_fields ?? {})) fieldCounts[k] = (fieldCounts[k] ?? 0) + 1
+  console.log(
+    `Mit Wohnort-PLZ (Standort fürs Matching): ${withPlz}, mit Meta-Lead-ID: ${withMetaLeadId}, mit Beschreibung: ${candidateRows.filter((r) => r.description).length}`
+  )
+  console.log("Zusatzfelder befüllt:", fieldCounts)
   const statusCounts: Record<string, number> = {}
   for (const r of candidateRows) statusCounts[r.status] = (statusCounts[r.status] ?? 0) + 1
   console.log("Status der Kandidaten:", statusCounts)
@@ -313,8 +400,6 @@ async function main() {
   }
 
   console.log("\n── Fertig ───────────────────────────────────────")
-  console.log("Als Nächstes (ohne Kunden-Zuordnung, ohne Mails):")
-  console.log("  npx tsx scripts/leadtable-description-import.ts   (Leadtable-Notizen nachladen)")
   console.log("Ganz am Ende:")
   console.log("  npx tsx scripts/meta-leads-sync.ts --alle          (Meta-Altleads)")
 }
