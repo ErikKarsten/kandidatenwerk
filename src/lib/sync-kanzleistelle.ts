@@ -94,6 +94,9 @@ export type SyncApplicationsError = {
 export type SyncApplicationsResult = {
   created: number
   linkedExisting: number
+  // Weitere Bewerbung einer Person, deren Kandidat schon mit einer anderen Bewerbung
+  // verknüpft ist - siehe Kommentar im Dublettenschutz unten.
+  skippedRepeatApplications: number
   errors: SyncApplicationsError[]
 }
 
@@ -112,6 +115,10 @@ export async function syncApplicationsFromKanzleistelle(limit?: number): Promise
     .from("applications")
     .select("id, first_name, last_name, email, phone, position, applicant_role, postal_code")
     .is("kandidatenwerk_candidate_id", null)
+    // Neueste zuerst: wiederholte Bewerbungen (siehe skippedRepeatApplications) bleiben
+    // dauerhaft unverknüpft und würden bei zufälliger Reihenfolge irgendwann das
+    // limit füllen - neue Bewerbungen kämen dann nie mehr durch.
+    .order("created_at", { ascending: false })
 
   if (limit !== undefined) query = query.limit(limit)
 
@@ -122,6 +129,7 @@ export async function syncApplicationsFromKanzleistelle(limit?: number): Promise
   const errors: SyncApplicationsError[] = []
   let created = 0
   let linkedExisting = 0
+  let skippedRepeatApplications = 0
 
   for (const application of applications ?? []) {
     try {
@@ -141,6 +149,24 @@ export async function syncApplicationsFromKanzleistelle(limit?: number): Promise
         if (emailLookupError) throw new Error(emailLookupError.message)
 
         if (existingByEmail) {
+          // In der Kanzleistelle-DB ist applications.kandidatenwerk_candidate_id
+          // eindeutig - ein Kandidat kann nur mit EINER Bewerbung verknüpft sein. Hängt
+          // schon eine andere dran (dieselbe Person hat sich mehrfach beworben, z.B. drei
+          // Bewerbungen am 04.09.2026), würde das Update bei jedem Lauf mit "duplicate key"
+          // scheitern. Stattdessen überspringen - der Kandidat existiert ja bereits
+          // (Fix vom 02.10.2026, Atlas T-21).
+          const { data: alreadyLinked, error: linkedLookupError } = await kanzleistelle
+            .from("applications")
+            .select("id")
+            .eq("kandidatenwerk_candidate_id", existingByEmail.id)
+            .limit(1)
+            .maybeSingle()
+          if (linkedLookupError) throw new Error(linkedLookupError.message)
+          if (alreadyLinked) {
+            skippedRepeatApplications++
+            continue
+          }
+
           const { error: updateError } = await kanzleistelle
             .from("applications")
             .update({ kandidatenwerk_candidate_id: existingByEmail.id })
@@ -205,5 +231,5 @@ export async function syncApplicationsFromKanzleistelle(limit?: number): Promise
     }
   }
 
-  return { created, linkedExisting, errors }
+  return { created, linkedExisting, skippedRepeatApplications, errors }
 }
