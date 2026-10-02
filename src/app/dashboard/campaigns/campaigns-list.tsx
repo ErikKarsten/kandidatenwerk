@@ -144,8 +144,8 @@ export function CampaignsList({ campaigns, showArchived }: { campaigns: Campaign
                 ) : (
                   <>
                     Noch keine Kampagnen angelegt.{" "}
-                    <Link href="/dashboard/campaigns/new" style={{ color: "#1e56a0" }} className="hover:underline">
-                      Erste Kampagne anlegen
+                    <Link href="/dashboard/clients" style={{ color: "#1e56a0" }} className="hover:underline">
+                      Kampagne im Kundenprofil anlegen
                     </Link>
                   </>
                 )}

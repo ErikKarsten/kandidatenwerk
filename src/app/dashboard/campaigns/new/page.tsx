@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { notFound } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { BackButton } from "@/components/ui/back-button"
@@ -12,11 +13,12 @@ export default async function NewCampaignPage({
   const { client_id } = await searchParams
   const supabase = await createSupabaseServerClient()
 
-  const { data: clients } = await supabase
-    .from("clients")
-    .select("id, name")
-    .eq("active", true)
-    .order("name")
+  // Kanzlei-Kampagnen werden immer im Kundenprofil angelegt (Atlas T-32) - ohne
+  // client_id gibt es kein Formular mehr, sondern einen Hinweis.
+  const { data: client } = client_id
+    ? await supabase.from("clients").select("id, name").eq("id", client_id).maybeSingle()
+    : { data: null }
+  if (client_id && !client) notFound()
 
   return (
     <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
@@ -40,7 +42,16 @@ export default async function NewCampaignPage({
       </div>
 
       <div className="w-full max-w-lg rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
-        <CampaignForm clients={clients ?? []} defaultClientId={client_id ?? null} />
+        {client ? (
+          <CampaignForm clientId={client.id} clientName={client.name} />
+        ) : (
+          <p className="text-sm text-gray-600">
+            Kampagnen gehören immer zu einem Kunden und werden im Kundenprofil angelegt.{" "}
+            <Link href="/dashboard/clients" className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
+              Zu den Kunden
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   )

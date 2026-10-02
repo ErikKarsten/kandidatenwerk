@@ -48,9 +48,9 @@ export default async function CampaignsPage({
             Archivierte anzeigen
           </Link>
           <Button asChild style={{ backgroundColor: "#1e56a0" }}>
-            <Link href="/dashboard/campaigns/new">
+            <Link href="/dashboard/clients">
               <Plus size={16} />
-              Neue Kampagne
+              Kampagne im Kunden anlegen
             </Link>
           </Button>
         </div>
