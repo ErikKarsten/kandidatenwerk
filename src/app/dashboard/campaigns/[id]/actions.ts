@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { requireStaffUser } from "@/lib/auth-guards"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
@@ -19,27 +20,9 @@ import type { TablesUpdate } from "@/types/database"
 // derselbe Wert wird dort für "isArchived"-Prüfungen genutzt.
 const ARCHIVED_STATUS = "Archiviert"
 
-// Analog zu requireStaffUser() in clients/[id]/actions.ts und
-// campaigns/[id]/automations-actions.ts (Security-Review 08./09.09.2026) - listet
-// Facebook-Seiten-/Formularnamen aller Mandanten, darf nie von einem Portal-Kunden
-// aufgerufen werden.
-async function requireStaffUser(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>
-): Promise<{ error: string } | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: "Nicht eingeloggt." }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-  if (profile?.role === "client") return { error: "Nicht berechtigt." }
-
-  return null
-}
+// requireStaffUser() aus src/lib/auth-guards.ts (Security-Review 08./09.09.2026) -
+// schützt u.a. die Meta-Actions unten: die listen Facebook-Seiten-/Formularnamen aller
+// Mandanten und dürfen nie von einem Portal-Kunden aufgerufen werden.
 
 export async function getCampaignCandidatesForExport(campaignId: string): Promise<
   { error: string } | { candidates: Array<{ first_name: string; last_name: string; email: string | null; phone: string | null; status: string; custom_fields: Record<string, string> | null }> }
@@ -204,8 +187,10 @@ export async function publishCampaignToKanzleistelleAction(
 ): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createSupabaseServerClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: "Nicht eingeloggt." }
+  // Nur Staff - ruft externe Dienste bzw. schreibt mit Service-Role-Rechten
+  // (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return { success: false, error: staffError.error }
 
   try {
     await publishCampaignToKanzleistelle(campaignId)
@@ -224,8 +209,10 @@ export async function refreshLeadtableCampaignAction(
 > {
   const supabase = await createSupabaseServerClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: "Nicht eingeloggt." }
+  // Nur Staff - ruft externe Dienste bzw. schreibt mit Service-Role-Rechten
+  // (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return { success: false, error: staffError.error }
 
   const { data: campaign, error: fetchError } = await supabase
     .from("campaigns")

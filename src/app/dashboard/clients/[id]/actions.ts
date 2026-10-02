@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { requireStaffUser } from "@/lib/auth-guards"
 import { fetchAllCustomers, importNewLeadtableCampaignsForClient } from "@/lib/leadtable-import-customers"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { reverseGeocodeCity } from "@/lib/reverse-geocode"
@@ -9,29 +10,13 @@ import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 
 // Server Actions verlassen sich nach dem Security-Review vom 09.09.2026 nicht mehr
-// ausschliesslich auf RLS als einzige Schutzschicht - dieser Check laeuft VOR jedem
+// ausschliesslich auf RLS als einzige Schutzschicht - requireStaffUser() (src/lib/auth-guards.ts)
+// laeuft VOR jedem
 // DB-Zugriff und blockt Portal-Kunden (role "client") explizit. client_contacts und
 // client_files sind reine Staff-Funktionen (Kontaktverwaltung/Dateiablage der
 // Agentur) - im Kunden-Portal gibt es dafuer keine UI, ein Kunde soll hier also
 // grundsaetzlich nie ankommen, unabhaengig davon, ob die RLS-Policy gerade korrekt
 // gescoped ist.
-async function requireStaffUser(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>
-): Promise<{ error: string } | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: "Nicht eingeloggt." }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-  if (profile?.role === "client") return { error: "Nicht berechtigt." }
-
-  return null
-}
 
 export async function updateClientAction(
   clientId: string,
@@ -231,8 +216,10 @@ export async function refreshLeadtableClientAction(
 > {
   const supabase = await createSupabaseServerClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: "Nicht eingeloggt." }
+  // Nur Staff - ruft externe Dienste bzw. schreibt mit Service-Role-Rechten
+  // (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return { success: false, error: staffError.error }
 
   const { data: client, error: fetchError } = await supabase
     .from("clients")
@@ -433,6 +420,17 @@ export async function inviteClientPortalUserAction(
   const trimmedEmail = email.trim()
   if (!trimmedEmail) return { error: "E-Mail-Adresse ist ein Pflichtfeld." }
 
+  // Ohne diesen Check konnte jeder, der die Action-ID kennt (steht im ausgelieferten
+  // JS), sich selbst einen Portal-Zugang zu einem beliebigen Kunden anlegen
+  // (Security-Review 02.10.2026). Der Kunde wird über die RLS-Session nachgeschlagen,
+  // damit nur Kunden der eigenen Agentur infrage kommen.
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+
+  const { data: client } = await supabase.from("clients").select("id").eq("id", clientId).maybeSingle()
+  if (!client) return { error: "Kunde nicht gefunden." }
+
   const admin = createSupabaseAdminClient()
 
   // Vorab prüfen, ob diese E-Mail bereits als Portal-Zugang existiert (unabhängig vom
@@ -499,7 +497,26 @@ export async function removeClientPortalUserAction(
   profileId: string,
   clientId: string
 ): Promise<{ error: string } | null> {
+  // Ohne diese Checks konnte jeder, der die Action-ID kennt, per profileId JEDEN
+  // Account löschen - auch Team-/Admin-Zugänge (Security-Review 02.10.2026). Jetzt nur
+  // Staff, und nur Portal-Zugänge (role "client") genau dieses Kunden der eigenen Agentur.
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+
+  const { data: client } = await supabase.from("clients").select("id").eq("id", clientId).maybeSingle()
+  if (!client) return { error: "Kunde nicht gefunden." }
+
   const admin = createSupabaseAdminClient()
+
+  const { data: target } = await admin
+    .from("profiles")
+    .select("role, client_id")
+    .eq("id", profileId)
+    .maybeSingle()
+  if (!target || target.role !== "client" || target.client_id !== clientId) {
+    return { error: "Portal-Zugang nicht gefunden." }
+  }
 
   const { error: profileError } = await admin.from("profiles").delete().eq("id", profileId)
   if (profileError) return { error: profileError.message }

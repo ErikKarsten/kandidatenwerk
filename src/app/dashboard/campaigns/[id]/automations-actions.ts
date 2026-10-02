@@ -2,29 +2,13 @@
 
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { requireStaffUser } from "@/lib/auth-guards"
 
-// Analog zu requireStaffUser() in clients/[id]/actions.ts (Security-Review
+// requireStaffUser() aus src/lib/auth-guards.ts (Security-Review
 // 08./09.09.2026) - diese Actions hatten bisher gar keinen Auth-Check und
 // verliessen sich komplett auf RLS, die fuer campaign_automations bis dahin offen
 // war. Das Feature hat keine Portal-UI, Kunden sollen hier grundsaetzlich nie
 // ankommen.
-async function requireStaffUser(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>
-): Promise<{ error: string } | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: "Nicht eingeloggt." }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-  if (profile?.role === "client") return { error: "Nicht berechtigt." }
-
-  return null
-}
 
 export interface AutomationData {
   name: string
