@@ -14,7 +14,9 @@ export async function POST(request: NextRequest) {
 
   const supabase = createSupabaseAdminClient()
   const result = await runTrackedCronJob(supabase, "meta-leads-sync", async () => {
-    const r = await syncMetaLeads(supabase)
+    // Nur die letzten 3 Tage: Echtzeit kommt über den Webhook, der Cron ist das Netz für
+    // verpasste Events. Ältere Leads per CLI (scripts/meta-leads-sync.ts).
+    const r = await syncMetaLeads(supabase, { sinceDays: 3 })
     return { result: r, ok: r.errors.length === 0 }
   })
 

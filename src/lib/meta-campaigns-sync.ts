@@ -101,6 +101,10 @@ async function fetchForCampaigns<T>(path: string, fields: string, campaignIds: s
 
 // Untypisierter Zugriff für die neuen Spalten/Tabellen, bis src/types/database.ts neu
 // generiert ist (campaign_ad_areas, campaigns.meta_effective_status/meta_synced_at).
+function areaSignature(...parts: unknown[]): string {
+  return JSON.stringify(parts.map((p, i) => (i === 4 ? (p === null || p === undefined ? null : Number(p)) : p ?? null)))
+}
+
 function untyped(supabase: Supabase): SupabaseClient {
   return supabase as unknown as SupabaseClient
 }
@@ -138,7 +142,7 @@ export async function syncMetaCampaigns(
 
   const { data: existingRows, error: existingError } = await db
     .from("campaigns")
-    .select("id, meta_campaign_id, meta_form_id")
+    .select("id, meta_campaign_id, meta_form_id, title, status, meta_effective_status")
     .eq("kind", "lead")
     .not("meta_campaign_id", "is", null)
   if (existingError) throw new Error(existingError.message)
@@ -201,11 +205,20 @@ export async function syncMetaCampaigns(
 
       let campaignId: string
       if (existing) {
-        const { error } = await db.from("campaigns").update(fields).eq("id", existing.id)
-        if (error) throw new Error(error.message)
         campaignId = existing.id
-        result.updated++
-        if (formId && formId !== existing.meta_form_id) result.formsLinked++
+        // Nur bei echten Änderungen schreiben: Cloudflare erlaubt je Cron-Lauf höchstens
+        // 1000 Unteranfragen, ein Update aller ~550 Kampagnen sprengt das.
+        const changed =
+          existing.title !== fields.title ||
+          existing.status !== fields.status ||
+          existing.meta_effective_status !== fields.meta_effective_status ||
+          (formId !== null && formId !== existing.meta_form_id)
+        if (changed) {
+          const { error } = await db.from("campaigns").update(fields).eq("id", existing.id)
+          if (error) throw new Error(error.message)
+          result.updated++
+          if (formId && formId !== existing.meta_form_id) result.formsLinked++
+        }
       } else {
         const { data: inserted, error } = await db
           .from("campaigns")
@@ -291,8 +304,32 @@ export async function syncMetaCampaigns(
     }
   }
 
-  // Werbegebiete je Kampagne vollständig ersetzen.
+  // Abgleichszeitpunkt für alle Lead-Kampagnen in einer Anfrage (statt je Kampagne).
+  await db.from("campaigns").update({ meta_synced_at: now }).eq("kind", "lead").not("meta_campaign_id", "is", null)
+
+  // Werbegebiete je Kampagne nur ersetzen, wenn sie sich geändert haben (Unteranfragen-
+  // Limit, s.o.) - Vergleich ohne Koordinaten, die ergänzt die Geokodierung oben direkt.
+  const storedSignature = new Map<string, string[]>()
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db
+      .from("campaign_ad_areas")
+      .select("campaign_id, meta_adset_id, area_type, area_key, label, radius_km, adset_active")
+      .order("id")
+      .range(from, from + 999)
+    if (error) throw new Error(error.message)
+    for (const r of data ?? []) {
+      const sig = areaSignature(r.meta_adset_id, r.area_type, r.area_key, r.label, r.radius_km, r.adset_active)
+      storedSignature.set(r.campaign_id as string, [...(storedSignature.get(r.campaign_id as string) ?? []), sig])
+    }
+    if (!data || data.length < 1000) break
+  }
+
   for (const [campaignId, areas] of areasByCampaignId) {
+    const newSig = areas.map((a) => areaSignature(a.adsetId, a.areaType, a.areaKey, a.label, a.radiusKm, a.adsetActive)).sort().join("|")
+    if (newSig === (storedSignature.get(campaignId) ?? []).sort().join("|")) {
+      result.areas += areas.length
+      continue
+    }
     const rows = areas.map((a) => {
       const known = a.lat === null && a.areaKey ? coordsByKey.get(`${a.areaType}:${a.areaKey}`) : undefined
       return {

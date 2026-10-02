@@ -135,7 +135,7 @@ export async function fetchMetaLeadForms(pageId: string, pageAccessToken?: strin
 }
 
 // Alle Leads eines Formulars, mit Pagination (per `after`-Cursor, wie leadtableFetch es
-// für Leadtable-Seiten macht) und optionalem `since` (Unix-Timestamp), um bei
+// für Leadtable-Seiten macht) und optionalem Zeitfilter sinceUnix (Unix-Timestamp), um bei
 // wiederholten Sync-Läufen nicht jedes Mal die komplette Formularhistorie neu zu holen.
 export async function fetchMetaLeadsForForm(
   formId: string,
@@ -150,7 +150,9 @@ export async function fetchMetaLeadsForForm(
       fields: "id,created_time,field_data",
       limit: 100,
     }
-    if (options?.sinceUnix) params.since = options.sinceUnix
+    // `since` ignoriert der leads-Endpunkt (geprüft 02.10.2026) - nur `filtering` wirkt.
+    if (options?.sinceUnix)
+      params.filtering = JSON.stringify([{ field: "time_created", operator: "GREATER_THAN", value: options.sinceUnix }])
     if (after) params.after = after
 
     const resp = await metaGraphFetch<{ data: MetaLead[]; paging?: MetaPaging }>(
