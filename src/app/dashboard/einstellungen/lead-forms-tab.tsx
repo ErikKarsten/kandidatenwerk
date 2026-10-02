@@ -76,7 +76,10 @@ export function LeadFormsTab({ forms, fields, isAdmin }: { forms: LeadFormOvervi
 function FormCard({ form, fields, isAdmin }: { form: LeadFormOverview; fields: CustomFieldDefinition[]; isAdmin: boolean }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [targets, setTargets] = useState<Record<string, string>>(Object.fromEntries(form.questions.map((q) => [q.key, q.target])))
+  // Nur eigene Änderungen merken - sonst gilt der gespeicherte Stand (der sich nach
+  // dem Einlesen oder Speichern ändert).
+  const [overrides, setOverrides] = useState<Record<string, string>>({})
+  const targets: Record<string, string> = Object.fromEntries(form.questions.map((q) => [q.key, overrides[q.key] ?? q.target]))
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -89,6 +92,7 @@ function FormCard({ form, fields, isAdmin }: { form: LeadFormOverview; fields: C
     startTransition(async () => {
       const result = await saveLeadFormMappingAction(form.formId, targets)
       if (result?.error) return setError(result.error)
+      setOverrides({})
       router.refresh()
     })
   }
@@ -149,7 +153,7 @@ function FormCard({ form, fields, isAdmin }: { form: LeadFormOverview; fields: C
                       <td className="py-2">
                         <select
                           value={targets[q.key] ?? "beschreibung"}
-                          onChange={(e) => setTargets({ ...targets, [q.key]: e.target.value })}
+                          onChange={(e) => setOverrides({ ...overrides, [q.key]: e.target.value })}
                           disabled={!isAdmin}
                           className="w-full rounded-md border bg-white px-2 py-1 text-sm"
                           style={{ borderColor: targets[q.key] !== q.target ? "#1e56a0" : "#dde3ea" }}

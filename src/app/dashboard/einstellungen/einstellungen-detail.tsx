@@ -59,13 +59,13 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
   const [tab, setTab] = useState<Tab>("konto")
 
   return (
-    <div className="flex flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex min-w-0 flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Einstellungen</h1>
       </div>
 
       <div>
-        <div className="flex gap-0 border-b" style={{ borderColor: "#dde3ea" }}>
+        <div className="flex gap-0 overflow-x-auto border-b" style={{ borderColor: "#dde3ea" }}>
           <TabButton active={tab === "konto"} onClick={() => setTab("konto")}>Mein Konto</TabButton>
           <TabButton active={tab === "team"} onClick={() => setTab("team")}>Team ({team.length})</TabButton>
           <TabButton active={tab === "agentur"} onClick={() => setTab("agentur")}>Agentur</TabButton>
@@ -120,7 +120,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className="px-4 py-2.5 text-sm font-medium transition-colors"
+      className="shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors"
       style={{
         color: active ? "#1e56a0" : "#6b7280",
         borderBottom: active ? "2px solid #1e56a0" : "2px solid transparent",
