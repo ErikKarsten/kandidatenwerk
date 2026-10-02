@@ -43,7 +43,9 @@ import {
 } from "../src/lib/leadtable-sync-shared"
 import { mapKanzleistelleBerufsbild } from "../src/lib/sync-kanzleistelle"
 import { getOrCreateLocationForPlz } from "../src/lib/location-clustering"
-import { geocodePlz } from "../src/lib/geocode-plz"
+import { geocodePlz, nearestPlz } from "../src/lib/geocode-plz"
+import { forwardGeocodeAll } from "../src/lib/forward-geocode"
+import { placeQueryFromAnswer } from "../src/lib/place-query"
 import { mapLeadFormAnswers } from "../src/lib/leadtable-form-answers"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -79,6 +81,7 @@ interface LeadWithContext {
     statusID?: { name?: string }
     modifiedData?: Record<string, unknown>
     funnelData?: { profile?: Record<string, { title?: string; value?: unknown }> }
+    ownerCustomer?: string
   }
   customerName: string
   occupation: string
@@ -205,7 +208,88 @@ async function main() {
   fs.mkdirSync(path.dirname(notesCachePath), { recursive: true })
   fs.writeFileSync(notesCachePath, JSON.stringify(notesByLeadId))
 
-  let withPlz = 0
+  // ── Wohnort -> PLZ (wichtigstes Feld fürs Matching) ──────────────────────
+  // 1. PLZ steht in der Antwort  2. nur Ort -> Ortssuche + nächstgelegene PLZ
+  // 3. keine Angabe -> geschätzt aus Werbegebiet der Meta-Kampagne bzw. Kanzlei-Standort.
+  const oldClients = await fetchAllRows(db, "clients")
+  const oldKanzleiCampaigns = await fetchAllRows(db, "campaigns", (q) => q.eq("kind", "kanzlei"))
+  const clientCoordsByLeadtableId = new Map(
+    oldClients.filter((c) => c.leadtable_customer_id && c.lat !== null).map((c) => [c.leadtable_customer_id as string, { lat: c.lat as number, lng: c.lng as number }])
+  )
+  const adAreaCoordsByMetaCampaign = new Map<string, { lat: number; lng: number }>()
+  const metaIdByCampaignId = new Map(
+    (await fetchAllRows(db, "campaigns", (q) => q.eq("kind", "lead"))).map((c) => [c.id as string, c.meta_campaign_id as string | null])
+  )
+  for (const a of await fetchAllRows(db, "campaign_ad_areas", (q) => q.not("lat", "is", null))) {
+    const metaId = metaIdByCampaignId.get(a.campaign_id as string)
+    if (metaId && !adAreaCoordsByMetaCampaign.has(metaId)) adAreaCoordsByMetaCampaign.set(metaId, { lat: a.lat as number, lng: a.lng as number })
+  }
+
+  const placeCachePath = path.resolve(__dirname, "../backups/place-geocode-cache.json")
+  const placeCache: Record<string, { lat: number; lng: number }[]> = fs.existsSync(placeCachePath) ? JSON.parse(fs.readFileSync(placeCachePath, "utf8")) : {}
+  type Location = { plz: string; lat: number; lng: number; how: "angegeben" | "ort" | "werbegebiet" | "kanzlei"; place?: string }
+  const locationByEmail = new Map<string, Location>()
+  const dist2 = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => (a.lat - b.lat) ** 2 + (a.lng - b.lng) ** 2
+  let geocodeCalls = 0
+  for (const [email, apps] of byEmail) {
+    const newestFirst = [...apps].sort((a, b) => (b.lead.createdAt ?? "").localeCompare(a.lead.createdAt ?? ""))
+    const answers = newestFirst.map((a) => mapLeadFormAnswers(a.lead.funnelData?.profile))
+    // Bezugspunkt: Werbegebiet der Meta-Kampagne, sonst Kanzlei der Bewerbung.
+    let reference: { point: { lat: number; lng: number }; how: "werbegebiet" | "kanzlei" } | null = null
+    for (const a of newestFirst) {
+      const metaCampaignId = a.lead.funnelData?.profile?.campaignID?.value as string | undefined
+      const area = metaCampaignId ? adAreaCoordsByMetaCampaign.get(metaCampaignId) : undefined
+      if (area) {
+        reference = { point: area, how: "werbegebiet" }
+        break
+      }
+    }
+    if (!reference) {
+      const client = newestFirst.map((a) => clientCoordsByLeadtableId.get(a.lead.ownerCustomer as string)).find(Boolean)
+      if (client) reference = { point: client, how: "kanzlei" }
+    }
+
+    const givenPlz = answers.map((r) => r.plz).find((p) => p && geocodePlz(p))
+    if (givenPlz) {
+      locationByEmail.set(email, { plz: givenPlz, ...geocodePlz(givenPlz)!, how: "angegeben" })
+      continue
+    }
+    const placeText = answers.map((r) => r.fields.wohnort_plz).find(Boolean)
+    const query = placeText ? placeQueryFromAnswer(placeText) : null
+    if (query) {
+      const key = query.toLowerCase()
+      if (!(key in placeCache)) {
+        await sleep(1100) // Nominatim: max. 1 Anfrage/s
+        geocodeCalls++
+        placeCache[key] = await forwardGeocodeAll(`${query}, Deutschland`).catch(() => [])
+        if (geocodeCalls % 25 === 0) {
+          console.log(`  Ortssuche: ${geocodeCalls} Orte`)
+          fs.writeFileSync(placeCachePath, JSON.stringify(placeCache))
+        }
+      }
+      const hits = placeCache[key]
+      const hit = reference ? [...hits].sort((a, b) => dist2(a, reference!.point) - dist2(b, reference!.point))[0] : hits[0]
+      const plz = hit ? nearestPlz(hit.lat, hit.lng) : null
+      if (hit && plz) {
+        locationByEmail.set(email, { plz, lat: hit.lat, lng: hit.lng, how: "ort", place: query })
+        continue
+      }
+    }
+    if (reference) {
+      const plz = nearestPlz(reference.point.lat, reference.point.lng)
+      if (plz) locationByEmail.set(email, { plz, ...reference.point, how: reference.how })
+    }
+  }
+  fs.mkdirSync(path.dirname(placeCachePath), { recursive: true })
+  fs.writeFileSync(placeCachePath, JSON.stringify(placeCache))
+
+  const LOCATION_NOTE: Record<Location["how"], (l: Location) => string> = {
+    angegeben: () => "",
+    ort: (l) => `PLZ aus Wohnort „${l.place}“ ermittelt.`,
+    werbegebiet: () => "PLZ geschätzt (kein Wohnort angegeben): Werbegebiet der Meta-Kampagne.",
+    kanzlei: () => "PLZ geschätzt (kein Wohnort angegeben): Standort der Kanzlei, bei der die Bewerbung einging.",
+  }
+
   let withMetaLeadId = 0
   const candidateRows = [...byEmail.entries()].map(([email, apps]) => {
     apps.sort((a, b) => (b.lead.createdAt ?? "").localeCompare(a.lead.createdAt ?? ""))
@@ -216,13 +300,11 @@ async function main() {
     // Zusatzfelder: ältere Bewerbungen zuerst, neuere überschreiben. Formularfragen ohne
     // passendes Feld sowie die Leadtable-Notizen kommen in die Beschreibung.
     const customFields: Record<string, string> = {}
-    let plz: string | null = null
     let metaLeadId: string | null = null
     const descriptionBlocks: string[] = []
     for (const a of [...apps].reverse()) {
       const answers = mapLeadFormAnswers(a.lead.funnelData?.profile)
       Object.assign(customFields, extractLeadtableCustomFields(a.lead.modifiedData).fields, answers.fields)
-      plz = answers.plz ?? plz
       metaLeadId = answers.metaLeadId ?? metaLeadId
       const lines = [
         ...answers.extras.map((e) => `${e.question}: ${e.answer}`),
@@ -232,8 +314,8 @@ async function main() {
         descriptionBlocks.unshift(`Bewerbung ${fmtDate(a.lead.createdAt)} – ${a.customerName} (${a.occupation || "?"}):\n${lines.join("\n")}`)
       }
     }
-    const coords = plz ? geocodePlz(plz) : null
-    if (plz) withPlz++
+    const location = locationByEmail.get(email) ?? null
+    const locationNote = location ? LOCATION_NOTE[location.how](location) : ""
     if (metaLeadId) withMetaLeadId++
 
     const history = apps
@@ -242,7 +324,8 @@ async function main() {
     const notes =
       (usedLongNameHeuristic ? "[Automatisch bereinigter Name, bitte prüfen] " : "") +
       `Neuimport aus Leadtable. Bewerbungen:\n${history.join("\n")}` +
-      (apps.length > 10 ? `\n… und ${apps.length - 10} weitere` : "")
+      (apps.length > 10 ? `\n… und ${apps.length - 10} weitere` : "") +
+      (locationNote ? `\n${locationNote}` : "")
     return {
       first_name: firstName,
       last_name: lastName,
@@ -255,9 +338,9 @@ async function main() {
       meta_lead_id: metaLeadId,
       custom_fields: Object.keys(customFields).length > 0 ? customFields : null,
       description: descriptionBlocks.length > 0 ? descriptionBlocks.join("\n\n") : null,
-      plz,
-      lat: coords?.lat ?? null,
-      lng: coords?.lng ?? null,
+      plz: location?.plz ?? null,
+      lat: location?.lat ?? null,
+      lng: location?.lng ?? null,
       notes,
       created_at: newest.lead.createdAt ?? undefined,
       campaign_id: null,
@@ -266,8 +349,6 @@ async function main() {
   })
 
   // ── Alter Stand (für Stammdaten-Übernahme und Löschung) ───────────────────
-  const oldClients = await fetchAllRows(db, "clients")
-  const oldKanzleiCampaigns = await fetchAllRows(db, "campaigns", (q) => q.eq("kind", "kanzlei"))
   const oldClientByLeadtableId = new Map(oldClients.filter((c) => c.leadtable_customer_id).map((c) => [c.leadtable_customer_id as string, c]))
   const oldCampaignByLeadtableId = new Map(
     oldKanzleiCampaigns.filter((c) => c.leadtable_campaign_id).map((c) => [c.leadtable_campaign_id as string, c])
@@ -287,10 +368,13 @@ async function main() {
     `Leads gesamt ${leads.length}; übersprungen: ${skippedRejected} abgesagt, ${skippedDeleted} gelöscht, ${skippedTest} Test-Leads, ` +
       `${skippedNoEmail} ohne E-Mail; ${leads.length - skippedRejected - skippedDeleted - skippedTest - skippedNoEmail - candidateRows.length} Mehrfach-Bewerbungen zusammengeführt`
   )
+  const countHow = (how: string) => [...locationByEmail.values()].filter((l) => l.how === how).length
   const fieldCounts: Record<string, number> = {}
   for (const r of candidateRows) for (const k of Object.keys(r.custom_fields ?? {})) fieldCounts[k] = (fieldCounts[k] ?? 0) + 1
   console.log(
-    `Mit Wohnort-PLZ (Standort fürs Matching): ${withPlz}, mit Meta-Lead-ID: ${withMetaLeadId}, mit Beschreibung: ${candidateRows.filter((r) => r.description).length}`
+    `PLZ: ${countHow("angegeben")} angegeben, ${countHow("ort")} aus Ort ermittelt, ${countHow("werbegebiet")} geschätzt aus Werbegebiet, ` +
+      `${countHow("kanzlei")} geschätzt aus Kanzlei-Standort, ${candidateRows.length - locationByEmail.size} ohne PLZ\n` +
+      `Mit Meta-Lead-ID: ${withMetaLeadId}, mit Beschreibung: ${candidateRows.filter((r) => r.description).length}`
   )
   console.log("Zusatzfelder befüllt:", fieldCounts)
   const statusCounts: Record<string, number> = {}
