@@ -1,11 +1,10 @@
-name: Duplettenprüfung
+name: Cron-Wächter
 on:
   schedule:
-    # Einmal täglich, Ziel morgens. Bis 02.10.2026 gab es hier einen "7-Uhr-Check", der
-    # nur bei Start um genau 7 Uhr deutscher Zeit prüfte - GitHub startet geplante Läufe
-    # aber oft Stunden später, die Prüfung wurde dadurch an 7 von 7 Tagen übersprungen.
-    # Jetzt ohne Stunden-Sperre: ein Lauf pro Tag, egal wann GitHub ihn startet.
-    - cron: "0 5 * * *"
+    # Einmal täglich. Prüft unabhängig von Cloudflare, ob die Cloudflare-Cron-Jobs
+    # zuletzt rechtzeitig erfolgreich liefen (scripts/check-cron-health.ts) - fällt
+    # damit auch auf, wenn die Crons im Worker komplett stehen bleiben.
+    - cron: "0 6 * * *"
   workflow_dispatch: {}
 jobs:
   check:
@@ -19,9 +18,9 @@ jobs:
           node-version: 22
       - name: Abhängigkeiten installieren
         run: npm ci
-      - name: Duplettenprüfung ausführen
+      - name: Cron-Gesundheit prüfen
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
-        run: npx tsx scripts/duplicate-check.ts
+        run: npx tsx scripts/check-cron-health.ts

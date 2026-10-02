@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { syncMetaLeads } from "@/lib/cron/meta-leads-sync"
+import { runTrackedCronJob } from "@/lib/cron/job-runs"
 
 // Aufgerufen vom Cloudflare Cron Trigger (custom-worker.ts, alle 30 Minuten).
 export async function POST(request: NextRequest) {
@@ -11,7 +12,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const result = await syncMetaLeads(createSupabaseAdminClient())
+  const supabase = createSupabaseAdminClient()
+  const result = await runTrackedCronJob(supabase, "meta-leads-sync", async () => {
+    const r = await syncMetaLeads(supabase)
+    return { result: r, ok: r.errors.length === 0 }
+  })
 
   return NextResponse.json(result)
 }

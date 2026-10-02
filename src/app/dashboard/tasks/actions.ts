@@ -2,10 +2,16 @@
 
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { requireStaffUser } from "@/lib/auth-guards"
 
 export async function createTaskAction(
   formData: FormData
 ): Promise<{ error: string } | null> {
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const guardSupabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(guardSupabase)
+  if (staffError) return staffError
+
   const title = (formData.get("title") as string)?.trim()
   const description = formData.get("description") as string
   const assigned_to = formData.get("assigned_to") as string
@@ -40,6 +46,9 @@ export async function updateTaskStatusAction(
   status: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
@@ -64,6 +73,9 @@ export async function deleteTaskAction(
   taskId: string
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }

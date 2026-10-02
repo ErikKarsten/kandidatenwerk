@@ -28,13 +28,13 @@ export default async function DashboardPage() {
     { icon: Users, label: "Kunden", value: clientCount ?? 0, iconColor: "#1e56a0", href: "/dashboard/clients" },
     { icon: Megaphone, label: "Kampagnen", value: campaignCount ?? 0, iconColor: "#4ba3c3", href: "/dashboard/campaigns" },
     { icon: UserSearch, label: "Kandidaten", value: candidateCount ?? 0, iconColor: "#8b5cf6", href: "/dashboard/candidates" },
-    { icon: TrendingUp, label: "Platzierungen", value: placementCount ?? 0, iconColor: "#1a9a6a", href: "/dashboard/pipeline" },
+    { icon: TrendingUp, label: "Platzierungen", value: placementCount ?? 0, iconColor: "#1a9a6a", href: "/dashboard/candidates?status=platziert" },
   ]
 
   const activityKpiData = [
     { icon: Inbox, label: "Neue Eingänge heute", value: activityKpis.newToday, iconColor: "#4ba3c3", href: "/dashboard/candidates" },
     { icon: Send, label: "Weitergeleitet", value: activityKpis.forwarded, iconColor: "#8b5cf6" },
-    { icon: ClipboardCheck, label: "Bearbeitet", value: activityKpis.processed, iconColor: "#1a9a6a", href: "/dashboard/pipeline" },
+    { icon: ClipboardCheck, label: "Bearbeitet", value: activityKpis.processed, iconColor: "#1a9a6a" },
   ]
 
   return (

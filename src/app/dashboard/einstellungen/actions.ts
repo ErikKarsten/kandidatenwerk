@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { requireAgencyAdmin as getAgencyAdminContext } from "@/lib/auth-guards"
+import { requireAgencyAdmin as getAgencyAdminContext, requireStaffUser } from "@/lib/auth-guards"
 
 const MIN_PASSWORD_LENGTH = 8
 
@@ -63,6 +63,9 @@ export interface TeamMember {
 // nachgeladen.
 export async function getTeamMembers(agencyId: string): Promise<TeamMember[]> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return []
   const { data: profiles } = await supabase
     .from("profiles")
     .select("id, full_name, email, role")
@@ -168,6 +171,9 @@ export async function updateAgencyNameAction(name: string): Promise<{ error: str
   if (!trimmed) return { error: "Name darf nicht leer sein." }
 
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
 
@@ -196,6 +202,9 @@ export interface EmailTemplate {
 // den bestehenden Automatisierungs-Actions (automations-actions.ts).
 export async function getEmailTemplates(agencyId: string): Promise<EmailTemplate[]> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return []
   const { data } = await supabase
     .from("email_templates")
     .select("id, name, subject, body_html")
@@ -210,6 +219,9 @@ export async function createEmailTemplateAction(
 ): Promise<{ error: string } | null> {
   if (!data.name.trim()) return { error: "Name ist ein Pflichtfeld." }
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { error } = await supabase.from("email_templates").insert({ agency_id: agencyId, ...data })
   if (error) return { error: error.message }
   revalidatePath("/dashboard/einstellungen")
@@ -222,6 +234,9 @@ export async function updateEmailTemplateAction(
 ): Promise<{ error: string } | null> {
   if (!data.name.trim()) return { error: "Name ist ein Pflichtfeld." }
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { error } = await supabase.from("email_templates").update(data).eq("id", id)
   if (error) return { error: error.message }
   revalidatePath("/dashboard/einstellungen")
@@ -230,6 +245,9 @@ export async function updateEmailTemplateAction(
 
 export async function deleteEmailTemplateAction(id: string): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { error } = await supabase.from("email_templates").delete().eq("id", id)
   if (error) return { error: error.message }
   revalidatePath("/dashboard/einstellungen")
@@ -241,6 +259,9 @@ export async function deleteEmailTemplateAction(id: string): Promise<{ error: st
 // in lead-notifications.ts.
 export async function getLeadNotificationRecipientIds(agencyId: string): Promise<string[]> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return []
   const { data } = await supabase
     .from("lead_notification_recipients")
     .select("profile_id")
@@ -256,6 +277,9 @@ export async function updateLeadNotificationRecipientsAction(
   profileIds: string[]
 ): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
 
   const { error: deleteError } = await supabase
     .from("lead_notification_recipients")
@@ -307,6 +331,9 @@ async function requireAgencyAdmin(
 // Definitionen der eigenen Agentur" schränkt ohnehin schon auf die eigene Agentur ein.
 export async function getCustomFieldDefinitions(): Promise<CustomFieldDefinition[]> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return []
   const { data } = await supabase
     .from("custom_field_definitions")
     .select("id, key, label, sort_order, active")
@@ -432,6 +459,9 @@ export interface CustomFieldReviewQueueEntry {
 // (gleiches Muster wie getCustomFieldDefinitions oben).
 export async function getPendingCustomFieldReviewQueue(): Promise<CustomFieldReviewQueueEntry[]> {
   const supabase = await createSupabaseServerClient()
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return []
   const { data } = await supabase
     .from("custom_field_review_queue")
     .select("id, raw_key, example_value, occurrences, first_seen_at, last_seen_at")
@@ -458,6 +488,11 @@ async function setReviewQueueStatus(id: string, status: "dismissed" | "mapped"):
 }
 
 export async function dismissCustomFieldReviewQueueEntryAction(id: string): Promise<{ error: string } | null> {
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const guardSupabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(guardSupabase)
+  if (staffError) return staffError
+
   return setReviewQueueStatus(id, "dismissed")
 }
 
@@ -465,5 +500,10 @@ export async function dismissCustomFieldReviewQueueEntryAction(id: string): Prom
 // falls das Team daraus ein neues Feld anlegt (über "Hinzufügen" oben), passiert das
 // als bewusster, separater Schritt, kein automatisches Verknüpfen.
 export async function markCustomFieldReviewQueueEntryDoneAction(id: string): Promise<{ error: string } | null> {
+  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
+  const guardSupabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(guardSupabase)
+  if (staffError) return staffError
+
   return setReviewQueueStatus(id, "mapped")
 }
