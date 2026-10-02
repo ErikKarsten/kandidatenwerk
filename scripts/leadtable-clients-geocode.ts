@@ -112,7 +112,7 @@ async function main() {
   const campaignErrors: { id: string; message: string }[] = []
 
   for (const campaign of campaigns ?? []) {
-    const geo = geoByClientId.get(campaign.client_id)
+    const geo = campaign.client_id ? geoByClientId.get(campaign.client_id) : undefined
     if (!geo) continue // sollte nicht vorkommen, da wir schon nach client_id gefiltert haben
 
     const { error } = await supabase

@@ -91,7 +91,7 @@ async function handleLeadgenEvent(value: LeadgenChangeValue) {
   try {
     const { data: campaign, error: campaignError } = await supabase
       .from("campaigns")
-      .select("id, title, status, client_id")
+      .select("id, title, status, client_id, agency_id")
       .eq("meta_form_id", value.form_id)
       .maybeSingle()
     if (campaignError) throw new Error(campaignError.message)

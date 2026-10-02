@@ -36,6 +36,7 @@ interface CampaignRow {
   title: string
   status: string
   client_id: string | null
+  agency_id: string | null
   meta_form_id: string | null
 }
 
@@ -50,7 +51,7 @@ export interface MetaLeadsSyncResult {
 async function loadCampaigns(supabase: Supabase, campaignId: string | null): Promise<CampaignRow[]> {
   let query = supabase
     .from("campaigns")
-    .select("id, title, status, client_id, meta_form_id")
+    .select("id, title, status, client_id, agency_id, meta_form_id")
     .not("meta_form_id", "is", null)
 
   if (campaignId) query = query.eq("id", campaignId)
