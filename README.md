@@ -56,12 +56,14 @@ npm run deploy               # opennextjs-cloudflare build + deploy
 | Kampagnen-Automationen (Mails) | alle 5 Min. | Cloudflare Cron → `/api/cron/run-automations` |
 | Meta-Leads-Sync | alle 30 Min. | Cloudflare Cron → `/api/cron/meta-leads-sync` |
 | Kanzleistelle24-Sync | stündlich | Cloudflare Cron → `/api/cron/sync-kanzleistelle` |
+| Erinnerung an fällige Aufgaben | täglich 06:00 UTC | Cloudflare Cron → `/api/cron/task-reminders` |
+| Cron-Wächter | täglich | GitHub Actions (`scripts/check-cron-health.ts`) |
 | Qualifizierte Kandidaten | alle 4 Std. | GitHub Actions |
 | Kampagnen-Rematch | täglich | GitHub Actions |
 | Dublettenprüfung | täglich | GitHub Actions |
 | Leadtable Full-Sync | – | GitHub Actions, **bewusst deaktiviert** (seit 25.09.2026) |
 
-Die Cloudflare-Crons sind in [wrangler.jsonc](wrangler.jsonc) (`triggers.crons`) und [custom-worker.ts](custom-worker.ts) definiert und rufen die Routen mit `CRON_SECRET` auf. Die GitHub-Workflows der drei Cloudflare-Jobs bleiben als manueller Notfall-Start erhalten.
+Die Cloudflare-Crons sind in [wrangler.jsonc](wrangler.jsonc) (`triggers.crons`) und [custom-worker.ts](custom-worker.ts) definiert und rufen die Routen mit `CRON_SECRET` auf. Jeder Lauf wird in `cron_job_runs` protokolliert; bei Fehlschlag bekommen die Admins eine Mail (höchstens alle 12 Std. je Job), der tägliche Cron-Wächter meldet ausbleibende Läufe. Die GitHub-Workflows der drei Cloudflare-Jobs bleiben als manueller Notfall-Start erhalten.
 
 Der Echtzeit-Webhook für Meta liegt unter `/api/webhooks/meta-leadgen` (Signaturprüfung mit `META_APP_SECRET`).
 

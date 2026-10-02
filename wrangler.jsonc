@@ -16,7 +16,7 @@
   ],
   // Cloudflare Cron Triggers (UTC) - Zuordnung Ausdruck -> Route in custom-worker.ts.
   "triggers": {
-    "crons": ["*/5 * * * *", "*/30 * * * *", "0 * * * *"]
+    "crons": ["*/5 * * * *", "*/30 * * * *", "0 * * * *", "0 6 * * *"]
   },
   "routes": [
     { "pattern": "kandidatenwerk.kanzleistelle24.de", "custom_domain": true }
