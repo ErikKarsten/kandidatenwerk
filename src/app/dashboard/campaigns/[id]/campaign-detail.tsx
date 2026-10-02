@@ -29,6 +29,7 @@ import { CandidateStatusSelect } from "./candidate-status-select"
 import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
 import { MatchesTab } from "./matches-tab"
+import { AvailableCandidatesPanel } from "./available-candidates-panel"
 import type { EmailTemplate } from "../../einstellungen/actions"
 import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
@@ -89,6 +90,7 @@ interface Campaign {
   kanzleistelle_job_id: string | null
   meta_webhook_last_test_at: string | null
   client: { id: string; name: string } | null
+  kind: string
 }
 
 interface ClientOption {
@@ -727,10 +729,12 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
           </span>
         </TabButton>
         <TabButton active={tab === "matches"} onClick={() => setTab("matches")}>
-          Passende Kandidaten{" "}
-          <span className="ml-1 text-xs font-normal" style={{ opacity: 0.7 }}>
-            ({matches.length})
-          </span>
+          Passende Kandidaten
+          {campaign.kind !== "kanzlei" && (
+            <span className="ml-1 text-xs font-normal" style={{ opacity: 0.7 }}>
+              ({matches.length})
+            </span>
+          )}
         </TabButton>
         <TabButton active={tab === "einrichtung"} onClick={() => setTab("einrichtung")}>
           Einrichtung
@@ -958,15 +962,28 @@ export function CampaignDetail({ campaign, candidates, automations, matches, ema
         </div>
       )}
 
-      {/* Matches-Tab */}
-      {tab === "matches" && (
-        <MatchesTab
-          matches={matches}
-          selfLat={campaign.lat}
-          selfLng={campaign.lng}
-          selfLabel={campaign.title}
-        />
-      )}
+      {/* Matches-Tab: bei Kanzlei-Kampagnen Suche mit "Zuordnen" (Atlas T-40), sonst die
+          gespeicherten Treffer. */}
+      {tab === "matches" &&
+        (campaign.kind === "kanzlei" ? (
+          <AvailableCandidatesPanel
+            campaign={{
+              id: campaign.id,
+              title: campaign.title,
+              berufsbild: campaign.berufsbild,
+              radius_km: campaign.radius_km,
+              lat: campaign.lat,
+              lng: campaign.lng,
+            }}
+          />
+        ) : (
+          <MatchesTab
+            matches={matches}
+            selfLat={campaign.lat}
+            selfLng={campaign.lng}
+            selfLabel={campaign.title}
+          />
+        ))}
 
       {/* Automatisierungen-Tab */}
       {tab === "automatisierungen" && (

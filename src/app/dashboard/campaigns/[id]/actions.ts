@@ -3,7 +3,14 @@
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
-import { requireStaffUser } from "@/lib/auth-guards"
+import { getStaffContext, requireStaffUser } from "@/lib/auth-guards"
+import { ensureCampaignAssignment } from "@/lib/client-assignment"
+import {
+  rankAvailableCandidates,
+  type AvailableCandidate,
+  type AvailableSort,
+  type CandidateRow,
+} from "@/lib/available-candidates"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
@@ -31,14 +38,35 @@ export async function getCampaignCandidatesForExport(campaignId: string): Promis
   // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
   const staffError = await requireStaffUser(supabase)
   if (staffError) return staffError
-  const { data, error } = await supabase
-    .from("candidates")
-    .select("first_name, last_name, email, phone, status, custom_fields")
-    .eq("campaign_id", campaignId)
-    .order("created_at", { ascending: true })
-  if (error) return { error: error.message }
+  // Gleiche Auswahl wie der Reiter "Kandidaten": bei Kanzlei-Kampagnen die
+  // zugeordneten Kandidaten (Atlas T-40), sonst die Herkunft (candidates.campaign_id).
+  const { data: campaign } = await supabase.from("campaigns").select("kind").eq("id", campaignId).maybeSingle()
+  if (!campaign) return { error: "Kampagne nicht gefunden." }
+
+  type ExportRow = { first_name: string; last_name: string; email: string | null; phone: string | null; status: string; custom_fields: unknown }
+  let data: ExportRow[] = []
+  if (campaign.kind === "kanzlei") {
+    const { data: rows, error } = await supabase
+      .from("client_assignments")
+      .select("candidates(first_name, last_name, email, phone, status, custom_fields)")
+      .eq("campaign_id", campaignId)
+      .is("removed_at", null)
+      .order("created_at", { ascending: true })
+    if (error) return { error: error.message }
+    data = (rows ?? [])
+      .map((r) => (Array.isArray(r.candidates) ? r.candidates[0] : r.candidates) as ExportRow | null)
+      .filter((c): c is ExportRow => c !== null)
+  } else {
+    const { data: rows, error } = await supabase
+      .from("candidates")
+      .select("first_name, last_name, email, phone, status, custom_fields")
+      .eq("campaign_id", campaignId)
+      .order("created_at", { ascending: true })
+    if (error) return { error: error.message }
+    data = rows ?? []
+  }
   return {
-    candidates: (data ?? []).map((c) => ({
+    candidates: data.map((c) => ({
       first_name: c.first_name,
       last_name: c.last_name,
       email: c.email,
@@ -584,3 +612,122 @@ export async function moveCampaignToClientAction(
   return null
 }
 
+// ============================================================
+// "Passende Kandidaten" einer Kanzlei-Kampagne (Atlas T-40, Zielbild T-31): Kandidaten
+// mit gleichem Berufsbild im Umkreis der Kampagne, die ihr noch nicht zugeordnet sind -
+// mit Ein-Klick-Zuordnung. Zugeordnet wird nur hier, nicht mehr im Kundenprofil.
+// Filter laufen in der DB, Entfernung/Umkreis/Sortierung in rankAvailableCandidates().
+// Obergrenze MAX_CANDIDATE_ROWS hält die Abfrage klein; bei deutlich mehr Kandidaten
+// müsste die Umkreissuche in die DB wandern.
+const AVAILABLE_PAGE_SIZE = 20
+const MAX_CANDIDATE_ROWS = 3000
+
+async function loadKanzleiCampaign(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, campaignId: string) {
+  const { data } = await supabase
+    .from("campaigns")
+    .select("id, title, berufsbild, lat, lng, radius_km, kind, client_id")
+    .eq("id", campaignId)
+    .eq("kind", "kanzlei")
+    .maybeSingle()
+  return data
+}
+
+export async function searchAvailableCandidatesAction(
+  campaignId: string,
+  filters: {
+    q: string
+    status: string
+    radius: "kampagne" | "alle" | number // Umkreis der Kampagne, ohne Grenze oder km
+    sort: AvailableSort
+    page: number
+  }
+): Promise<
+  | { error: string }
+  | {
+      items: AvailableCandidate[]
+      total: number
+      totalPages: number
+      page: number
+      truncated: boolean
+      campaignHasLocation: boolean
+      effectiveRadiusKm: number | null
+    }
+> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+
+  const campaign = await loadKanzleiCampaign(supabase, campaignId)
+  if (!campaign) return { error: "Kampagne nicht gefunden." }
+  if (!campaign.berufsbild) return { error: "Für diese Kampagne ist kein Berufsbild hinterlegt." }
+
+  let query = supabase
+    .from("candidates")
+    .select("id, first_name, last_name, email, plz, lat, lng, berufsbild, status, source, created_at")
+    .neq("status", ARCHIVED_STATUS)
+    .eq("berufsbild", campaign.berufsbild)
+    .order("created_at", { ascending: false })
+    .limit(MAX_CANDIDATE_ROWS)
+
+  // Zeichen entfernen, die in der PostgREST-or()-Syntax eine Bedeutung haben.
+  const q = filters.q.replace(/[%,()"\\*]/g, " ").trim()
+  if (q) query = query.or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,plz.ilike.${q}%`)
+  if (filters.status && filters.status !== "alle") query = query.eq("status", filters.status)
+
+  const [{ data: rows, error }, { data: assigned }] = await Promise.all([
+    query,
+    supabase.from("client_assignments").select("candidate_id").eq("campaign_id", campaign.id).is("removed_at", null),
+  ])
+  if (error) return { error: error.message }
+
+  const effectiveRadiusKm =
+    filters.radius === "kampagne" ? campaign.radius_km : filters.radius === "alle" ? null : filters.radius
+  const ranked = rankAvailableCandidates((rows ?? []) as CandidateRow[], new Set((assigned ?? []).map((a) => a.candidate_id)), {
+    clientLat: campaign.lat,
+    clientLng: campaign.lng,
+    radiusKm: effectiveRadiusKm,
+    sort: filters.sort,
+    page: filters.page,
+    pageSize: AVAILABLE_PAGE_SIZE,
+  })
+
+  return {
+    ...ranked,
+    truncated: (rows ?? []).length >= MAX_CANDIDATE_ROWS,
+    campaignHasLocation: campaign.lat !== null && campaign.lng !== null,
+    effectiveRadiusKm,
+  }
+}
+
+// Ein-Klick-Zuordnung aus "Passende Kandidaten" - idempotent über
+// ensureCampaignAssignment, mit Verlaufseintrag.
+export async function assignCandidateToCampaignAction(
+  campaignId: string,
+  candidateId: string
+): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
+
+  const campaign = await loadKanzleiCampaign(supabase, campaignId)
+  if (!campaign) return { error: "Kampagne nicht gefunden." }
+
+  try {
+    await ensureCampaignAssignment(supabase, candidateId, campaignId, guard.staff.userId)
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+
+  const { error: historyError } = await supabase.from("candidate_history").insert({
+    candidate_id: candidateId,
+    type: "note",
+    content: `Zugeordnet zu Kampagne „${campaign.title}“`,
+    created_by: guard.staff.userId,
+  })
+  if (historyError) console.error("Verlaufseintrag fehlgeschlagen:", historyError.message)
+
+  revalidatePath(`/dashboard/campaigns/${campaignId}`)
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
+  if (campaign.client_id) revalidatePath(`/dashboard/clients/${campaign.client_id}`)
+  return null
+}

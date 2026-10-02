@@ -26,6 +26,7 @@ export default async function CampaignDetailPage({
       .select("*, clients(id, name)")
       .eq("id", id)
       .single(),
+    // Herkunft: Kandidaten, deren Bewerbung über diese Kampagne kam (Lead-Kampagnen).
     supabase
       .from("candidates")
       .select("id, first_name, last_name, email, phone, status, berufsbild, plz, created_at")
@@ -46,6 +47,24 @@ export default async function CampaignDetailPage({
   ])
 
   if (!campaign) notFound()
+
+  // Kanzlei-Kampagnen (Atlas T-40): Reiter "Kandidaten" zeigt die dieser Kampagne
+  // ZUGEORDNETEN Kandidaten, nicht die Herkunft. Alt-Kandidaten aus dem Leadtable-
+  // Import (candidates.campaign_id) werden bewusst nicht mehr gezeigt - sie stehen in
+  // "Alle Kandidaten" und werden über "Passende Kandidaten" neu zugeordnet.
+  let shownCandidates = candidates ?? []
+  if (campaign.kind === "kanzlei") {
+    const { data: assignmentRows } = await supabase
+      .from("client_assignments")
+      .select("created_at, candidates(id, first_name, last_name, email, phone, status, berufsbild, plz, created_at)")
+      .eq("campaign_id", id)
+      .is("removed_at", null)
+      .order("created_at", { ascending: false })
+    type AssignedCandidateJoin = NonNullable<typeof candidates>[number]
+    shownCandidates = (assignmentRows ?? [])
+      .map((a) => (Array.isArray(a.candidates) ? a.candidates[0] : a.candidates) as AssignedCandidateJoin | null)
+      .filter((c): c is AssignedCandidateJoin => c !== null)
+  }
 
   const client = Array.isArray(campaign.clients)
     ? campaign.clients[0] ?? null
@@ -93,10 +112,11 @@ export default async function CampaignDetailPage({
         radius_km: campaign.radius_km ?? null,
         leadtable_campaign_id: campaign.leadtable_campaign_id ?? null,
         kanzleistelle_job_id: campaign.kanzleistelle_job_id ?? null,
+        kind: campaign.kind,
         meta_webhook_last_test_at: campaign.meta_webhook_last_test_at ?? null,
         client,
       }}
-      candidates={candidates ?? []}
+      candidates={shownCandidates}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       automations={(automations ?? []) as any}
       matches={matches}
