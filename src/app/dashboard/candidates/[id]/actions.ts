@@ -547,12 +547,12 @@ export async function updateCandidateBerufsbildAction(
   if (error) return { error: error.message }
 
   const label = (value: string | null) => BERUFSBILD_OPTIONS.find((o) => o.value === value)?.label ?? "keins"
-  await supabase.from("candidate_history").insert({
+  const { error: historyError } = await supabase.from("candidate_history").insert({
     candidate_id: candidateId,
     type: "note",
     content: `Berufsbild geändert: ${label(before.berufsbild)} → ${label(berufsbild || null)}`,
-    created_by: guard.staff.userId,
-  })
+    created_by: guard.staff.userId,  })
+  if (historyError) console.error("Verlaufseintrag fehlgeschlagen:", historyError.message)
 
   // Neues Berufsbild -> passende Kanzlei-Kampagnen neu suchen (nicht fatal).
   try {
@@ -588,12 +588,12 @@ export async function assignToCampaignAction(
     .maybeSingle()
   const clientRel = campaign?.clients as { name: string } | { name: string }[] | null | undefined
   const clientName = Array.isArray(clientRel) ? clientRel[0]?.name : clientRel?.name
-  await supabase.from("candidate_history").insert({
+  const { error: historyError } = await supabase.from("candidate_history").insert({
     candidate_id: candidateId,
     type: "note",
     content: `Zugeordnet zu Kampagne „${campaign?.title ?? campaignId}“${clientName ? ` (${clientName})` : ""}`,
-    created_by: guard.staff.userId,
-  })
+    created_by: guard.staff.userId,  })
+  if (historyError) console.error("Verlaufseintrag fehlgeschlagen:", historyError.message)
 
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   if (campaign?.client_id) revalidatePath(`/dashboard/clients/${campaign.client_id}`)

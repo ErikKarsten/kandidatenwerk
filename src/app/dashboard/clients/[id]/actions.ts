@@ -666,12 +666,12 @@ export async function assignCandidateToClientCampaignAction(
     return { error: err instanceof Error ? err.message : String(err) }
   }
 
-  await supabase.from("candidate_history").insert({
+  const { error: historyError } = await supabase.from("candidate_history").insert({
     candidate_id: candidateId,
     type: "note",
     content: `Zugeordnet zu Kampagne „${campaign.title}“ (aus dem Kundenprofil)`,
-    created_by: guard.staff.userId,
-  })
+    created_by: guard.staff.userId,  })
+  if (historyError) console.error("Verlaufseintrag fehlgeschlagen:", historyError.message)
 
   revalidatePath(`/dashboard/clients/${clientId}`)
   revalidatePath(`/dashboard/candidates/${candidateId}`)

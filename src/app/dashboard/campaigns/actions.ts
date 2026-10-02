@@ -136,5 +136,6 @@ export async function createCampaignAction(
     console.error("Matching fehlgeschlagen für Kampagne", campaign.id, matchError)
   }
 
-  redirect("/dashboard/campaigns")
+  // Zurück ins Kundenprofil, aus dem die Kampagne angelegt wurde (Atlas T-32).
+  redirect(`/dashboard/clients/${client_id}`)
 }
