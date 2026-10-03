@@ -10,6 +10,10 @@ import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 
 export interface CloseWebhookPayload {
   close_lead_id?: string
+  // Status, der den Zap ausgelöst hat: "Folgebesprechung zum SC vereinbart" oder "Gewonnen".
+  close_status?: string
+  // Link zum Lead in Close (optional, sonst aus der Lead-ID gebaut).
+  close_url?: string
   firma?: string
   website?: string
   telefon?: string
@@ -73,6 +77,18 @@ export function parseGermanDate(v: unknown): string | null {
   return `${year}-${de[2].padStart(2, "0")}-${de[1].padStart(2, "0")}`
 }
 
+// Lesbarer Close-Status (Zapier liefert den Status-Text aus Close).
+export function closeStatusLabel(status: string): string {
+  const s = status.toLowerCase()
+  if (/gewonnen|won/.test(s)) return "Gewonnen"
+  if (/folge/.test(s)) return "Folgebesprechung zum SC vereinbart"
+  return status.trim()
+}
+
+export function closeLeadUrl(closeLeadId: string): string {
+  return `https://app.close.com/lead/${encodeURIComponent(closeLeadId)}/`
+}
+
 // Firmennamen vergleichbar machen (Groß-/Kleinschreibung, Rechtsform, Satzzeichen).
 export function normalizeCompanyName(name: string): string {
   return name
@@ -120,9 +136,17 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
       .insert({ name: firma, close_lead_id: closeLeadId, status: "active", agency_id: agency?.id, project_phase: "onboarding" })
       .select("*")
       .single()
-    if (error) throw new Error(error.message)
-    client = created
-    outcome = "angelegt"
+    if (error?.code === "23505") {
+      // Zwei Status-Wechsel kurz hintereinander (Folgebesprechung, dann Gewonnen): der
+      // erste Aufruf hat den Kunden gerade angelegt - keinen zweiten anlegen.
+      const { data: existing } = await db.from("clients").select("*").eq("close_lead_id", closeLeadId).single()
+      client = existing
+    } else if (error) {
+      throw new Error(error.message)
+    } else {
+      client = created
+      outcome = "angelegt"
+    }
   }
   const clientId = client!.id as string
 
@@ -134,6 +158,15 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
       filled.push(label)
     }
   }
+  // Close-Status und -Link: Status immer aktualisieren (kommt nur aus Close).
+  const status = text(payload.close_status)
+  const statusLabel = status ? closeStatusLabel(status) : null
+  const previousStatus = (client!.close_status as string | null) ?? null
+  if (statusLabel && statusLabel !== previousStatus) {
+    updates.close_status = statusLabel
+    updates.close_status_at = new Date().toISOString()
+  }
+  fill("close_url", text(payload.close_url) ?? closeLeadUrl(closeLeadId), "Close-Link")
   fill("contact_email", text(payload.email), "E-Mail")
   fill("phone", text(payload.telefon), "Telefon")
   const plz = text(payload.plz)?.match(/\d{5}/)?.[0] ?? null
@@ -232,12 +265,15 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
   }
 
   // 6. Verlauf im Projekt-Reiter.
+  const statusText = statusLabel ? ` Status in Close: ${statusLabel}.` : ""
   const intro =
     outcome === "angelegt"
-      ? "Kunde aus Close übernommen (gewonnen)."
+      ? `Kunde aus Close übernommen.${statusText}`
       : outcome === "verknuepft"
-        ? `Bestehender Kunde mit Close verknüpft (Lead ${closeLeadId}).`
-        : "Daten aus Close erneut übertragen."
+        ? `Bestehender Kunde mit Close verknüpft (Lead ${closeLeadId}).${statusText}`
+        : statusLabel && statusLabel !== previousStatus
+          ? `Status in Close geändert: ${previousStatus ?? "–"} → ${statusLabel}. Kunde war bereits angelegt.`
+          : "Daten aus Close erneut übertragen."
   await db.from("client_comments").insert({
     client_id: clientId,
     author_id: null,

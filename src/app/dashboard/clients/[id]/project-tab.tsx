@@ -13,6 +13,11 @@ export interface ProjectMeta {
   contract_start: string | null
   contract_term_months: number | null
   key_account_manager_id: string | null
+  close_lead_id: string | null
+  // Nur Anzeige (kommen aus Close über den Webhook).
+  close_url?: string | null
+  close_status?: string | null
+  close_status_at?: string | null
 }
 
 export interface ClientProfileData extends ClientProfileValues {
@@ -122,7 +127,13 @@ function ProjectMetaCard({ clientId, meta, team }: { clientId: string; meta: Pro
   function save() {
     setError(null)
     startTransition(async () => {
-      const result = await updateProjectMetaAction(clientId, v)
+      const result = await updateProjectMetaAction(clientId, {
+        project_phase: v.project_phase,
+        contract_start: v.contract_start,
+        contract_term_months: v.contract_term_months,
+        key_account_manager_id: v.key_account_manager_id,
+        close_lead_id: v.close_lead_id,
+      })
       if (result?.error) return setError(result.error)
       setSaved(true)
       router.refresh()
@@ -180,6 +191,31 @@ function ProjectMetaCard({ clientId, meta, team }: { clientId: string; meta: Pro
             onChange={(e) => (setV({ ...v, contract_term_months: e.target.value ? Number(e.target.value) : null }), setSaved(false))}
           />
         </label>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="flex flex-col gap-1 lg:col-span-2">
+          <span className="text-xs font-medium text-gray-500">Close-Lead-ID</span>
+          <input
+            className={input}
+            style={{ borderColor: "#dde3ea" }}
+            value={v.close_lead_id ?? ""}
+            placeholder="lead_…"
+            onChange={(e) => (setV({ ...v, close_lead_id: e.target.value || null }), setSaved(false))}
+          />
+        </label>
+        <div className="flex flex-col justify-end gap-1 lg:col-span-2">
+          {meta.close_status && (
+            <span className="text-xs text-gray-500">
+              Status in Close: <strong className="text-gray-800">{meta.close_status}</strong>
+              {meta.close_status_at ? ` (${new Date(meta.close_status_at).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })})` : ""}
+            </span>
+          )}
+          {meta.close_url && (
+            <a href={meta.close_url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium hover:underline" style={{ color: "#1e56a0" }}>
+              In Close öffnen ↗
+            </a>
+          )}
+        </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button type="button" onClick={save} disabled={pending || !dirty} className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40" style={{ backgroundColor: "#1e56a0" }}>

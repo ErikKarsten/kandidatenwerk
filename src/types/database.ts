@@ -457,6 +457,9 @@ export type Database = {
           contract_term_months: number | null
           key_account_manager_id: string | null
           close_lead_id: string | null
+          close_url: string | null
+          close_status: string | null
+          close_status_at: string | null
         }
         Insert: {
           id?: string
@@ -482,6 +485,9 @@ export type Database = {
           contract_term_months?: number | null
           key_account_manager_id?: string | null
           close_lead_id?: string | null
+          close_url?: string | null
+          close_status?: string | null
+          close_status_at?: string | null
         }
         Update: {
           id?: string
@@ -507,6 +513,9 @@ export type Database = {
           contract_term_months?: number | null
           key_account_manager_id?: string | null
           close_lead_id?: string | null
+          close_url?: string | null
+          close_status?: string | null
+          close_status_at?: string | null
         }
         Relationships: [
           {

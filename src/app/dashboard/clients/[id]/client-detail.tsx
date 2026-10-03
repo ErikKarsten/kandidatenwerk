@@ -376,6 +376,19 @@ export function ClientDetail({
           )}
           <h1 className="text-2xl font-bold text-gray-900">{client.name}</h1>
 
+          {project.meta.close_url && (
+            <a
+              href={project.meta.close_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full border px-2 py-0.5 text-xs font-medium hover:bg-gray-50"
+              style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+              title={project.meta.close_status ? `Status in Close: ${project.meta.close_status}` : "Lead in Close öffnen"}
+            >
+              Close ↗
+            </a>
+          )}
+
           <span
             className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
             style={{

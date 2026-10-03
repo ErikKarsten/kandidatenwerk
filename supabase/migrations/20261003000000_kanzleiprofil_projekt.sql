@@ -9,8 +9,12 @@ alter table public.clients
   add column if not exists contract_start date,
   add column if not exists contract_term_months integer check (contract_term_months is null or contract_term_months > 0),
   add column if not exists key_account_manager_id uuid references public.profiles(id) on delete set null,
-  -- Verknüpfung zu Close (Paket 10, Webhook über Zapier)
-  add column if not exists close_lead_id text unique;
+  -- Verknüpfung zu Close (Paket 10, Webhook über Zapier): Lead-ID, Link zum Profil und
+  -- letzter übertragener Status ("Folgebesprechung zum SC vereinbart" oder "Gewonnen").
+  add column if not exists close_lead_id text unique,
+  add column if not exists close_url text,
+  add column if not exists close_status text,
+  add column if not exists close_status_at timestamptz;
 
 -- 2. Kanzleiprofil (1:1 zum Kunden)
 create table public.client_profiles (

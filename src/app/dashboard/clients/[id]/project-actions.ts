@@ -8,6 +8,7 @@ import { getStaffContext } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { sendEmail } from "@/lib/brevo-mail"
+import { closeLeadUrl } from "@/lib/close-webhook"
 import { PROFILE_FIELDS, PROJECT_PHASES, COMMENT_KINDS, missingProfileItems, type ClientProfileValues } from "@/lib/client-project"
 
 type Result = { error: string } | null
@@ -33,7 +34,13 @@ const clean = (v: unknown) => {
 
 export async function updateProjectMetaAction(
   clientId: string,
-  meta: { project_phase: string; contract_start: string | null; contract_term_months: number | null; key_account_manager_id: string | null }
+  meta: {
+    project_phase: string
+    contract_start: string | null
+    contract_term_months: number | null
+    key_account_manager_id: string | null
+    close_lead_id: string | null
+  }
 ): Promise<Result> {
   const ctx = await staff()
   if ("error" in ctx) return ctx
@@ -48,8 +55,12 @@ export async function updateProjectMetaAction(
       contract_start: meta.contract_start || null,
       contract_term_months: meta.contract_term_months,
       key_account_manager_id: meta.key_account_manager_id || null,
+      // Close-ID von Hand (bestehende Kunden verknüpfen); Link folgt der ID.
+      close_lead_id: clean(meta.close_lead_id),
+      close_url: clean(meta.close_lead_id) ? closeLeadUrl(clean(meta.close_lead_id)!) : null,
     })
     .eq("id", clientId)
+  if (error?.code === "23505") return { error: "Diese Close-ID ist schon einem anderen Kunden zugeordnet." }
   if (error) return { error: error.message }
   revalidateClient(clientId)
   return null

@@ -17,6 +17,8 @@ ergänzt der Key Account Manager im Kanzleiprofil.
 | Feld | Inhalt |
 |---|---|
 | `close_lead_id` | Lead-ID aus Close (z.B. `lead_abc…`) – **Pflicht** |
+| `close_status` | Status, der den Zap ausgelöst hat: `Folgebesprechung zum SC vereinbart` oder `Gewonnen` |
+| `close_url` | Link zum Lead in Close (optional – sonst `https://app.close.com/lead/<ID>/`) |
 | `firma` | Name der Kanzlei – **Pflicht** |
 | `website`, `telefon`, `email` | Allgemeine Kontaktdaten |
 | `strasse`, `plz`, `ort` | Adresse (PLZ = Standort für die Karte/das Matching) |
@@ -29,6 +31,13 @@ ergänzt der Key Account Manager im Kanzleiprofil.
 | `benefits` | Liste, getrennt durch Komma, Semikolon oder Zeilenumbruch |
 | `stelle_titel` | Gesuchte Stelle, z.B. `Steuerfachangestellte (m/w/d)` |
 | `stelle_berufsbild`, `stelle_plz`, `stelle_ort`, `stelle_umkreis_km`, `stelle_arbeitszeit`, `stelle_berufserfahrung`, `stelle_software`, `stelle_gehalt`, `stelle_start`, `stelle_aufgaben`, `stelle_anforderungen` | Details zur Stelle |
+
+## Zwei Auslöser, ein Kunde
+
+Der Zap läuft bei **beiden** Status: „Folgebesprechung zum SC vereinbart“ und „Gewonnen“.
+Kandidatenwerk erkennt den Kunden an der `close_lead_id` – kommt erst die Folgebesprechung
+und später „Gewonnen“, wird nur der Status aktualisiert, nie ein zweiter Kunde angelegt
+(auch nicht, wenn beide Aufrufe fast gleichzeitig ankommen).
 
 ## Verhalten
 
