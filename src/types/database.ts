@@ -75,6 +75,168 @@ export type Database = {
         }
         Relationships: []
       }
+      client_profiles: {
+        Row: {
+          client_id: string
+          kurzbeschreibung: string | null
+          intro: string | null
+          website: string | null
+          mitarbeiterzahl: string | null
+          standorte: string | null
+          mandantenstruktur: string | null
+          software: string | null
+          arbeitszeiten: string | null
+          homeoffice: string | null
+          benefits: string[]
+          ansprechpartner_bewerbung: string | null
+          vertriebsnotizen: string | null
+          finalized_at: string | null
+          finalized_by: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id: string
+          kurzbeschreibung?: string | null
+          intro?: string | null
+          website?: string | null
+          mitarbeiterzahl?: string | null
+          standorte?: string | null
+          mandantenstruktur?: string | null
+          software?: string | null
+          arbeitszeiten?: string | null
+          homeoffice?: string | null
+          benefits?: string[]
+          ansprechpartner_bewerbung?: string | null
+          vertriebsnotizen?: string | null
+          finalized_at?: string | null
+          finalized_by?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          kurzbeschreibung?: string | null
+          intro?: string | null
+          website?: string | null
+          mitarbeiterzahl?: string | null
+          standorte?: string | null
+          mandantenstruktur?: string | null
+          software?: string | null
+          arbeitszeiten?: string | null
+          homeoffice?: string | null
+          benefits?: string[]
+          ansprechpartner_bewerbung?: string | null
+          vertriebsnotizen?: string | null
+          finalized_at?: string | null
+          finalized_by?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      client_positions: {
+        Row: {
+          id: string
+          client_id: string
+          title: string
+          berufsbild: string | null
+          plz: string | null
+          ort: string | null
+          lat: number | null
+          lng: number | null
+          radius_km: number | null
+          arbeitszeit: string | null
+          berufserfahrung: string | null
+          software: string | null
+          gehalt: string | null
+          startdatum: string | null
+          anforderungen: string | null
+          aufgaben: string | null
+          campaign_id: string | null
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          title: string
+          berufsbild?: string | null
+          plz?: string | null
+          ort?: string | null
+          lat?: number | null
+          lng?: number | null
+          radius_km?: number | null
+          arbeitszeit?: string | null
+          berufserfahrung?: string | null
+          software?: string | null
+          gehalt?: string | null
+          startdatum?: string | null
+          anforderungen?: string | null
+          aufgaben?: string | null
+          campaign_id?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          title?: string
+          berufsbild?: string | null
+          plz?: string | null
+          ort?: string | null
+          lat?: number | null
+          lng?: number | null
+          radius_km?: number | null
+          arbeitszeit?: string | null
+          berufserfahrung?: string | null
+          software?: string | null
+          gehalt?: string | null
+          startdatum?: string | null
+          anforderungen?: string | null
+          aufgaben?: string | null
+          campaign_id?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      client_comments: {
+        Row: {
+          id: string
+          client_id: string
+          author_id: string | null
+          kind: string
+          content: string
+          mentions: string[]
+          created_at: string
+          edited_at: string | null
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          author_id?: string | null
+          kind?: string
+          content: string
+          mentions?: string[]
+          created_at?: string
+          edited_at?: string | null
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          author_id?: string | null
+          kind?: string
+          content?: string
+          mentions?: string[]
+          created_at?: string
+          edited_at?: string | null
+        }
+        Relationships: []
+      }
       client_contacts: {
         Row: {
           id: string
@@ -290,6 +452,11 @@ export type Database = {
           lng: number | null
           ort: string | null
           auto_forward_enabled: boolean
+          project_phase: string
+          contract_start: string | null
+          contract_term_months: number | null
+          key_account_manager_id: string | null
+          close_lead_id: string | null
         }
         Insert: {
           id?: string
@@ -310,6 +477,11 @@ export type Database = {
           lng?: number | null
           ort?: string | null
           auto_forward_enabled?: boolean
+          project_phase?: string
+          contract_start?: string | null
+          contract_term_months?: number | null
+          key_account_manager_id?: string | null
+          close_lead_id?: string | null
         }
         Update: {
           id?: string
@@ -330,6 +502,11 @@ export type Database = {
           lng?: number | null
           ort?: string | null
           auto_forward_enabled?: boolean
+          project_phase?: string
+          contract_start?: string | null
+          contract_term_months?: number | null
+          key_account_manager_id?: string | null
+          close_lead_id?: string | null
         }
         Relationships: [
           {
@@ -956,6 +1133,7 @@ export type Database = {
           file_path: string
           file_size: number | null
           mime_type: string | null
+          comment_id: string | null
           created_at: string
         }
         Insert: {
@@ -965,6 +1143,7 @@ export type Database = {
           file_path: string
           file_size?: number | null
           mime_type?: string | null
+          comment_id?: string | null
           created_at?: string
         }
         Update: {
@@ -974,6 +1153,7 @@ export type Database = {
           file_path?: string
           file_size?: number | null
           mime_type?: string | null
+          comment_id?: string | null
           created_at?: string
         }
         Relationships: [
