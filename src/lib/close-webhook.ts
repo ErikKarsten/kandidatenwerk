@@ -160,6 +160,24 @@ export function splitBenefits(v: string | string[] | undefined): string[] {
     .filter(Boolean)
 }
 
+// Feldnamen aus Zapier tolerant lesen: "Close Lead ID", " close_lead_id ", "close-lead-id"
+// -> "close_lead_id". Verschachtelte Objekte (z.B. {"data": {...}}) werden aufgelöst.
+export function normalizePayload(raw: unknown): CloseWebhookPayload {
+  const source = Array.isArray(raw) ? raw[0] : raw
+  if (!source || typeof source !== "object") return {}
+  const entries = Object.entries(source as Record<string, unknown>)
+  // Zapier-"Wrap in data"-Fälle: einziges Objekt-Feld enthält die eigentlichen Daten.
+  if (entries.length === 1 && entries[0][1] && typeof entries[0][1] === "object" && !Array.isArray(entries[0][1])) {
+    return normalizePayload(entries[0][1])
+  }
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of entries) {
+    const k = key.trim().toLowerCase().replace(/[\s-]+/g, "_")
+    out[k] = value
+  }
+  return out as CloseWebhookPayload
+}
+
 export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebhookPayload): Promise<CloseWebhookResult> {
   const closeLeadId = text(payload.close_lead_id)
   const firma = text(payload.firma)

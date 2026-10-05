@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { closeLeadUrl, closeStatusLabel, collectPositions, normalizeCompanyName, parseGermanDate, splitBenefits } from "./close-webhook"
+import { normalizePayload, closeLeadUrl, closeStatusLabel, collectPositions, normalizeCompanyName, parseGermanDate, splitBenefits } from "./close-webhook"
 
 describe("parseGermanDate", () => {
   it.each([
@@ -50,5 +50,15 @@ describe("collectPositions", () => {
   })
   it("ignoriert kaputtes JSON", () => {
     expect(collectPositions({ stellen_json: "keine Liste" })).toEqual([])
+  })
+})
+
+describe("normalizePayload", () => {
+  it("vereinheitlicht Feldnamen aus Zapier", () => {
+    expect(normalizePayload({ " Close Lead ID ": "lead_1", "Firma": "X", "stelle-titel": "Y" })).toEqual({ close_lead_id: "lead_1", firma: "X", stelle_titel: "Y" })
+  })
+  it("packt verschachtelte und Array-Daten aus", () => {
+    expect(normalizePayload({ data: { firma: "X" } })).toEqual({ firma: "X" })
+    expect(normalizePayload([{ firma: "X", close_lead_id: "l" }])).toEqual({ firma: "X", close_lead_id: "l" })
   })
 })

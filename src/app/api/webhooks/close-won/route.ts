@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { timingSafeEqual } from "node:crypto"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { processCloseWebhook, type CloseWebhookPayload } from "@/lib/close-webhook"
+import { normalizePayload, processCloseWebhook, type CloseWebhookPayload } from "@/lib/close-webhook"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 // Zapier ("Webhooks by Zapier" -> POST, JSON) meldet hier gewonnene Kunden aus Close
@@ -20,12 +20,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  let payload: CloseWebhookPayload
+  // JSON (empfohlen) oder Formular - Zapier steht standardmäßig auf "Form".
+  let raw: unknown
   try {
-    payload = (await request.json()) as CloseWebhookPayload
+    const contentType = request.headers.get("content-type") ?? ""
+    raw = contentType.includes("application/json") ? await request.json() : Object.fromEntries((await request.formData()).entries())
   } catch {
-    return NextResponse.json({ error: "Ungültiges JSON." }, { status: 400 })
+    return NextResponse.json({ error: "Daten nicht lesbar - in Zapier Payload Type auf Json stellen." }, { status: 400 })
   }
+  const payload: CloseWebhookPayload = normalizePayload(raw)
+  // Nur Feldnamen protokollieren (keine Inhalte), um Zuordnungsfehler in Zapier zu finden.
+  console.log(`[close-webhook] empfangene Felder: ${Object.keys(payload).join(", ") || "(keine)"}`)
 
   try {
     const db = createSupabaseAdminClient() as unknown as SupabaseClient
