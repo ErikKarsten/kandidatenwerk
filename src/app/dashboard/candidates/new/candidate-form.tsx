@@ -82,7 +82,7 @@ export function CandidateForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Vorname" required error={errors.first_name?.message}>
           <Input id="first_name" {...register("first_name")} placeholder="Max" />
         </Field>
@@ -107,7 +107,7 @@ export function CandidateForm({
         </select>
       </Field>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="E-Mail" error={errors.email?.message}>
           <Input id="email" type="email" {...register("email")} placeholder="max@example.de" />
         </Field>
@@ -131,7 +131,7 @@ export function CandidateForm({
         </select>
       </Field>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Berufsbild" error={errors.berufsbild?.message}>
           <select
             id="berufsbild"

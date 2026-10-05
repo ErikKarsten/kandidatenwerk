@@ -7,6 +7,8 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { PROFILE_FIELDS } from "@/lib/client-project"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
+import { createDemoCandidateForClient } from "@/lib/demo-candidate"
+import type { Database } from "@/types/database"
 
 export interface CloseWebhookPayload {
   close_lead_id?: string
@@ -356,6 +358,9 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
       filled.push(`Stelle „${positionTitle}“`)
     }
   }
+
+  // Neuer Kunde: Beispiel-Lead passend zur ersten Stelle (Paket 14, T-68).
+  if (outcome === "angelegt") await createDemoCandidateForClient(db as unknown as SupabaseClient<Database>, clientId)
 
   // 6. Verlauf im Projekt-Reiter.
   const statusText = statusLabel ? ` Status in Close: ${statusLabel}.` : ""

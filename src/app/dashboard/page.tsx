@@ -51,7 +51,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   ] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "active"),
     supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("kind", "lead").eq("status", "active"),
-    supabase.from("candidates").select("*", { count: "exact", head: true }),
+    supabase.from("candidates").select("*", { count: "exact", head: true }).eq("is_demo", false),
     countAssignedCandidates(supabase),
     getApplicationStats(supabase, range),
     getMetaAdStats(range),
@@ -239,7 +239,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 async function countAssignedCandidates(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>): Promise<number> {
   const ids = new Set<string>()
   for (let from = 0; ; from += 1000) {
-    const { data } = await supabase.from("client_assignments").select("candidate_id").is("removed_at", null).range(from, from + 999)
+    const { data } = await supabase.from("client_assignments").select("candidate_id, candidates!inner(is_demo)").is("removed_at", null).eq("candidates.is_demo", false).range(from, from + 999)
     for (const r of data ?? []) ids.add(r.candidate_id)
     if (!data || data.length < 1000) break
   }

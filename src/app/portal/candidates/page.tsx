@@ -30,7 +30,7 @@ export default async function PortalCandidatesPage() {
   const rows = (assignments ?? []).filter((a) => a.candidates)
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <h1 className="text-xl font-bold text-gray-900 mb-1">Meine Kandidaten</h1>
       <p className="text-sm text-gray-500 mb-6">
         {rows.length} {rows.length === 1 ? "Kandidat" : "Kandidaten"} aktuell zugeordnet

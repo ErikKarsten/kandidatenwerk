@@ -18,7 +18,7 @@ export default async function NewCandidatePage({
     .order("title", { ascending: true })
 
   return (
-    <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
         {campaign_id ? (
           <Link

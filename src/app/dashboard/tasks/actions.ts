@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { requireStaffUser } from "@/lib/auth-guards"
 import { syncBugReportWithTaskStatus } from "@/lib/bug-reports/actions"
+import { notifyTaskAssigned } from "@/lib/task-notify"
 
 export async function createTaskAction(
   formData: FormData
@@ -28,17 +29,24 @@ export async function createTaskAction(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
 
-  const { error } = await supabase.from("tasks").insert({
-    title,
-    description: description || null,
-    assigned_to,
-    created_by: user.id,
-    candidate_id: candidate_id || null,
-    client_id: client_id || null,
-    due_date: due_date || null,
-  })
+  if (!(await isStaffProfile(supabase, assigned_to))) return { error: "Aufgaben können nur Team-Mitgliedern zugewiesen werden." }
+
+  const { data: created, error } = await supabase
+    .from("tasks")
+    .insert({
+      title,
+      description: description || null,
+      assigned_to,
+      created_by: user.id,
+      candidate_id: candidate_id || null,
+      client_id: client_id || null,
+      due_date: due_date || null,
+    })
+    .select("id")
+    .single()
 
   if (error) return { error: error.message }
+  if (assigned_to !== user.id) await notifyTaskAssigned(supabase, created.id, user.id)
 
   revalidatePath("/dashboard/tasks")
   if (client_id) revalidatePath(`/dashboard/clients/${client_id}`)
@@ -107,5 +115,29 @@ export async function deleteTaskAction(
   }
 
   revalidatePath("/dashboard/tasks")
+  return null
+}
+
+type ServerSupabase = Awaited<ReturnType<typeof createSupabaseServerClient>>
+
+async function isStaffProfile(supabase: ServerSupabase, profileId: string): Promise<boolean> {
+  const { data } = await supabase.from("profiles").select("role").eq("id", profileId).maybeSingle()
+  return !!data && ["agency_admin", "agency_member"].includes(data.role)
+}
+
+// Aufgabe neu zuweisen (Paket 14, T-69) - jedes Team-Mitglied, nur an Team-Mitglieder.
+export async function updateTaskAssigneeAction(taskId: string, assignedTo: string): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+  if (!(await isStaffProfile(supabase, assignedTo))) return { error: "Aufgaben können nur Team-Mitgliedern zugewiesen werden." }
+
+  const { data: task, error } = await supabase.from("tasks").update({ assigned_to: assignedTo }).eq("id", taskId).select("id, client_id").single()
+  if (error) return { error: error.message }
+  if (assignedTo !== user.id) await notifyTaskAssigned(supabase, taskId, user.id)
+  revalidatePath("/dashboard/tasks")
+  if (task.client_id) revalidatePath(`/dashboard/clients/${task.client_id}`)
   return null
 }

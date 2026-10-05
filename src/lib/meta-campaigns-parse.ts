@@ -115,3 +115,10 @@ export function extractLeadFormId(creative: unknown): string | null {
 }
 
 export const LEAD_OBJECTIVES = new Set(["OUTCOME_LEADS", "LEAD_GENERATION"])
+
+// Nur Kampagnen mit "KS24" im Namen werden importiert (Paket 14, T-64) - die übrigen
+// Lead-Kampagnen im Werbekonto sind kanzleieigene Anzeigen, deren Leads nicht über
+// Kandidatenwerk laufen. Tolerant gegenüber "KS 24" / "ks-24".
+export function isKs24Campaign(name: string | null | undefined): boolean {
+  return /ks[\s-]?24/i.test(name ?? "")
+}

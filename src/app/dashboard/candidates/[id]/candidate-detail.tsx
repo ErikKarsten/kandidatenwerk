@@ -51,6 +51,7 @@ interface Candidate {
   lat: number | null
   lng: number | null
   custom_fields: Record<string, string> | null
+  is_demo?: boolean
   campaign_id: string | null
   campaigns: { title: string; kind: string; berufsbild: string | null; clients: { id: string; name: string } | null } | null
 }
@@ -130,8 +131,19 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
     })
   }
 
+  // Beispiel-Lead (Paket 14, T-68): Löschen ohne Rückfrage-Dialog, zurück zum Kunden.
+  function handleDeleteDemo() {
+    if (!confirm("Beispiel-Lead löschen? Er verschwindet auch aus dem Kundenportal.")) return
+    startDeleteTransition(async () => {
+      const result = await deleteCandidateAction(candidate.id)
+      if (result?.error) { setModalError(result.error); return }
+      router.back()
+      router.refresh()
+    })
+  }
+
   return (
-    <div className="flex flex-col gap-6 overflow-x-hidden p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex flex-col gap-6 overflow-x-hidden p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
 
       {/* Modal */}
       {modalStep !== null && (
@@ -204,8 +216,24 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
         >
           ← Zurück zur Übersicht
         </button>
-        <div className="flex items-center justify-between mt-2">
-          <div className="flex items-center gap-3">
+        {candidate.is_demo && (
+          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-2.5 text-sm" style={{ borderColor: "#f59e0b", backgroundColor: "#fffbeb", color: "#92400e" }}>
+            <span>
+              <strong>Beispiel-Lead</strong> – kein echter Kandidat. Er dient zum Vorführen beim Kunden und im Kundenportal und zählt in keiner Statistik mit.
+            </span>
+            <button
+              type="button"
+              onClick={handleDeleteDemo}
+              disabled={deletePending}
+              className="ml-auto rounded-md border px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              style={{ borderColor: "#fca5a5", backgroundColor: "white" }}
+            >
+              Beispiel-Lead löschen
+            </button>
+          </div>
+        )}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">
               {candidate.first_name} {candidate.last_name}
             </h1>
@@ -277,11 +305,11 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
         )}
       </div>
 
-      <div className="grid gap-6" style={{ gridTemplateColumns: "60% minmax(0, 1fr)" }}>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[60%_minmax(0,1fr)]">
         {/* Linke Spalte */}
         <div className="flex flex-col gap-4">
           {/* Tab-Bar */}
-          <div className="flex gap-0 border-b" style={{ borderColor: "#dde3ea" }}>
+          <div className="flex gap-0 overflow-x-auto border-b" style={{ borderColor: "#dde3ea" }}>
             <TabButton
               active={tab === "profil"}
               onClick={() => setTab("profil")}

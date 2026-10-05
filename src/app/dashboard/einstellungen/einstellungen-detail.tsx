@@ -52,15 +52,16 @@ interface EinstellungenDetailProps {
   metaCampaigns: LeadCampaignOverview[]
   fieldTemplates: FieldTemplate[]
   leadForms: LeadFormOverview[]
+  leadSyncWarnings: { campaignId: string; campaignTitle: string; message: string }[]
 }
 
 type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen" | "zusatzfelder" | "feldvorlagen" | "leadformulare" | "meta"
 
-export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms }: EinstellungenDetailProps) {
+export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms, leadSyncWarnings }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex min-w-0 flex-col gap-6 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Einstellungen</h1>
       </div>
@@ -96,7 +97,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
               isAdmin={ownProfile.role === "agency_admin"}
             />
           )}
-          {tab === "meta" && <MetaCampaignsTab campaigns={metaCampaigns} isAdmin={ownProfile.role === "agency_admin"} />}
+          {tab === "meta" && <MetaCampaignsTab campaigns={metaCampaigns} isAdmin={ownProfile.role === "agency_admin"} warnings={leadSyncWarnings} />}
           {tab === "team" && <TeamTab team={team} ownProfileId={ownProfile.id} />}
           {tab === "agentur" && <AgenturTab agencyName={agencyName} />}
           {tab === "vorlagen" && agencyId && <EmailVorlagenTab agencyId={agencyId} templates={emailTemplates} />}

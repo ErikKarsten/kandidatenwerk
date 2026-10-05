@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { sendEmail } from "@/lib/brevo-mail"
 import { getAdminEmails } from "@/lib/get-admin-emails"
+import { describeCronFailure, recordSystemReport } from "@/lib/bug-reports/system-reports"
 import type { Database } from "@/types/database"
 
 const ALERT_COOLDOWN_HOURS = 12
@@ -79,7 +80,16 @@ async function recordRun(
     const retentionCutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 3600 * 1000).toISOString()
     await db.from("cron_job_runs").delete().eq("job", job).lt("started_at", retentionCutoff)
 
-    if (!run.ok) await maybeAlert(supabase, job, inserted.id as string, run)
+    if (!run.ok) {
+      // Fehlschlag als System-Eintrag bei den Fehlermeldungen (T-67). Mail nur, wenn der
+      // Eintrag neu ist - weitere Fehlschläge zählen nur hoch.
+      const report = await recordSystemReport(db, {
+        sourceKey: `cron:${job}`,
+        title: `Cronjob „${job}“ schlägt fehl`,
+        description: describeCronFailure(run.error, run.summary),
+      })
+      if (report.created) await maybeAlert(supabase, job, inserted.id as string, run)
+    }
   } catch (err) {
     console.warn(`[cron-monitor] Protokoll/Alarm für ${job} fehlgeschlagen: ${errorMessage(err)}`)
   }
@@ -111,7 +121,7 @@ async function maybeAlert(
     `Kandidatenwerk: Cron-Job "${job}" fehlgeschlagen`,
     `<p>Der Hintergrundjob <strong>${job}</strong> ist am ${new Date(run.startedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} fehlgeschlagen.</p>
 <pre style="white-space:pre-wrap;font-size:12px;background:#f3f4f6;padding:8px">${escapeHtml(details).slice(0, 4000)}</pre>
-<p>Weitere Fehlschläge dieses Jobs werden für ${ALERT_COOLDOWN_HOURS} Stunden nicht erneut gemeldet. Logs: <code>npx wrangler tail kandidatenwerk</code></p>`
+<p>Der Fehler steht in Kandidatenwerk unter <a href="https://kandidatenwerk.kanzleistelle24.de/dashboard/fehlermeldungen">Fehlermeldungen</a>. Weitere Fehlschläge zählen dort nur hoch und lösen keine neue Mail aus, bis der Eintrag erledigt ist.</p>`
   )
 
   await db.from("cron_job_runs").update({ alert_sent_at: new Date().toISOString() }).eq("id", runId)

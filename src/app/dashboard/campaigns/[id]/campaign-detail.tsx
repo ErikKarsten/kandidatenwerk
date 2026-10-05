@@ -282,7 +282,7 @@ export function CampaignDetail({ campaign, candidates, automations, emailTemplat
   const anyPending = archivePending || finalDeletePending
 
   return (
-    <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
 
       {/* ── Modal ── */}
       {modalStep !== null && (
@@ -568,9 +568,9 @@ export function CampaignDetail({ campaign, candidates, automations, emailTemplat
           Zurück zur Übersicht
         </button>
 
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <InlineTitle campaignId={campaign.id} title={campaign.title} />
               <span
                 className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
@@ -661,7 +661,7 @@ export function CampaignDetail({ campaign, candidates, automations, emailTemplat
       {tab === "kandidaten" && (
         <div className="flex flex-col gap-4">
           {/* Tab-header: count + view toggle */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-gray-500">
               {candidates.length === 0
                 ? "0 Kandidaten"

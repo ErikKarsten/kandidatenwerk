@@ -224,7 +224,7 @@ export function ClientDetail({
   const nameMatches = nameConfirm.trim() === DELETE_CONFIRMATION_WORD
 
   return (
-    <div className="flex flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex flex-col gap-6 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
 
       {/* ── Modal ── */}
       {modalStep !== null && (

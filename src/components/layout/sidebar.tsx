@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLocalStorageValue } from "@/lib/use-local-storage"
+import { useIsMobile } from "@/lib/use-is-mobile"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { BugReportButton } from "@/components/bug-report-button"
@@ -125,11 +126,14 @@ export function Sidebar({
   // Start bewusst ausgeklappt (= Server-/Erstrender-Zustand), der localStorage-Wert wird
   // erst nach dem Mount übernommen - sonst Hydration-Mismatch, da localStorage auf dem
   // Server nicht existiert (gleiches Muster wie der view-Toggle in campaign-detail.tsx).
-  const [collapsed, setCollapsed] = useLocalStorageValue(
+  const [storedCollapsed, setCollapsed] = useLocalStorageValue(
     SIDEBAR_COLLAPSED_KEY,
     (raw) => raw === "true",
     false
   )
+  // In der mobilen Schublade immer ausgeklappt (Paket 14, T-63).
+  const isMobile = useIsMobile()
+  const collapsed = storedCollapsed && !isMobile
 
   function toggleCollapsed() {
     setCollapsed(!collapsed)
@@ -138,7 +142,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "flex h-full shrink-0 flex-col transition-[width] duration-200",
+        "flex h-full shrink-0 flex-col overflow-y-auto transition-[width] duration-200",
         collapsed ? "w-16" : "w-60"
       )}
       style={{ backgroundColor: "#0f2137" }}
@@ -162,7 +166,7 @@ export function Sidebar({
         onClick={toggleCollapsed}
         aria-label={collapsed ? "Sidebar ausklappen" : "Sidebar einklappen"}
         className={cn(
-          "mx-3 mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors hover:bg-white/10 hover:text-white",
+          "mx-3 mb-2 hidden items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors hover:bg-white/10 hover:text-white md:flex",
           collapsed && "justify-center px-0"
         )}
         style={{ color: "rgba(219, 234, 254, 0.7)" }}

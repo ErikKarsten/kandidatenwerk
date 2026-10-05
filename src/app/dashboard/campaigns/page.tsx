@@ -28,8 +28,8 @@ export default async function CampaignsPage({
   const { data: campaigns } = await query
 
   return (
-    <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
-      <div className="flex items-center justify-between gap-4">
+    <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Kampagnen</h1>
           <p className="mt-1 text-sm text-gray-500">{campaigns?.length ?? 0} Einträge</p>

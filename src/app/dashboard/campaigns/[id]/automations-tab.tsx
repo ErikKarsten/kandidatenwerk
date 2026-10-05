@@ -270,8 +270,8 @@ export function AutomationsTab({
           Noch keine Automatisierungen angelegt.
         </div>
       ) : (
-        <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#dde3ea" }}>
-          <table className="w-full text-sm">
+        <div className="rounded-xl border bg-white overflow-x-auto" style={{ borderColor: "#dde3ea" }}>
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr style={{ borderBottom: "1px solid #dde3ea" }}>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
@@ -352,7 +352,7 @@ export function AutomationsTab({
             <div className="flex flex-col gap-5 overflow-y-auto px-6 py-5">
 
               {/* Name + Template */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-medium text-gray-600">Name *</label>
                   <input
@@ -392,7 +392,7 @@ export function AutomationsTab({
               </div>
 
               {/* Trigger */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-medium text-gray-600">Trigger</label>
                   <div className="relative">

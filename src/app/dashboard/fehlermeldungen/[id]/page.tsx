@@ -29,7 +29,7 @@ export default async function BugReportDetailPage({ params }: { params: Promise<
   ]
 
   return (
-    <div className="flex flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex flex-col gap-6 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <Link href="/dashboard/fehlermeldungen" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
         <ChevronLeft size={16} /> Zurück zu den Fehlermeldungen
       </Link>

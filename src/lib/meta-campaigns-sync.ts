@@ -26,6 +26,7 @@ import {
   parseGeoLocations,
   type MetaGeoLocations,
   type ParsedArea,
+  isKs24Campaign,
 } from "@/lib/meta-campaigns-parse"
 
 type Supabase = SupabaseClient<Database>
@@ -144,7 +145,7 @@ export async function syncMetaCampaigns(
   }
 
   const campaigns = await fetchAll<MetaCampaign>(`${act}/campaigns`, { fields: "id,name,effective_status,objective" })
-  const allLeadCampaigns = campaigns.filter((c) => !c.objective || LEAD_OBJECTIVES.has(c.objective))
+  const allLeadCampaigns = campaigns.filter((c) => (!c.objective || LEAD_OBJECTIVES.has(c.objective)) && isKs24Campaign(c.name))
 
   const { data: existingRows, error: existingError } = await db
     .from("campaigns")
@@ -153,6 +154,15 @@ export async function syncMetaCampaigns(
     .not("meta_campaign_id", "is", null)
   if (existingError) throw new Error(existingError.message)
   const existingByMetaId = new Map((existingRows ?? []).map((r) => [r.meta_campaign_id as string, r]))
+
+  // Bereits importierte Kampagnen ohne "KS24" im Namen: einmalig auf pausiert setzen -
+  // sie bleiben samt Kandidaten sichtbar, werden aber nicht mehr abgeglichen und
+  // importieren keine Leads mehr (T-64).
+  const nonKs24Active = (existingRows ?? []).filter((r) => r.status === "active" && !isKs24Campaign(r.title as string)).map((r) => r.id as string)
+  if (nonKs24Active.length > 0) {
+    const { error: pauseError } = await db.from("campaigns").update({ status: "paused" }).in("id", nonKs24Active)
+    if (pauseError) result.errors.push(`Nicht-KS24-Kampagnen pausieren: ${pauseError.message}`)
+  }
 
   // Nur laufende Kampagnen abgleichen (Wunsch 02.10.2026) - pausierte/beendete sind
   // egal. Zusätzlich die bei uns noch als laufend geführten, damit ihr Status auf

@@ -21,6 +21,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { fetchMetaLeadsForForm, buildFormToPageAccessTokenMap, type MetaLead } from "@/lib/meta-ads-client"
 import { processMetaLead } from "@/lib/meta-leads-sync-shared"
+import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 
 type Supabase = SupabaseClient<Database>
 
@@ -46,6 +47,11 @@ export interface MetaLeadsSyncResult {
   linkedExisting: number
   skippedNoEmail: number
   errors: { campaignId: string; leadId: string; message: string }[]
+  // Hinweise, die den Lauf nicht scheitern lassen (T-65): z.B. Formular, dessen
+  // Facebook-Seite dem Meta-Systemnutzer nicht freigegeben ist - das ist eine
+  // Einrichtungsfrage im Business Manager, kein Fehler, der jede halbe Stunde eine
+  // Warn-Mail auslösen soll.
+  warnings: { campaignId: string; campaignTitle: string; message: string }[]
 }
 
 async function loadCampaigns(
@@ -71,7 +77,9 @@ async function loadCampaigns(
   return (data ?? []).filter(
     (c) =>
       c.status !== ARCHIVED_STATUS &&
-      (c.kind !== "lead" || c.status === "active" || includeInactiveLeadCampaigns || campaignId !== null)
+      (c.kind !== "lead" || c.status === "active" || includeInactiveLeadCampaigns || campaignId !== null) &&
+      // Nur KS24-Kampagnen importieren (T-64).
+      (c.kind !== "lead" || isKs24Campaign(c.title))
   )
 }
 
@@ -100,6 +108,7 @@ export async function syncMetaLeads(
     linkedExisting: 0,
     skippedNoEmail: 0,
     errors: [],
+    warnings: [],
   }
 
   const campaigns = await loadCampaigns(supabase, campaignId, includeInactiveLeadCampaigns)
@@ -125,8 +134,8 @@ export async function syncMetaLeads(
     const pageAccessToken = formToPageToken.get(campaign.meta_form_id!)
     if (!pageAccessToken) {
       const message = `Kein Page-Access-Token für Formular ${campaign.meta_form_id} gefunden (Formular gehört zu keiner dem System-User zugewiesenen Seite).`
-      console.error(`  Fehler beim Laden der Leads: ${message}`)
-      result.errors.push({ campaignId: campaign.id, leadId: "-", message })
+      log(`  Hinweis: ${message}`)
+      result.warnings.push({ campaignId: campaign.id, campaignTitle: campaign.title, message: "Facebook-Seite des Formulars ist dem Meta-Systemnutzer nicht freigegeben." })
       continue
     }
     let leads: MetaLead[]

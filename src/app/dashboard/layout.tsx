@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/layout/sidebar"
+import { ResponsiveShell } from "@/components/layout/responsive-shell"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { OPEN_BUG_REPORT_STATUSES } from "@/lib/bug-reports/shared"
@@ -18,7 +19,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { count: clientsCount },
     { data: { user } },
   ] = await Promise.all([
-    supabase.from("candidates").select("id", { count: "exact", head: true }),
+    supabase.from("candidates").select("id", { count: "exact", head: true }).eq("is_demo", false),
     supabase.from("clients").select("id", { count: "exact", head: true }),
     supabase.auth.getUser(),
   ])
@@ -50,16 +51,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="flex h-full">
-      <Sidebar
-        candidatesCount={candidatesCount ?? 0}
-        clientsCount={clientsCount ?? 0}
-        myOpenTasksCount={myOpenTasksCount ?? 0}
-        userName={profile?.full_name || profile?.email || "Unbekannt"}
-        isAdmin={isAdmin}
-        openBugReportsCount={openBugReportsCount}
-      />
-      <main className="flex-1 overflow-y-auto">{children}</main>
-    </div>
+    <ResponsiveShell
+      title="Kandidatenwerk"
+      sidebar={
+        <Sidebar
+          candidatesCount={candidatesCount ?? 0}
+          clientsCount={clientsCount ?? 0}
+          myOpenTasksCount={myOpenTasksCount ?? 0}
+          userName={profile?.full_name || profile?.email || "Unbekannt"}
+          isAdmin={isAdmin}
+          openBugReportsCount={openBugReportsCount}
+        />
+      }
+    >
+      {children}
+    </ResponsiveShell>
   )
 }

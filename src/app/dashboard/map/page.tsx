@@ -19,7 +19,7 @@ export default async function MapPage() {
       .select("id, name, lat, lng")
       .not("lat", "is", null)
       .not("lng", "is", null),
-    supabase.from("candidates").select("id, first_name, last_name, lat, lng, campaign_id"),
+    supabase.from("candidates").select("id, first_name, last_name, lat, lng, campaign_id").eq("is_demo", false),
     supabase.from("campaigns").select("id, client_id"),
     // Werbegebiete laufender Meta-Kampagnen (Atlas T-38) für die Ebene "Werbegebiete".
     getActiveAdAreas(supabase as unknown as SupabaseClient),
@@ -67,7 +67,7 @@ export default async function MapPage() {
   }
 
   return (
-    <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Karte</h1>
         <p className="mt-1 text-sm text-gray-500">Übersicht aller Kanzlei-Standorte und Kandidaten</p>
