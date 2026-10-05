@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
-import type { MapPoint } from "@/components/dashboard/matches-map"
+import type { MapCircle, MapPoint } from "@/components/dashboard/matches-map"
 import { haversineDistanceKm } from "@/lib/matching"
 import { AssignmentControl, assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
 import type { ClientOption } from "./client-assignment-section"
@@ -84,7 +84,12 @@ export function AssignmentTab({
   }, [kanzleiCampaigns, selfLat, selfLng])
   const fits = (k: (typeof nearby)[number]) => !!berufsbild && k.campaigns.some((c) => c.berufsbild === berufsbild)
 
-  const points: MapPoint[] = [
+  // Suchumkreis als Kreis, damit die Karte auch ohne Kanzlei in der Nähe sinnvoll zoomt.
+  const circles: MapCircle[] = useMemo(
+    () => (selfLat !== null && selfLng !== null ? [{ lat: selfLat, lng: selfLng, radiusKm: NEARBY_KM, label: `Umkreis ${NEARBY_KM} km`, color: "#94a3b8" }] : []),
+    [selfLat, selfLng]
+  )
+  const points: MapPoint[] = useMemo(() => [
     { lat: selfLat, lng: selfLng, label: candidateName, sublabel: "Wohnort (PLZ)", isSelf: true },
     ...nearby.map((k) => ({
       lat: k.lat,
@@ -94,7 +99,7 @@ export function AssignmentTab({
       href: `/dashboard/clients/${k.clientId}`,
       color: fits(k) ? MATCH_COLOR : OTHER_COLOR,
     })),
-  ]
+  ], [nearby, candidateName, selfLat, selfLng, berufsbild]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col gap-6">
@@ -147,7 +152,7 @@ export function AssignmentTab({
               <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: MATCH_COLOR }} /> sucht {berufsbildLabel(berufsbild)}</span>
               <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: OTHER_COLOR }} /> andere Stelle</span>
             </p>
-            <MatchesMap points={points} height="320px" />
+            <MatchesMap points={points} circles={circles} height="320px" fitCircles />
             {nearby.length > 0 && (
               <ul className="mt-3 flex flex-col gap-1 text-xs text-gray-600">
                 {nearby.slice(0, 8).map((k) => (

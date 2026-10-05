@@ -457,7 +457,7 @@ export function ClientDetail({
       {/* ── Tabs + Kommentare (auf jedem Reiter sichtbar, Paket 13) ── */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
       <div className="min-w-0 xl:col-span-2">
-        <div className="flex gap-0 overflow-x-auto border-b" style={{ borderColor: "#dde3ea" }}>
+        <div className="flex flex-wrap gap-0 border-b" style={{ borderColor: "#dde3ea" }}>
           <TabButton active={tab === "kampagnen"} onClick={() => setTab("kampagnen")}>
             Kampagnen ({campaignTotalCount})
           </TabButton>
@@ -560,7 +560,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className="inline-flex shrink-0 items-center whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors"
+      className="inline-flex shrink-0 items-center whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors"
       style={{
         color: active ? "#1e56a0" : "#6b7280",
         borderBottom: active ? "2px solid #1e56a0" : "2px solid transparent",

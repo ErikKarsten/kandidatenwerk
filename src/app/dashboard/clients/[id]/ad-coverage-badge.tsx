@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
 import { Megaphone, X } from "lucide-react"
@@ -49,10 +49,15 @@ export function AdCoverageBadge({
     return () => window.removeEventListener("keydown", onKey)
   }, [open])
 
-  const points: MapPoint[] = [{ lat, lng, label: clientName, sublabel: "Kanzleistandort", isSelf: true }]
-  const circles: MapCircle[] = areas
-    .filter((a) => a.lat !== null && a.lng !== null && a.radiusKm !== null)
-    .map((a) => ({ lat: a.lat!, lng: a.lng!, radiusKm: a.radiusKm!, label: a.campaignTitle, sublabel: `${a.label} · ${a.radiusKm} km`, color: AD_AREA_COLOR }))
+  // Stabil halten: neue Arrays bei jedem Render würden den Kartenausschnitt zurücksetzen.
+  const points: MapPoint[] = useMemo(() => [{ lat, lng, label: clientName, sublabel: "Kanzleistandort", isSelf: true }], [lat, lng, clientName])
+  const circles: MapCircle[] = useMemo(
+    () =>
+      areas
+        .filter((a) => a.lat !== null && a.lng !== null && a.radiusKm !== null)
+        .map((a) => ({ lat: a.lat!, lng: a.lng!, radiusKm: a.radiusKm!, label: a.campaignTitle, sublabel: `${a.label} · ${a.radiusKm} km`, color: AD_AREA_COLOR })),
+    [areas]
+  )
 
   return (
     <>
@@ -91,7 +96,7 @@ export function AdCoverageBadge({
               ) : (
                 <p className="mb-3 text-xs text-amber-700">Der Standort liegt in keinem Werbegebiet einer laufenden Meta-Kampagne – ggf. ist eine neue Kampagne nötig.</p>
               )}
-              <MatchesMap points={points} circles={circles} height="420px" />
+              <MatchesMap points={points} circles={circles} height="420px" fitCircles />
             </div>
           </div>
         </div>
