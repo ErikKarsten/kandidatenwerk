@@ -31,7 +31,6 @@ ergänzt der Key Account Manager im Kanzleiprofil.
 | `benefits` | Liste, getrennt durch Komma, Semikolon oder Zeilenumbruch |
 | `painpoints` | Warum die Kanzlei mit uns arbeitet (nur intern) |
 | `ziele_zusammenarbeit` | Ziele/Erwartungen an die Zusammenarbeit (nur intern) |
-| `gespraechszusammenfassung` | Zusammenfassung des Gesprächs – erscheint als Termin-Eintrag in den Kommentaren |
 | `stellen_json` | Mehrere Stellen als JSON-Liste, z.B. `[{"titel":"Steuerfachangestellte (m/w/d)","berufsbild":"Steuerfachangestellte","plz":"50667","ort":"Köln","umkreis_km":25,"arbeitszeit":"Vollzeit","berufserfahrung":"ab 2 Jahre","software":"DATEV","gehalt":"45.000–52.000 €","start":"ab sofort","aufgaben":"…","anforderungen":"…"}]` |
 | `stelle_titel` | Gesuchte Stelle, z.B. `Steuerfachangestellte (m/w/d)` |
 | `stelle_berufsbild`, `stelle_plz`, `stelle_ort`, `stelle_umkreis_km`, `stelle_arbeitszeit`, `stelle_berufserfahrung`, `stelle_software`, `stelle_gehalt`, `stelle_start`, `stelle_aufgaben`, `stelle_anforderungen` | Details zur Stelle |

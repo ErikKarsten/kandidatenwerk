@@ -42,7 +42,6 @@ export interface CloseWebhookPayload {
   // Aus den Gesprächstranskripten (Zapier-AI), nur intern:
   painpoints?: string
   ziele_zusammenarbeit?: string
-  gespraechszusammenfassung?: string
   // Mehrere Stellen als JSON-Liste: [{"titel": "...", "berufsbild": "...", "plz": "...", ...}]
   stellen_json?: string | PositionPayload[]
   stelle_titel?: string
@@ -337,17 +336,6 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
     kind: "system",
     content: `${intro}${filled.length > 0 ? ` Übernommen: ${filled.join(", ")}.` : " Keine neuen Angaben."}`,
   })
-  // Zusammenfassung des Gesprächs (Zapier-AI aus dem Transkript) als eigener Eintrag -
-  // bei jedem Aufruf, damit z.B. Folgebesprechung und Abschluss beide sichtbar sind.
-  const summary = text(payload.gespraechszusammenfassung)
-  if (summary) {
-    await db.from("client_comments").insert({
-      client_id: clientId,
-      author_id: null,
-      kind: "termin",
-      content: `Gesprächszusammenfassung aus Close${statusLabel ? ` (${statusLabel})` : ""}:\n${summary}`,
-    })
-  }
 
   return { clientId, outcome, filled }
 }
