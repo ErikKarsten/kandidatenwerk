@@ -97,7 +97,8 @@ export default async function ClientDetailPage({
   // Projekt-Reiter (Paket 9): Kanzleiprofil, Stellen, Kommentare, Team.
   const [{ data: profileRow }, { data: positionRows }, { data: commentRows }, { data: teamRows }, { data: { user } }] = await Promise.all([
     supabase.from("client_profiles").select("*").eq("client_id", id).maybeSingle(),
-    supabase.from("client_positions").select("*").eq("client_id", id).order("sort_order").order("created_at"),
+    // Nach Titel sortiert, damit dieselbe Stelle an mehreren Standorten zusammensteht.
+    supabase.from("client_positions").select("*").eq("client_id", id).order("title").order("created_at"),
     supabase.from("client_comments").select("id, author_id, kind, content, created_at, edited_at").eq("client_id", id).order("created_at", { ascending: false }).limit(300),
     supabase.from("profiles").select("id, full_name, role").in("role", ["agency_admin", "agency_member"]).order("full_name"),
     supabase.auth.getUser(),

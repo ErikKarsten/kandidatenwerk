@@ -14,6 +14,7 @@ import {
   updateOwnPasswordAction,
   inviteTeamMemberAction,
   removeTeamMemberAction,
+  updateTeamMemberAction,
   updateAgencyNameAction,
   createEmailTemplateAction,
   updateEmailTemplateAction,
@@ -269,6 +270,31 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
   const [removePending, startRemoveTransition] = useTransition()
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null)
 
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editRole, setEditRole] = useState<"agency_admin" | "agency_member">("agency_member")
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editPending, startEditTransition] = useTransition()
+
+  function startEdit(m: TeamMember) {
+    setEditId(m.id)
+    setEditName(m.full_name ?? "")
+    setEditRole(m.role)
+    setEditError(null)
+    setRemoveConfirmId(null)
+  }
+
+  function handleSaveEdit() {
+    if (!editId) return
+    setEditError(null)
+    startEditTransition(async () => {
+      const result = await updateTeamMemberAction(editId, editName, editRole)
+      if (result?.error) { setEditError(result.error); return }
+      setEditId(null)
+      router.refresh()
+    })
+  }
+
   function handleInvite() {
     setInviteError(null)
     startInviteTransition(async () => {
@@ -294,7 +320,36 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
         <h2 className="text-sm font-semibold text-gray-900">Team</h2>
 
         <div className="flex flex-col gap-2">
-          {team.map((m) => (
+          {team.map((m) =>
+            editId === m.id ? (
+            <div key={m.id} className="flex flex-col gap-2 rounded-lg border px-3 py-2.5" style={{ borderColor: "#1e56a0" }}>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex min-w-[180px] flex-1 flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Name</label>
+                  <input autoFocus className={inputClass} style={inputStyle} value={editName} onChange={(e) => setEditName(e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Rolle</label>
+                  <select
+                    className={inputClass}
+                    style={{ ...inputStyle, width: "auto" }}
+                    value={editRole}
+                    disabled={m.id === ownProfileId}
+                    onChange={(e) => setEditRole(e.target.value as "agency_admin" | "agency_member")}
+                  >
+                    <option value="agency_member">Mitarbeiter</option>
+                    <option value="agency_admin">Admin</option>
+                  </select>
+                </div>
+                <button onClick={handleSaveEdit} disabled={editPending} className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50" style={{ backgroundColor: "#1e56a0" }}>
+                  {editPending ? "…" : "Speichern"}
+                </button>
+                <button onClick={() => setEditId(null)} className="text-xs text-gray-500 hover:underline">Abbrechen</button>
+              </div>
+              <p className="text-xs text-gray-400">{m.email ?? "—"} · Die E-Mail-Adresse ist der Login und lässt sich hier nicht ändern.</p>
+              {editError && <p className="text-xs text-red-600">{editError}</p>}
+            </div>
+            ) : (
             <div key={m.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
               <div>
                 <p className="text-sm font-medium text-gray-900">{m.full_name ?? "—"}</p>
@@ -311,6 +366,9 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
                 >
                   {m.role === "agency_admin" ? "Admin" : "Mitarbeiter"}
                 </span>
+                <button onClick={() => startEdit(m)} className="text-xs text-gray-500 hover:text-gray-800 hover:underline">
+                  Bearbeiten
+                </button>
                 {m.id === ownProfileId ? (
                   <span className="text-xs text-gray-400">Du</span>
                 ) : removeConfirmId === m.id ? (
@@ -331,7 +389,8 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
                 )}
               </div>
             </div>
-          ))}
+            )
+          )}
         </div>
 
         <div className="flex items-end gap-2 pt-2 border-t" style={{ borderColor: "#dde3ea" }}>

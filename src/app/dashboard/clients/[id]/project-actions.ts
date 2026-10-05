@@ -202,6 +202,35 @@ export async function savePositionAction(clientId: string, input: PositionInput)
   return null
 }
 
+// Stelle kopieren (Paket 13): ohne Ort = 1:1 duplizieren, mit Ort = dieselbe Stelle an
+// einem weiteren Standort. Die Kopie hängt an keiner Kampagne.
+export async function duplicatePositionAction(
+  clientId: string,
+  positionId: string,
+  location: { plz: string; ort: string; radius_km: number | null } | null
+): Promise<Result> {
+  const ctx = await staff()
+  if ("error" in ctx) return ctx
+  const { data: p, error: loadError } = await ctx.supabase.from("client_positions").select("*").eq("id", positionId).eq("client_id", clientId).single()
+  if (loadError || !p) return { error: loadError?.message ?? "Stelle nicht gefunden." }
+  let place = { plz: p.plz, ort: p.ort, lat: p.lat, lng: p.lng, radius_km: p.radius_km }
+  if (location) {
+    const plz = clean(location.plz)
+    if (!plz || !/^\d{5}$/.test(plz)) return { error: "Bitte eine fünfstellige PLZ für den weiteren Standort angeben." }
+    const coords = geocodePlz(plz)
+    place = { plz, ort: clean(location.ort), lat: coords?.lat ?? null, lng: coords?.lng ?? null, radius_km: location.radius_km ?? p.radius_km }
+  }
+  const { id: _id, created_at: _c, updated_at: _u, campaign_id: _k, ...rest } = p
+  void _id
+  void _c
+  void _u
+  void _k
+  const { error } = await ctx.supabase.from("client_positions").insert({ ...rest, ...place, campaign_id: null })
+  if (error) return { error: error.message }
+  revalidateClient(clientId)
+  return null
+}
+
 export async function deletePositionAction(clientId: string, positionId: string): Promise<Result> {
   const ctx = await staff()
   if ("error" in ctx) return ctx

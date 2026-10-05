@@ -130,6 +130,42 @@ export async function inviteTeamMemberAction(
   return null
 }
 
+// Team-Mitglied bearbeiten (Name, Rolle) - nur Admins, nur eigene Agentur. Die eigene
+// Rolle ist gesperrt, und der letzte Admin kann nicht herabgestuft werden.
+export async function updateTeamMemberAction(
+  profileId: string,
+  fullName: string,
+  role: "agency_admin" | "agency_member"
+): Promise<{ error: string } | null> {
+  const name = fullName.trim()
+  if (!name) return { error: "Name ist ein Pflichtfeld." }
+  if (role !== "agency_admin" && role !== "agency_member") return { error: "Ungültige Rolle." }
+
+  const supabase = await createSupabaseServerClient()
+  const guard = await getAgencyAdminContext(supabase)
+  if ("error" in guard) return guard
+
+  const admin = createSupabaseAdminClient()
+  const { data: target } = await admin.from("profiles").select("role, agency_id").eq("id", profileId).maybeSingle()
+  if (!target || !["agency_admin", "agency_member"].includes(target.role) || !guard.staff.agencyId || target.agency_id !== guard.staff.agencyId) {
+    return { error: "Team-Mitglied nicht gefunden." }
+  }
+  if (profileId === guard.staff.userId && role !== target.role) return { error: "Deine eigene Rolle kannst du nicht ändern." }
+  if (target.role === "agency_admin" && role !== "agency_admin") {
+    const { count } = await admin
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("agency_id", guard.staff.agencyId)
+      .eq("role", "agency_admin")
+    if ((count ?? 0) <= 1) return { error: "Es muss mindestens ein Admin bleiben." }
+  }
+
+  const { error } = await admin.from("profiles").update({ full_name: name, role }).eq("id", profileId)
+  if (error) return { error: error.message }
+  revalidatePath("/dashboard/einstellungen")
+  return null
+}
+
 export async function removeTeamMemberAction(profileId: string): Promise<{ error: string } | null> {
   // Vorher reichte ein beliebiger Login (auch ein Portal-Kunde), um per profileId JEDEN
   // Account zu löschen (Security-Review 02.10.2026). Jetzt: nur Agentur-Admins, und nur

@@ -3,11 +3,12 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Pencil, Plus, Trash2 } from "lucide-react"
+import { Copy, MapPinPlus, Pencil, Plus, Trash2 } from "lucide-react"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import {
   createCampaignFromPositionsAction,
   deletePositionAction,
+  duplicatePositionAction,
   linkPositionToCampaignAction,
   savePositionAction,
   type PositionInput,
@@ -60,6 +61,10 @@ export function ProjectPositions({
   const [campaignTitle, setCampaignTitle] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  // Weiterer Standort für eine Stelle (Paket 13).
+  const [locationFor, setLocationFor] = useState<string | null>(null)
+  const [newLocation, setNewLocation] = useState({ plz: "", ort: "", radius: "" })
+  const sameTitleCount = (title: string) => positions.filter((p) => p.title.trim().toLowerCase() === title.trim().toLowerCase()).length
 
   const unlinked = positions.filter((p) => !p.campaign_id)
   const campaignTitleOf = (id: string | null) => campaigns.find((c) => c.id === id)?.title ?? "Kampagne"
@@ -109,7 +114,14 @@ export function ProjectPositions({
               />
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-gray-900">{p.title}</p>
+              <p className="text-sm font-medium text-gray-900">
+                {p.title}
+                {sameTitleCount(p.title) > 1 && (
+                  <span className="ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
+                    {sameTitleCount(p.title)} Standorte
+                  </span>
+                )}
+              </p>
               <p className="text-xs text-gray-500">
                 {[
                   BERUFSBILD_OPTIONS.find((o) => o.value === p.berufsbild)?.label ?? "Berufsbild offen",
@@ -154,7 +166,28 @@ export function ProjectPositions({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <button type="button" onClick={() => setEditing({ ...p })} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Bearbeiten">
+              <button
+                type="button"
+                onClick={() => {
+                  setLocationFor(locationFor === p.id ? null : p.id)
+                  setNewLocation({ plz: "", ort: "", radius: p.radius_km ? String(p.radius_km) : "" })
+                }}
+                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Weiterer Standort"
+                title="Dieselbe Stelle an einem weiteren Standort"
+              >
+                <MapPinPlus size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => run(() => duplicatePositionAction(clientId, p.id, null))}
+                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Duplizieren"
+                title="Stelle duplizieren"
+              >
+                <Copy size={13} />
+              </button>
+              <button type="button" onClick={() => setEditing({ ...p })} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Bearbeiten" title="Bearbeiten">
                 <Pencil size={13} />
               </button>
               <button
@@ -167,6 +200,50 @@ export function ProjectPositions({
               </button>
             </div>
           </div>
+          {locationFor === p.id && (
+            <div className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3" style={{ borderColor: "#eef2f6" }}>
+              <span className="w-full text-xs text-gray-500">Gleiche Stelle an einem weiteren Standort suchen:</span>
+              <input
+                value={newLocation.plz}
+                onChange={(e) => setNewLocation({ ...newLocation, plz: e.target.value })}
+                placeholder="PLZ"
+                maxLength={5}
+                inputMode="numeric"
+                className="w-20 rounded-md border px-2 py-1 text-sm"
+                style={{ borderColor: "#dde3ea" }}
+              />
+              <input
+                value={newLocation.ort}
+                onChange={(e) => setNewLocation({ ...newLocation, ort: e.target.value })}
+                placeholder="Ort"
+                className="min-w-[120px] flex-1 rounded-md border px-2 py-1 text-sm"
+                style={{ borderColor: "#dde3ea" }}
+              />
+              <input
+                value={newLocation.radius}
+                onChange={(e) => setNewLocation({ ...newLocation, radius: e.target.value })}
+                placeholder="km"
+                type="number"
+                className="w-20 rounded-md border px-2 py-1 text-sm"
+                style={{ borderColor: "#dde3ea" }}
+                aria-label="Umkreis in km"
+              />
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() =>
+                  run(
+                    () => duplicatePositionAction(clientId, p.id, { plz: newLocation.plz, ort: newLocation.ort, radius_km: newLocation.radius ? Number(newLocation.radius) : null }),
+                    () => setLocationFor(null)
+                  )
+                }
+                className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                style={{ backgroundColor: "#1e56a0" }}
+              >
+                Standort hinzufügen
+              </button>
+            </div>
+          )}
         </div>
       ))}
 
