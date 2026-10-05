@@ -6,7 +6,6 @@ import { CheckCircle2, AlertTriangle, Plus, X } from "lucide-react"
 import { PROFILE_FIELDS, PROJECT_PHASES, contractEnd, missingProfileItems, type ClientProfileValues } from "@/lib/client-project"
 import { finalizeClientProfileAction, saveClientProfileAction, updateProjectMetaAction } from "./project-actions"
 import { ProjectPositions, type ClientPosition } from "./project-positions"
-import { ProjectComments, type ProjectComment } from "./project-comments"
 
 export interface ProjectMeta {
   project_phase: string
@@ -33,34 +32,23 @@ export function ProjectTab({
   profile,
   positions,
   campaigns,
-  comments,
   team,
-  currentUserId,
-  isAdmin,
 }: {
   clientId: string
   meta: ProjectMeta
   profile: ClientProfileData | null
   positions: ClientPosition[]
   campaigns: { id: string; title: string }[]
-  comments: ProjectComment[]
   team: { id: string; full_name: string | null }[]
-  currentUserId: string
-  isAdmin: boolean
 }) {
   const missing = missingProfileItems(profile, positions.length)
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-      <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
-        <OnboardingBanner clientId={clientId} profile={profile} missing={missing} />
-        <ProjectMetaCard clientId={clientId} meta={meta} team={team} />
-        <ProfileCard clientId={clientId} profile={profile} />
-        <ProjectPositions clientId={clientId} positions={positions} campaigns={campaigns} />
-      </div>
-      <div className="min-w-0">
-        <ProjectComments clientId={clientId} comments={comments} team={team} currentUserId={currentUserId} isAdmin={isAdmin} />
-      </div>
+    <div className="flex min-w-0 flex-col gap-4">
+      <OnboardingBanner clientId={clientId} profile={profile} missing={missing} />
+      <ProjectMetaCard clientId={clientId} meta={meta} team={team} />
+      <ProfileCard clientId={clientId} profile={profile} missing={missing} />
+      <ProjectPositions clientId={clientId} positions={positions} campaigns={campaigns} />
     </div>
   )
 }
@@ -101,7 +89,14 @@ function OnboardingBanner({ clientId, profile, missing }: { clientId: string; pr
         Kanzleiprofil ist noch nicht final – bitte vor dem Willkommensmeeting vervollständigen und abschließen.
       </p>
       {missing.length > 0 ? (
-        <p className="text-xs text-amber-800">Es fehlt noch: {missing.join(", ")}</p>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-amber-800">
+          Es fehlt noch:
+          {missing.map((m) => (
+            <span key={m} className="rounded-full border px-2 py-0.5 font-medium" style={{ borderColor: "#f59e0b", backgroundColor: "#fef3c7", color: "#92400e" }}>
+              {m}
+            </span>
+          ))}
+        </div>
       ) : (
         <div>
           <button type="button" onClick={() => toggle(true)} disabled={pending} className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50" style={{ backgroundColor: "#1a9a6a" }}>
@@ -192,7 +187,9 @@ function ProjectMetaCard({ clientId, meta, team }: { clientId: string; meta: Pro
           />
         </label>
       </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <details className="mt-3 text-xs text-gray-500">
+        <summary className="cursor-pointer select-none">Close-Verknüpfung{meta.close_status ? ` · ${meta.close_status}` : ""}</summary>
+      <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="flex flex-col gap-1 lg:col-span-2">
           <span className="text-xs font-medium text-gray-500">Close-Lead-ID</span>
           <input
@@ -217,6 +214,7 @@ function ProjectMetaCard({ clientId, meta, team }: { clientId: string; meta: Pro
           )}
         </div>
       </div>
+      </details>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button type="button" onClick={save} disabled={pending || !dirty} className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40" style={{ backgroundColor: "#1e56a0" }}>
           {pending ? "Speichert…" : "Speichern"}
@@ -229,7 +227,11 @@ function ProjectMetaCard({ clientId, meta, team }: { clientId: string; meta: Pro
   )
 }
 
-function ProfileCard({ clientId, profile }: { clientId: string; profile: ClientProfileData | null }) {
+// Fehlende Pflichtangaben sind gelb markiert - in der Ansicht als "fehlt noch", im
+// Bearbeiten-Modus als gelb umrandetes Feld (Paket 13).
+const MISSING_STYLE = { borderColor: "#f59e0b", backgroundColor: "#fffbeb" }
+
+function ProfileCard({ clientId, profile, missing }: { clientId: string; profile: ClientProfileData | null; missing: string[] }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [v, setV] = useState<ClientProfileValues>({})
@@ -283,9 +285,22 @@ function ProfileCard({ clientId, profile }: { clientId: string; profile: ClientP
                   {f.required ? " *" : ""}
                 </span>
                 {f.multiline ? (
-                  <textarea className={input} style={{ borderColor: "#dde3ea" }} rows={4} value={v[f.key] ?? ""} placeholder={f.placeholder} onChange={(e) => setV({ ...v, [f.key]: e.target.value })} />
+                  <textarea
+                    className={input}
+                    style={f.required && !(v[f.key] ?? "").trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
+                    rows={4}
+                    value={v[f.key] ?? ""}
+                    placeholder={f.placeholder}
+                    onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
+                  />
                 ) : (
-                  <input className={input} style={{ borderColor: "#dde3ea" }} value={v[f.key] ?? ""} placeholder={f.placeholder} onChange={(e) => setV({ ...v, [f.key]: e.target.value })} />
+                  <input
+                    className={input}
+                    style={f.required && !(v[f.key] ?? "").trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
+                    value={v[f.key] ?? ""}
+                    placeholder={f.placeholder}
+                    onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
+                  />
                 )}
               </label>
             ))}
@@ -305,7 +320,7 @@ function ProfileCard({ clientId, profile }: { clientId: string; profile: ClientP
             <div className="flex items-center gap-2">
               <input
                 className={input}
-                style={{ borderColor: "#dde3ea" }}
+                style={(v.benefits ?? []).length === 0 && !newBenefit.trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
                 value={newBenefit}
                 placeholder="z.B. Jobrad, 30 Tage Urlaub, Fortbildungsbudget"
                 onChange={(e) => setNewBenefit(e.target.value)}
@@ -335,12 +350,25 @@ function ProfileCard({ clientId, profile }: { clientId: string; profile: ClientP
         <p className="text-sm text-gray-400">Noch kein Kanzleiprofil – „Ausfüllen“ klicken.</p>
       ) : (
         <dl className="flex flex-col gap-3">
-          {PROFILE_FIELDS.filter((f) => (profile[f.key] ?? "").trim()).map((f) => (
-            <div key={f.key}>
-              <dt className="text-xs font-medium text-gray-400">{f.label}</dt>
-              <dd className="whitespace-pre-wrap text-sm text-gray-800">{profile[f.key]}</dd>
+          {PROFILE_FIELDS.filter((f) => (profile[f.key] ?? "").trim() || missing.includes(f.label)).map((f) =>
+            (profile[f.key] ?? "").trim() ? (
+              <div key={f.key}>
+                <dt className="text-xs font-medium text-gray-400">{f.label}</dt>
+                <dd className="whitespace-pre-wrap text-sm text-gray-800">{profile[f.key]}</dd>
+              </div>
+            ) : (
+              <div key={f.key} className="rounded-md border px-2 py-1" style={MISSING_STYLE}>
+                <dt className="text-xs font-medium text-amber-800">{f.label}</dt>
+                <dd className="text-xs text-amber-700">fehlt noch</dd>
+              </div>
+            )
+          )}
+          {missing.includes("Benefits") && (
+            <div className="rounded-md border px-2 py-1" style={MISSING_STYLE}>
+              <dt className="text-xs font-medium text-amber-800">Benefits</dt>
+              <dd className="text-xs text-amber-700">fehlt noch</dd>
             </div>
-          ))}
+          )}
           {(profile.benefits ?? []).length > 0 && (
             <div>
               <dt className="text-xs font-medium text-gray-400">Benefits</dt>

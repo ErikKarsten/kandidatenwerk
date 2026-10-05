@@ -9,6 +9,15 @@ export const PROJECT_PHASES = [
   { value: "gekuendigt", label: "Gekündigt", color: "#dc2626" },
 ] as const
 
+// Automatische Aufgabe, sobald ein Projekt in "Kampagne in Vorbereitung" wechselt
+// (Paket 13). Zuständig ist Elea Günther; gibt es den Zugang nicht, bekommt sie, wer
+// die Phase gesetzt hat.
+export const CAMPAIGN_CHECK_TASK = {
+  phase: "kampagne_vorbereitung",
+  title: "Kampagnenstatus prüfen",
+  assigneeEmail: "e.guenther@endlich-mitarbeiter.de",
+} as const
+
 export const COMMENT_KINDS = [
   { value: "notiz", label: "Notiz" },
   { value: "termin", label: "Termin" },
@@ -44,7 +53,7 @@ export const PROFILE_FIELDS: { key: ProfileFieldKey; label: string; multiline?: 
   { key: "software", label: "Software", placeholder: "z.B. DATEV, Addison" },
   { key: "arbeitszeiten", label: "Arbeitszeiten", placeholder: "z.B. Gleitzeit, 4-Tage-Woche möglich" },
   { key: "homeoffice", label: "Homeoffice" },
-  { key: "ansprechpartner_bewerbung", label: "Ansprechpartner für Bewerbungsgespräche", required: true },
+  { key: "ansprechpartner_bewerbung", label: "Ansprechpartner für Bewerbungsgespräche" },
   { key: "painpoints", label: "Painpoints – warum arbeitet die Kanzlei mit uns?", multiline: true, internal: true },
   { key: "ziele_zusammenarbeit", label: "Ziele / Erwartungen an die Zusammenarbeit", multiline: true, internal: true },
   { key: "vertriebsnotizen", label: "Notizen aus dem Vertrieb", multiline: true, internal: true },

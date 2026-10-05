@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useLayoutEffect, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { ListTodo } from "lucide-react"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
@@ -322,8 +322,10 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             )}
             {tab === "zuordnung" && (
               <AssignmentTab
-                candidateId={candidate.id}
+                candidateName={`${candidate.first_name} ${candidate.last_name}`.trim()}
                 berufsbild={candidate.berufsbild}
+                selfLat={candidate.lat}
+                selfLng={candidate.lng}
                 origin={{
                   campaignId: candidate.campaign_id,
                   title: candidate.campaigns?.title ?? null,
@@ -443,6 +445,15 @@ function DescriptionSection({
   const [value, setValue] = useState(notes ?? "")
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const textarea = useRef<HTMLTextAreaElement>(null)
+
+  // Höhe wächst mit dem Text (Paket 13), statt nach 4 Zeilen zu scrollen.
+  useLayoutEffect(() => {
+    const el = textarea.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${el.scrollHeight + 2}px`
+  }, [value])
 
   function handleSave() {
     setError(null)
@@ -460,10 +471,11 @@ function DescriptionSection({
     <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
       <label className="mb-2 block text-sm font-semibold text-gray-700">Beschreibung</label>
       <textarea
+        ref={textarea}
         rows={4}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        className="w-full resize-none rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+        className="w-full resize-none overflow-hidden rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
         style={{ borderColor: "#dde3ea" }}
         placeholder="Notizen zum Kandidaten…"
       />

@@ -8,7 +8,6 @@ describe("missingProfileItems", () => {
       "Intro zur Kanzlei",
       "Mitarbeiterzahl",
       "Standort(e)",
-      "Ansprechpartner für Bewerbungsgespräche",
       "Benefits",
       "Mindestens eine gesuchte Stelle",
     ])
@@ -16,7 +15,7 @@ describe("missingProfileItems", () => {
   it("ist leer, wenn alles da ist", () => {
     expect(
       missingProfileItems(
-        { kurzbeschreibung: "a", intro: "b", mitarbeiterzahl: "10", standorte: "Köln", ansprechpartner_bewerbung: "Frau X", benefits: ["Jobrad"] },
+        { kurzbeschreibung: "a", intro: "b", mitarbeiterzahl: "10", standorte: "Köln", benefits: ["Jobrad"] },
         1
       )
     ).toEqual([])

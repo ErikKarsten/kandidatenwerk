@@ -565,6 +565,7 @@ export type Database = {
           assigned_to: string
           created_by: string
           candidate_id: string | null
+          client_id: string | null
           status: string
           due_date: string | null
           created_at: string
@@ -577,6 +578,7 @@ export type Database = {
           assigned_to: string
           created_by: string
           candidate_id?: string | null
+          client_id?: string | null
           status?: string
           due_date?: string | null
           created_at?: string
@@ -589,12 +591,20 @@ export type Database = {
           assigned_to?: string
           created_by?: string
           candidate_id?: string | null
+          client_id?: string | null
           status?: string
           due_date?: string | null
           created_at?: string
           completed_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tasks_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tasks_assigned_to_fkey"
             columns: ["assigned_to"]

@@ -62,7 +62,7 @@ export default async function CandidateDetailPage({
     // Ziele für "Weiterschieben" im Reiter Zuordnung: alle aktiven Kanzlei-Kampagnen.
     supabase
       .from("campaigns")
-      .select("id, title, berufsbild, client_id, clients(name)")
+      .select("id, title, berufsbild, client_id, lat, lng, clients(name)")
       .eq("kind", "kanzlei")
       .eq("status", "active")
       .order("title", { ascending: true }),
@@ -177,6 +177,8 @@ export default async function CandidateDetailPage({
       berufsbild: c.berufsbild,
       clientId: c.client_id,
       clientName: client?.name ?? "Unbekannter Kunde",
+      lat: c.lat ?? null,
+      lng: c.lng ?? null,
     }
   })
 

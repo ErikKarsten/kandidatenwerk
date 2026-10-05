@@ -17,6 +17,7 @@ export async function createTaskAction(
   const description = formData.get("description") as string
   const assigned_to = formData.get("assigned_to") as string
   const candidate_id = formData.get("candidate_id") as string
+  const client_id = formData.get("client_id") as string
   const due_date = formData.get("due_date") as string
 
   if (!title) return { error: "Titel ist ein Pflichtfeld." }
@@ -33,12 +34,14 @@ export async function createTaskAction(
     assigned_to,
     created_by: user.id,
     candidate_id: candidate_id || null,
+    client_id: client_id || null,
     due_date: due_date || null,
   })
 
   if (error) return { error: error.message }
 
   revalidatePath("/dashboard/tasks")
+  if (client_id) revalidatePath(`/dashboard/clients/${client_id}`)
   return null
 }
 

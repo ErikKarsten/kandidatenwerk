@@ -17,6 +17,9 @@ describe("suggestTarget", () => {
     expect(suggestTarget({ key: "wie_viel_berufserfahrung_hast_du?" }, fieldKeys)).toBe("beschreibung")
     expect(suggestTarget({ key: "e-mail-adresse" }, fieldKeys)).toBe("email")
     expect(suggestTarget({ key: "telefonnummer" }, fieldKeys)).toBe("phone")
+    expect(suggestTarget({ key: "first_name" }, fieldKeys)).toBe("first_name")
+    expect(suggestTarget({ key: "last_name" }, fieldKeys)).toBe("last_name")
+    expect(suggestTarget({ key: "inbox_url" }, fieldKeys)).toBe("ignorieren")
   })
 })
 

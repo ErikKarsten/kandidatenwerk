@@ -42,8 +42,8 @@ export function suggestTarget(question: { key: string; label?: string | null; ty
     const norm = normalizeTitle(title)
     if (/mail/.test(norm)) return "email"
     if (/telefon|phone|handy|mobil/.test(norm)) return "phone"
-    if (/^(dein |ihr )?vorname/.test(norm)) return "first_name"
-    if (/nachname/.test(norm) && !/vor/.test(norm)) return "last_name"
+    if (/^(dein |ihr )?vorname|^first ?name/.test(norm)) return "first_name"
+    if ((/nachname/.test(norm) && !/vor/.test(norm)) || /^last ?name/.test(norm)) return "last_name"
     return "full_name"
   }
   if (suggestion.keys.includes("wohnort_plz")) return "plz"

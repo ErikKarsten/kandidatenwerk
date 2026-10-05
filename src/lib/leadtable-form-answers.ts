@@ -32,7 +32,7 @@ const FIELD_RULES: { test: RegExp; keys: string[] }[] = [
 
 // Bereits als feste Spalten übernommen (Name, E-Mail, Telefon) - nicht doppelt ablegen.
 const CORE_TITLES =
-  /^(deine? |ihre? )?(full ?name|vollständiger name|name|vor- und nachname|vorname|nachname|e ?-?mail(-? ?adresse)?|email|mail-?adresse|phone( ?number)?|telefon(nummer)?|handy(nummer)?|mobil(nummer)?)$/
+  /^(deine? |ihre? )?(full ?name|vollständiger name|name|vor- und nachname|vorname|nachname|first ?name|last ?name|e ?-?mail(-? ?adresse)?|email|mail-?adresse|phone( ?number)?|telefon(nummer)?|handy(nummer)?|mobil(nummer)?)$/
 
 // Kein Inhalt (Platzhalter, Einwilligungen).
 const IGNORED_TITLES = /^(test|leer)$|datenschutz|einwilligung|ich (verstehe|akzeptiere|stimme)/
@@ -40,7 +40,7 @@ const IGNORED_TITLES = /^(test|leer)$|datenschutz|einwilligung|ich (verstehe|akz
 // Technische Werte aus Meta/Leadtable (Anzeigen-IDs usw.), ohne Mehrwert im Profil.
 const TECHNICAL_TITLES = new Set([
   "adid", "adgroupid", "formid", "pageid", "leadgenid", "isorganic", "adname", "adsetname",
-  "campaignid", "campaignname", "platform", "eventid", "createdtime", "id",
+  "campaignid", "campaignname", "platform", "eventid", "createdtime", "id", "inboxurl",
 ])
 
 export function normalizeTitle(title: string): string {
