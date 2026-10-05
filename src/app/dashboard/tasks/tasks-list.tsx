@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Plus, Trash2 } from "lucide-react"
 import { updateTaskStatusAction, deleteTaskAction } from "./actions"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
+import { TaskAssigneeSelect } from "@/components/dashboard/task-assignee-select"
 
 export interface TaskListItem {
   id: string
@@ -91,7 +92,7 @@ export function TasksList({
       ) : (
         <div className="flex flex-col gap-2">
           {filteredTasks.map((task) => (
-            <TaskRow key={task.id} task={task} currentUserId={currentUserId} />
+            <TaskRow key={task.id} task={task} currentUserId={currentUserId} team={profiles} />
           ))}
         </div>
       )}
@@ -132,7 +133,7 @@ function FilterGroup<T extends string>({
   )
 }
 
-function TaskRow({ task, currentUserId }: { task: TaskListItem; currentUserId: string }) {
+function TaskRow({ task, currentUserId, team }: { task: TaskListItem; currentUserId: string; team: ProfileOption[] }) {
   const router = useRouter()
   const [togglePending, startToggleTransition] = useTransition()
   const [deleteConfirm, setDeleteConfirm] = useState(false)
@@ -184,7 +185,14 @@ function TaskRow({ task, currentUserId }: { task: TaskListItem; currentUserId: s
         )}
 
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-          <span>Zugewiesen: {task.assigneeName ?? "Unbenannt"}</span>
+          <span className="inline-flex items-center gap-1">
+            Zugewiesen:
+            {isDone ? (
+              (task.assigneeName ?? "Unbenannt")
+            ) : (
+              <TaskAssigneeSelect taskId={task.id} assignedTo={task.assigned_to} team={team} onError={setError} />
+            )}
+          </span>
           <span>Erstellt von: {task.creatorName ?? "Unbenannt"}</span>
           {task.due_date && (
             <span style={{ color: isOverdue ? "#dc2626" : undefined }}>

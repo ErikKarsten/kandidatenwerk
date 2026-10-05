@@ -22,11 +22,12 @@ type Supabase = SupabaseClient<Database>
 export async function matchCandidateToCampaigns(supabase: Supabase, candidateId: string): Promise<void> {
   const { data: candidate, error: candidateError } = await supabase
     .from("candidates")
-    .select("id, berufsbild, lat, lng")
+    .select("id, berufsbild, lat, lng, is_demo")
     .eq("id", candidateId)
     .single()
 
   if (candidateError) throw new Error(candidateError.message)
+  if (candidate.is_demo) return
   if (!candidate.berufsbild || candidate.lat === null || candidate.lng === null) return
 
   const { data: campaigns, error: campaignsError } = await supabase
@@ -79,6 +80,7 @@ export async function matchCampaignToCandidates(supabase: Supabase, campaignId: 
     .from("candidates")
     .select("id, lat, lng")
     .eq("berufsbild", campaign.berufsbild)
+    .eq("is_demo", false)
     .not("lat", "is", null)
     .not("lng", "is", null)
 

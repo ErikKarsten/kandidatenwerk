@@ -70,6 +70,7 @@ export async function getNewCandidatesTodayCount(
   let query = supabase
     .from("candidates")
     .select("id", { count: "exact", head: true })
+    .eq("is_demo", false)
     .gte("created_at", getStartOfTodayBerlin().toISOString())
 
   if (clientId) {
@@ -117,6 +118,7 @@ export async function getProcessedCount(supabase: Supabase, clientId?: string): 
   let query = supabase
     .from("candidates")
     .select("id", { count: "exact", head: true })
+    .eq("is_demo", false)
     .neq("status", NEW_STATUS)
 
   if (clientId) {

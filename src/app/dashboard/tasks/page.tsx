@@ -26,7 +26,8 @@ export default async function TasksPage() {
          clients(name)`
       )
       .order("created_at", { ascending: false }),
-    supabase.from("profiles").select("id, full_name").order("full_name", { ascending: true }),
+    // Nur Team-Mitglieder sind als Zuständige wählbar (keine Portal-Kunden).
+    supabase.from("profiles").select("id, full_name").in("role", ["agency_admin", "agency_member"]).order("full_name", { ascending: true }),
   ])
 
   const tasks = (taskRows ?? []).map((t) => {
@@ -55,7 +56,7 @@ export default async function TasksPage() {
   const profiles = (profileRows ?? []).map((p) => ({ id: p.id, full_name: p.full_name }))
 
   return (
-    <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Aufgaben</h1>
         <p className="mt-1 text-sm text-gray-500">{tasks.length} Einträge</p>

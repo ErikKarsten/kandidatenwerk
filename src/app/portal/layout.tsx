@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { PortalSidebar } from "./portal-sidebar"
+import { ResponsiveShell } from "@/components/layout/responsive-shell"
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient()
@@ -29,9 +30,11 @@ export default async function PortalLayout({ children }: { children: React.React
     .single()
 
   return (
-    <div className="flex h-full">
-      <PortalSidebar clientName={client?.name ?? "Kunden-Portal"} logoUrl={client?.logo_url ?? null} />
-      <main className="flex-1 overflow-y-auto">{children}</main>
-    </div>
+    <ResponsiveShell
+      title={client?.name ?? "Kunden-Portal"}
+      sidebar={<PortalSidebar clientName={client?.name ?? "Kunden-Portal"} logoUrl={client?.logo_url ?? null} />}
+    >
+      {children}
+    </ResponsiveShell>
   )
 }

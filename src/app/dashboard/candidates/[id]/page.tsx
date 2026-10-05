@@ -48,7 +48,8 @@ export default async function CandidateDetailPage({
       .select("id, name")
       .order("name", { ascending: true }),
     // Für das "Aufgabe erstellen"-Popup direkt auf der Kandidatenseite (Zuweisen-an-Dropdown).
-    supabase.from("profiles").select("id, full_name").order("full_name", { ascending: true }),
+    // Nur Team-Mitglieder sind als Zuständige wählbar (keine Portal-Kunden).
+    supabase.from("profiles").select("id, full_name").in("role", ["agency_admin", "agency_member"]).order("full_name", { ascending: true }),
     // Ersetzt FIXED_CUSTOM_FIELDS (candidate-custom-fields.ts) als Quelle für die
     // Zusatzfelder-Anzeige - kein .eq("agency_id", ...) nötig, RLS schränkt bereits auf
     // die eigene Agentur ein (siehe custom_field_definitions-Policies). ALLE
@@ -152,6 +153,7 @@ export default async function CandidateDetailPage({
     lat: candidate.lat ?? null,
     lng: candidate.lng ?? null,
     custom_fields: (candidate.custom_fields as Record<string, string> | null) ?? null,
+    is_demo: candidate.is_demo ?? false,
     campaign_id: candidate.campaign_id,
     campaigns: campaigns,
   }

@@ -54,3 +54,90 @@ alter table public.candidates
 create index if not exists candidates_is_demo_idx on public.candidates (is_demo) where is_demo;
 
 notify pgrst, 'reload schema';
+
+-- Demo-Kandidaten zählen nirgends mit: nicht in "Alle Kandidaten", nicht in den
+-- Kandidatenzahlen der Kundenliste, nicht bei "weitergeleitet".
+create or replace view public.candidate_list_rows
+with (security_invoker = true)
+as
+select
+  cand.id,
+  cand.first_name,
+  cand.last_name,
+  (cand.first_name || ' ' || cand.last_name) as full_name,
+  cand.email,
+  cand.status,
+  cand.berufsbild,
+  cand.source,
+  cand.created_at,
+  cand.custom_fields,
+  cand.campaign_id,
+  camp.title as campaign_title,
+  camp.client_id,
+  cl.name as client_name
+from public.candidates cand
+left join public.campaigns camp on camp.id = cand.campaign_id
+left join public.clients cl on cl.id = camp.client_id
+where not cand.is_demo;
+
+create or replace view public.client_list_stats
+with (security_invoker = true)
+as
+with campaign_counts as (
+  select client_id, count(*) as campaign_count
+  from public.campaigns
+  group by client_id
+),
+candidate_status_counts as (
+  select ca.client_id, cand.status, count(distinct cand.id) as cnt
+  from public.client_assignments ca
+  join public.candidates cand on cand.id = ca.candidate_id
+  where ca.removed_at is null and not cand.is_demo
+  group by ca.client_id, cand.status
+),
+candidate_totals as (
+  select
+    client_id,
+    sum(cnt) as candidate_count,
+    sum(cnt) filter (where status = 'platziert') as placement_count,
+    jsonb_agg(jsonb_build_object('status', status, 'count', cnt)) as pipeline
+  from candidate_status_counts
+  group by client_id
+)
+select
+  c.id,
+  c.name,
+  c.contact_name,
+  c.contact_email,
+  c.active,
+  c.status,
+  c.logo_url,
+  c.created_at,
+  coalesce(cc.campaign_count, 0)::integer as campaign_count,
+  coalesce(ct.candidate_count, 0)::integer as candidate_count,
+  coalesce(ct.placement_count, 0)::integer as placement_count,
+  coalesce(ct.pipeline, '[]'::jsonb) as pipeline,
+  c.project_phase,
+  c.key_account_manager_id,
+  (cp.finalized_at is not null) as profile_finalized
+from public.clients c
+left join campaign_counts cc on cc.client_id = c.id
+left join candidate_totals ct on ct.client_id = c.id
+left join public.client_profiles cp on cp.client_id = c.id;
+
+
+create or replace function public.count_distinct_forwarded_candidates(p_client_id uuid default null)
+returns integer
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select count(distinct ca.candidate_id)::integer
+  from client_assignments ca
+  join candidates cand on cand.id = ca.candidate_id
+  where (p_client_id is null or ca.client_id = p_client_id)
+    and not cand.is_demo
+$$;
+
+notify pgrst, 'reload schema';

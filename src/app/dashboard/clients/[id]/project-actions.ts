@@ -9,6 +9,7 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { sendEmail } from "@/lib/brevo-mail"
 import { closeLeadUrl } from "@/lib/close-webhook"
+import { notifyTaskAssigned } from "@/lib/task-notify"
 import {
   CAMPAIGN_CHECK_TASK,
   PROFILE_FIELDS,
@@ -98,14 +99,19 @@ async function createCampaignCheckTask(supabase: Supabase, userId: string, clien
     .limit(1)
   if (open && open.length > 0) return
   const { data: assignee } = await supabase.from("profiles").select("id").ilike("email", CAMPAIGN_CHECK_TASK.assigneeEmail).maybeSingle()
-  const { error } = await supabase.from("tasks").insert({
-    title: CAMPAIGN_CHECK_TASK.title,
-    assigned_to: assignee?.id ?? userId,
-    created_by: userId,
-    client_id: clientId,
-    due_date: new Date(Date.now() + 2 * 86400e3).toISOString().slice(0, 10),
-  })
+  const { data: task, error } = await supabase
+    .from("tasks")
+    .insert({
+      title: CAMPAIGN_CHECK_TASK.title,
+      assigned_to: assignee?.id ?? userId,
+      created_by: userId,
+      client_id: clientId,
+      due_date: new Date(Date.now() + 2 * 86400e3).toISOString().slice(0, 10),
+    })
+    .select("id, assigned_to")
+    .single()
   if (error) console.error("Aufgabe Kampagnenstatus prüfen fehlgeschlagen:", error.message)
+  else if (task.assigned_to !== userId) await notifyTaskAssigned(supabase, task.id, userId)
 }
 
 // ── Kanzleiprofil ───────────────────────────────────────────────────────────

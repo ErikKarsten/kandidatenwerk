@@ -21,7 +21,7 @@ export default async function NewCampaignPage({
   if (client_id && !client) notFound()
 
   return (
-    <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
         {client_id ? (
           <Link

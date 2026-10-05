@@ -59,6 +59,7 @@ export async function getApplicationStats(supabase: SupabaseClient, range: DateR
     const { data, error } = await supabase
       .from("candidates")
       .select("created_at, source")
+      .eq("is_demo", false)
       .gte("created_at", berlinDayStartUtc(range.from))
       .lt("created_at", berlinDayStartUtc(addDays(range.to, 1)))
       .order("created_at")

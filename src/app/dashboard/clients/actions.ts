@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { requireStaffUser } from "@/lib/auth-guards"
+import { createDemoCandidateForClient } from "@/lib/demo-candidate"
 
 export type CreateClientState = { error: string } | null
 
@@ -26,15 +27,20 @@ export async function createClientAction(
     .eq("id", user.id)
     .single()
 
-  const { error } = await supabase.from("clients").insert({
-    name,
-    contact_name: null,
-    contact_email: null,
-    phone: null,
-    agency_id: profile?.agency_id ?? null,
-  })
+  const { data: created, error } = await supabase
+    .from("clients")
+    .insert({
+      name,
+      contact_name: null,
+      contact_email: null,
+      phone: null,
+      agency_id: profile?.agency_id ?? null,
+    })
+    .select("id")
+    .single()
 
   if (error) return { error: error.message }
+  await createDemoCandidateForClient(supabase, created.id, user.id)
 
   redirect("/dashboard/clients")
 }

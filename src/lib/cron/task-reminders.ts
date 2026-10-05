@@ -24,6 +24,7 @@ interface DueTask {
   due_date: string
   assigned_to: string
   candidate_id: string | null
+  client_id: string | null
 }
 
 // "Heute" in deutscher Zeit als YYYY-MM-DD (due_date ist ein reines Datum).
@@ -44,7 +45,11 @@ export function buildReminderHtml(tasks: DueTask[], today: string): string {
   const items = tasks
     .map((t) => {
       const overdue = t.due_date < today
-      const link = t.candidate_id ? `${APP_BASE_URL}/dashboard/candidates/${t.candidate_id}` : `${APP_BASE_URL}/dashboard/tasks`
+      const link = t.client_id
+        ? `${APP_BASE_URL}/dashboard/clients/${t.client_id}?tab=aufgaben`
+        : t.candidate_id
+          ? `${APP_BASE_URL}/dashboard/candidates/${t.candidate_id}`
+          : `${APP_BASE_URL}/dashboard/tasks`
       return `<li style="margin-bottom:8px"><a href="${link}" style="color:#1e56a0;text-decoration:none;font-weight:500">${escapeHtml(t.title)}</a><br><span style="font-size:12px;color:${overdue ? "#dc2626" : "#6b7280"}">${overdue ? "Überfällig seit" : "Fällig am"} ${formatDate(t.due_date)}</span></li>`
     })
     .join("")
@@ -69,7 +74,7 @@ export async function sendTaskReminders(supabase: Supabase): Promise<TaskReminde
   const today = berlinToday()
   const { data, error } = await supabase
     .from("tasks")
-    .select("id, title, due_date, assigned_to, candidate_id")
+    .select("id, title, due_date, assigned_to, candidate_id, client_id")
     .eq("status", "offen")
     .not("due_date", "is", null)
     .lte("due_date", today)

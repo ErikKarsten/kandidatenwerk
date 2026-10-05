@@ -58,7 +58,7 @@ export default async function PortalDashboardPage() {
   const maxGroupCount = Math.max(1, ...groupCounts.map((g) => g.count))
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <h1 className="text-xl font-bold text-gray-900 mb-1">Dashboard</h1>
       <p className="text-sm text-gray-500 mb-6">Übersicht über Ihre Kandidat:innen und Kampagnen</p>
 

@@ -49,7 +49,7 @@ export function PortalSidebar({
   }
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col" style={{ backgroundColor: "#0f2137" }}>
+    <aside className="flex h-full w-60 shrink-0 flex-col overflow-y-auto" style={{ backgroundColor: "#0f2137" }}>
       <div className="flex items-center gap-2.5 px-5 py-5">
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden"

@@ -61,7 +61,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
   const [tab, setTab] = useState<Tab>("konto")
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
+    <div className="flex min-w-0 flex-col gap-6 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Einstellungen</h1>
       </div>

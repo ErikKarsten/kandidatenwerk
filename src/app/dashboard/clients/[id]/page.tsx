@@ -105,7 +105,7 @@ export default async function ClientDetailPage({
   ])
   const { data: taskRows } = await supabase
     .from("tasks")
-    .select("id, title, description, status, due_date, assignee:profiles!tasks_assigned_to_fkey(full_name)")
+    .select("id, title, description, status, due_date, assigned_to, assignee:profiles!tasks_assigned_to_fkey(full_name)")
     .eq("client_id", id)
     .order("status")
     .order("due_date", { ascending: true, nullsFirst: false })
@@ -115,6 +115,7 @@ export default async function ClientDetailPage({
     description: t.description,
     status: t.status,
     due_date: t.due_date,
+    assigned_to: t.assigned_to,
     assigneeName: ((Array.isArray(t.assignee) ? t.assignee[0] : t.assignee) as { full_name: string | null } | null)?.full_name ?? null,
   }))
   const team = (teamRows ?? []).map((t) => ({ id: t.id, full_name: t.full_name }))

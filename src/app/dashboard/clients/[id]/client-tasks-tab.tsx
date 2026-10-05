@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { CheckCircle2, Circle, Plus } from "lucide-react"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
 import { updateTaskStatusAction } from "@/app/dashboard/tasks/actions"
+import { TaskAssigneeSelect } from "@/components/dashboard/task-assignee-select"
 
 export interface ClientTask {
   id: string
@@ -12,6 +13,7 @@ export interface ClientTask {
   description: string | null
   status: string
   due_date: string | null
+  assigned_to: string
   assigneeName: string | null
 }
 
@@ -37,20 +39,20 @@ export function ClientTasksTab({ clientId, tasks, team }: { clientId: string; ta
       </div>
       {open.length === 0 && <p className="text-sm text-gray-400">Keine offenen Aufgaben.</p>}
       {open.map((t) => (
-        <TaskRow key={t.id} task={t} />
+        <TaskRow key={t.id} task={t} team={team} />
       ))}
       {done.length > 0 && (
         <button type="button" onClick={() => setShowDone(!showDone)} className="w-fit text-xs text-gray-500 hover:underline">
           {showDone ? "Erledigte ausblenden" : `Erledigte anzeigen (${done.length})`}
         </button>
       )}
-      {showDone && done.map((t) => <TaskRow key={t.id} task={t} />)}
+      {showDone && done.map((t) => <TaskRow key={t.id} task={t} team={team} />)}
       {modalOpen && <TaskFormModal profiles={team} clientId={clientId} onClose={() => setModalOpen(false)} />}
     </div>
   )
 }
 
-function TaskRow({ task }: { task: ClientTask }) {
+function TaskRow({ task, team }: { task: ClientTask; team: ProfileOption[] }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const isDone = task.status === "erledigt"
@@ -70,8 +72,8 @@ function TaskRow({ task }: { task: ClientTask }) {
       <div className="min-w-0 flex-1">
         <p className={`text-sm ${isDone ? "text-gray-400 line-through" : "font-medium text-gray-900"}`}>{task.title}</p>
         {task.description && <p className="text-xs text-gray-500">{task.description}</p>}
-        <p className="text-xs text-gray-500">
-          {task.assigneeName ?? "Nicht zugewiesen"}
+        <p className="flex flex-wrap items-center gap-1 text-xs text-gray-500">
+          {isDone ? (task.assigneeName ?? "Nicht zugewiesen") : <TaskAssigneeSelect taskId={task.id} assignedTo={task.assigned_to} team={team} />}
           {task.due_date && <span style={{ color: overdue ? "#dc2626" : undefined }}> · fällig {formatDate(task.due_date)}</span>}
         </p>
       </div>

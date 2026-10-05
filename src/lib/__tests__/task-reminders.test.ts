@@ -12,7 +12,7 @@ describe("berlinToday", () => {
 })
 
 describe("buildReminderHtml", () => {
-  const base = { assigned_to: "u", candidate_id: null }
+  const base = { assigned_to: "u", candidate_id: null, client_id: null }
 
   it("markiert überfällige und heute fällige Aufgaben unterschiedlich", () => {
     const html = buildReminderHtml(
