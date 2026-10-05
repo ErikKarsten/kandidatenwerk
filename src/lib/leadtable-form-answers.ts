@@ -93,7 +93,12 @@ export function mapLeadFormAnswers(profile: Record<string, { title?: string; val
 
     const rule = FIELD_RULES.find((r) => r.test.test(norm))
     if (rule) {
-      for (const key of rule.keys) result.fields[key] = result.fields[key] ? `${result.fields[key]}; ${answer}` : answer
+      for (const key of rule.keys) {
+        const existing = result.fields[key]
+        // Gleiche Antwort aus zwei Fragen nicht doppelt ablegen ("X; X").
+        if (!existing) result.fields[key] = answer
+        else if (!existing.split("; ").some((part) => part.toLowerCase() === answer.toLowerCase())) result.fields[key] = `${existing}; ${answer}`
+      }
       if (rule.keys.includes("wohnort_plz") && !result.plz) result.plz = answer.match(/\b\d{5}\b/)?.[0] ?? null
     } else {
       result.extras.push({ question: displayTitle(title), answer })
