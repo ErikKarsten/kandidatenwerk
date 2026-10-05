@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { normalizePayload, closeLeadUrl, closeStatusLabel, collectPositions, normalizeCompanyName, parseGermanDate, splitBenefits } from "./close-webhook"
+import { parseContactBlock, normalizePayload, closeLeadUrl, closeStatusLabel, collectPositions, normalizeCompanyName, parseGermanDate, splitBenefits } from "./close-webhook"
 
 describe("parseGermanDate", () => {
   it.each([
@@ -60,5 +60,18 @@ describe("normalizePayload", () => {
   it("packt verschachtelte und Array-Daten aus", () => {
     expect(normalizePayload({ data: { firma: "X" } })).toEqual({ firma: "X" })
     expect(normalizePayload([{ firma: "X", close_lead_id: "l" }])).toEqual({ firma: "X", close_lead_id: "l" })
+  })
+})
+
+describe("parseContactBlock", () => {
+  it("liest den Close-Kontakt-Block aus", () => {
+    expect(parseContactBlock("contact_first_name: Agathe\ncontact_id: cont_1\ncontact_last_name: Grenz\nemail: a@b.de\nphone: +49123")).toEqual({
+      name: "Agathe Grenz",
+      email: "a@b.de",
+      phone: "+49123",
+    })
+  })
+  it("lässt normale Namen in Ruhe", () => {
+    expect(parseContactBlock("Agathe Grenz")).toBeNull()
   })
 })
