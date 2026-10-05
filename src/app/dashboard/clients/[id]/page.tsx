@@ -97,11 +97,26 @@ export default async function ClientDetailPage({
   // Projekt-Reiter (Paket 9): Kanzleiprofil, Stellen, Kommentare, Team.
   const [{ data: profileRow }, { data: positionRows }, { data: commentRows }, { data: teamRows }, { data: { user } }] = await Promise.all([
     supabase.from("client_profiles").select("*").eq("client_id", id).maybeSingle(),
-    supabase.from("client_positions").select("*").eq("client_id", id).order("sort_order").order("created_at"),
+    // Nach Titel sortiert, damit dieselbe Stelle an mehreren Standorten zusammensteht.
+    supabase.from("client_positions").select("*").eq("client_id", id).order("title").order("created_at"),
     supabase.from("client_comments").select("id, author_id, kind, content, created_at, edited_at").eq("client_id", id).order("created_at", { ascending: false }).limit(300),
     supabase.from("profiles").select("id, full_name, role").in("role", ["agency_admin", "agency_member"]).order("full_name"),
     supabase.auth.getUser(),
   ])
+  const { data: taskRows } = await supabase
+    .from("tasks")
+    .select("id, title, description, status, due_date, assignee:profiles!tasks_assigned_to_fkey(full_name)")
+    .eq("client_id", id)
+    .order("status")
+    .order("due_date", { ascending: true, nullsFirst: false })
+  const tasks = (taskRows ?? []).map((t) => ({
+    id: t.id,
+    title: t.title,
+    description: t.description,
+    status: t.status,
+    due_date: t.due_date,
+    assigneeName: ((Array.isArray(t.assignee) ? t.assignee[0] : t.assignee) as { full_name: string | null } | null)?.full_name ?? null,
+  }))
   const team = (teamRows ?? []).map((t) => ({ id: t.id, full_name: t.full_name }))
   const nameOf = (profileId: string | null) => (profileId ? team.find((t) => t.id === profileId)?.full_name ?? "Unbekannt" : "System")
   const commentFiles = (fileRows ?? []).filter((f) => f.comment_id)
@@ -139,6 +154,8 @@ export default async function ClientDetailPage({
     campaignId: a.campaignId,
     campaignTitle: a.campaignTitle,
     label: a.label,
+    lat: a.lat,
+    lng: a.lng,
     radiusKm: a.radiusKm,
     distanceKm: a.distanceKm,
   }))
@@ -275,7 +292,8 @@ export default async function ClientDetailPage({
       adAreasKnown={adAreas.length > 0}
       kpis={kpis}
       project={project}
-      initialTab={sp.tab === "projekt" ? "projekt" : undefined}
+      tasks={tasks}
+      initialTab={sp.tab === "projekt" || sp.tab === "aufgaben" ? sp.tab : undefined}
     />
   )
 }

@@ -9,7 +9,14 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { sendEmail } from "@/lib/brevo-mail"
 import { closeLeadUrl } from "@/lib/close-webhook"
-import { PROFILE_FIELDS, PROJECT_PHASES, COMMENT_KINDS, missingProfileItems, type ClientProfileValues } from "@/lib/client-project"
+import {
+  CAMPAIGN_CHECK_TASK,
+  PROFILE_FIELDS,
+  PROJECT_PHASES,
+  COMMENT_KINDS,
+  missingProfileItems,
+  type ClientProfileValues,
+} from "@/lib/client-project"
 
 type Result = { error: string } | null
 type Supabase = Awaited<ReturnType<typeof createSupabaseServerClient>>
@@ -48,6 +55,7 @@ export async function updateProjectMetaAction(
   if (meta.contract_term_months !== null && (!Number.isInteger(meta.contract_term_months) || meta.contract_term_months <= 0)) {
     return { error: "Laufzeit bitte als ganze Zahl Monate angeben." }
   }
+  const { data: before } = await ctx.supabase.from("clients").select("project_phase").eq("id", clientId).single()
   const { error } = await ctx.supabase
     .from("clients")
     .update({
@@ -62,8 +70,42 @@ export async function updateProjectMetaAction(
     .eq("id", clientId)
   if (error?.code === "23505") return { error: "Diese Close-ID ist schon einem anderen Kunden zugeordnet." }
   if (error) return { error: error.message }
+
+  if (before && before.project_phase !== meta.project_phase) {
+    const phaseLabel = PROJECT_PHASES.find((p) => p.value === meta.project_phase)?.label ?? meta.project_phase
+    const oldLabel = PROJECT_PHASES.find((p) => p.value === before.project_phase)?.label ?? before.project_phase
+    await ctx.supabase.from("client_comments").insert({
+      client_id: clientId,
+      author_id: ctx.userId,
+      kind: "system",
+      content: `Projektphase geändert: ${oldLabel} → ${phaseLabel}.`,
+    })
+    if (meta.project_phase === CAMPAIGN_CHECK_TASK.phase) await createCampaignCheckTask(ctx.supabase, ctx.userId, clientId)
+  }
   revalidateClient(clientId)
   return null
+}
+
+// "Kampagnenstatus prüfen" für Elea Günther - nur, wenn nicht schon eine offene
+// Aufgabe dieses Namens beim Kunden existiert (Phase hin und her).
+async function createCampaignCheckTask(supabase: Supabase, userId: string, clientId: string) {
+  const { data: open } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("client_id", clientId)
+    .eq("title", CAMPAIGN_CHECK_TASK.title)
+    .neq("status", "erledigt")
+    .limit(1)
+  if (open && open.length > 0) return
+  const { data: assignee } = await supabase.from("profiles").select("id").ilike("email", CAMPAIGN_CHECK_TASK.assigneeEmail).maybeSingle()
+  const { error } = await supabase.from("tasks").insert({
+    title: CAMPAIGN_CHECK_TASK.title,
+    assigned_to: assignee?.id ?? userId,
+    created_by: userId,
+    client_id: clientId,
+    due_date: new Date(Date.now() + 2 * 86400e3).toISOString().slice(0, 10),
+  })
+  if (error) console.error("Aufgabe Kampagnenstatus prüfen fehlgeschlagen:", error.message)
 }
 
 // ── Kanzleiprofil ───────────────────────────────────────────────────────────
@@ -155,6 +197,35 @@ export async function savePositionAction(clientId: string, input: PositionInput)
   const { error } = input.id
     ? await ctx.supabase.from("client_positions").update(row).eq("id", input.id).eq("client_id", clientId)
     : await ctx.supabase.from("client_positions").insert(row)
+  if (error) return { error: error.message }
+  revalidateClient(clientId)
+  return null
+}
+
+// Stelle kopieren (Paket 13): ohne Ort = 1:1 duplizieren, mit Ort = dieselbe Stelle an
+// einem weiteren Standort. Die Kopie hängt an keiner Kampagne.
+export async function duplicatePositionAction(
+  clientId: string,
+  positionId: string,
+  location: { plz: string; ort: string; radius_km: number | null } | null
+): Promise<Result> {
+  const ctx = await staff()
+  if ("error" in ctx) return ctx
+  const { data: p, error: loadError } = await ctx.supabase.from("client_positions").select("*").eq("id", positionId).eq("client_id", clientId).single()
+  if (loadError || !p) return { error: loadError?.message ?? "Stelle nicht gefunden." }
+  let place = { plz: p.plz, ort: p.ort, lat: p.lat, lng: p.lng, radius_km: p.radius_km }
+  if (location) {
+    const plz = clean(location.plz)
+    if (!plz || !/^\d{5}$/.test(plz)) return { error: "Bitte eine fünfstellige PLZ für den weiteren Standort angeben." }
+    const coords = geocodePlz(plz)
+    place = { plz, ort: clean(location.ort), lat: coords?.lat ?? null, lng: coords?.lng ?? null, radius_km: location.radius_km ?? p.radius_km }
+  }
+  const { id: _id, created_at: _c, updated_at: _u, campaign_id: _k, ...rest } = p
+  void _id
+  void _c
+  void _u
+  void _k
+  const { error } = await ctx.supabase.from("client_positions").insert({ ...rest, ...place, campaign_id: null })
   if (error) return { error: error.message }
   revalidateClient(clientId)
   return null

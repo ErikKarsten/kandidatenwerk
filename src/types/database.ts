@@ -87,6 +87,7 @@ export type Database = {
           software: string | null
           arbeitszeiten: string | null
           homeoffice: string | null
+          gehaltsgefuege: string | null
           benefits: string[]
           ansprechpartner_bewerbung: string | null
           vertriebsnotizen: string | null
@@ -108,6 +109,7 @@ export type Database = {
           software?: string | null
           arbeitszeiten?: string | null
           homeoffice?: string | null
+          gehaltsgefuege?: string | null
           benefits?: string[]
           ansprechpartner_bewerbung?: string | null
           vertriebsnotizen?: string | null
@@ -129,6 +131,7 @@ export type Database = {
           software?: string | null
           arbeitszeiten?: string | null
           homeoffice?: string | null
+          gehaltsgefuege?: string | null
           benefits?: string[]
           ansprechpartner_bewerbung?: string | null
           vertriebsnotizen?: string | null
@@ -139,7 +142,15 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "client_profiles_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       client_positions: {
         Row: {
@@ -208,7 +219,15 @@ export type Database = {
           created_at?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "client_positions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       client_comments: {
         Row: {
@@ -241,7 +260,15 @@ export type Database = {
           created_at?: string
           edited_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "client_comments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       client_contacts: {
         Row: {
@@ -565,6 +592,7 @@ export type Database = {
           assigned_to: string
           created_by: string
           candidate_id: string | null
+          client_id: string | null
           status: string
           due_date: string | null
           created_at: string
@@ -577,6 +605,7 @@ export type Database = {
           assigned_to: string
           created_by: string
           candidate_id?: string | null
+          client_id?: string | null
           status?: string
           due_date?: string | null
           created_at?: string
@@ -589,12 +618,20 @@ export type Database = {
           assigned_to?: string
           created_by?: string
           candidate_id?: string | null
+          client_id?: string | null
           status?: string
           due_date?: string | null
           created_at?: string
           completed_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tasks_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tasks_assigned_to_fkey"
             columns: ["assigned_to"]
@@ -735,35 +772,6 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      qualified_candidates: {
-        Row: {
-          id: string
-          candidate_id: string
-          added_at: string
-          criteria_reason: string | null
-        }
-        Insert: {
-          id?: string
-          candidate_id: string
-          added_at?: string
-          criteria_reason?: string | null
-        }
-        Update: {
-          id?: string
-          candidate_id?: string
-          added_at?: string
-          criteria_reason?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "qualified_candidates_candidate_id_fkey"
-            columns: ["candidate_id"]
-            isOneToOne: false
-            referencedRelation: "candidates"
             referencedColumns: ["id"]
           }
         ]
@@ -983,6 +991,9 @@ export type Database = {
           candidate_count: number | null
           placement_count: number | null
           pipeline: Json | null
+          project_phase: string | null
+          key_account_manager_id: string | null
+          profile_finalized: boolean | null
         }
         Insert: {
           id?: string | null
@@ -997,6 +1008,9 @@ export type Database = {
           candidate_count?: number | null
           placement_count?: number | null
           pipeline?: Json | null
+          project_phase?: string | null
+          key_account_manager_id?: string | null
+          profile_finalized?: boolean | null
         }
         Update: {
           id?: string | null
@@ -1011,6 +1025,9 @@ export type Database = {
           candidate_count?: number | null
           placement_count?: number | null
           pipeline?: Json | null
+          project_phase?: string | null
+          key_account_manager_id?: string | null
+          profile_finalized?: boolean | null
         }
         Relationships: []
       }

@@ -21,6 +21,8 @@ export interface TaskListItem {
   assigneeName: string | null
   creatorName: string | null
   candidateName: string | null
+  client_id?: string | null
+  clientName?: string | null
 }
 
 type AssigneeFilter = "mine" | "created" | "all"
@@ -196,6 +198,11 @@ function TaskRow({ task, currentUserId }: { task: TaskListItem; currentUserId: s
               style={{ color: "#1e56a0" }}
             >
               Kandidat: {task.candidateName}
+            </Link>
+          )}
+          {task.client_id && task.clientName && (
+            <Link href={`/dashboard/clients/${task.client_id}?tab=aufgaben`} className="hover:underline" style={{ color: "#1e56a0" }}>
+              Kunde: {task.clientName}
             </Link>
           )}
         </div>

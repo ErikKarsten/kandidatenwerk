@@ -21,9 +21,11 @@ export interface ClientCardProps {
     platzierungen: number
   }
   pipeline: PipelineSegment[]
+  // Projekt-Infos (Paket 13): Phase, Key Account Manager, Kanzleiprofil final?
+  project?: { phaseLabel: string; phaseColor: string; kamName: string | null; profileFinalized: boolean }
 }
 
-export function ClientCard({ name, active, tags, stats, pipeline }: ClientCardProps) {
+export function ClientCard({ name, active, tags, stats, pipeline, project }: ClientCardProps) {
   const total = pipeline.reduce((s, p) => s + p.count, 0)
 
   return (
@@ -50,6 +52,20 @@ export function ClientCard({ name, active, tags, stats, pipeline }: ClientCardPr
             {active ? "Aktiv" : "Inaktiv"}
           </span>
         </div>
+
+        {project && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-full px-2 py-0.5 font-medium" style={{ backgroundColor: `${project.phaseColor}18`, color: project.phaseColor }}>
+              {project.phaseLabel}
+            </span>
+            <span className="text-gray-500">{project.kamName ? `KAM: ${project.kamName}` : "Kein KAM"}</span>
+            {!project.profileFinalized && (
+              <span className="inline-flex items-center gap-1 text-amber-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Profil offen
+              </span>
+            )}
+          </div>
+        )}
 
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">

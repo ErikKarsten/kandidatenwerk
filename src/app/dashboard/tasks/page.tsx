@@ -19,10 +19,11 @@ export default async function TasksPage() {
       .from("tasks")
       .select(
         `id, title, description, status, due_date, created_at, completed_at,
-         assigned_to, created_by, candidate_id,
+         assigned_to, created_by, candidate_id, client_id,
          assignee:profiles!tasks_assigned_to_fkey(full_name),
          creator:profiles!tasks_created_by_fkey(full_name),
-         candidates(first_name, last_name)`
+         candidates(first_name, last_name),
+         clients(name)`
       )
       .order("created_at", { ascending: false }),
     supabase.from("profiles").select("id, full_name").order("full_name", { ascending: true }),
@@ -46,6 +47,8 @@ export default async function TasksPage() {
       assigneeName: assignee?.full_name ?? null,
       creatorName: creator?.full_name ?? null,
       candidateName: candidate ? `${candidate.first_name} ${candidate.last_name}` : null,
+      client_id: t.client_id,
+      clientName: ((Array.isArray(t.clients) ? t.clients[0] : t.clients) as { name: string } | null)?.name ?? null,
     }
   })
 

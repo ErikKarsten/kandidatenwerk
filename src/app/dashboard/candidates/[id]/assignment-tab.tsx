@@ -1,9 +1,10 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
+import { useMemo } from "react"
 import Link from "next/link"
-import { assignToCampaignAction } from "./actions"
+import dynamic from "next/dynamic"
+import type { MapCircle, MapPoint } from "@/components/dashboard/matches-map"
+import { haversineDistanceKm } from "@/lib/matching"
 import { AssignmentControl, assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
 import type { ClientOption } from "./client-assignment-section"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
@@ -14,7 +15,20 @@ export interface KanzleiCampaignOption {
   berufsbild: string | null
   clientId: string | null
   clientName: string
+  lat: number | null
+  lng: number | null
 }
+
+// Umkreis, in dem Kanzleien auf der Karte im Kandidaten gezeigt werden.
+const NEARBY_KM = 50
+const MATCH_COLOR = "#1a9a6a"
+const OTHER_COLOR = "#9ca3af"
+
+// Leaflet greift beim Import auf Browser-Globals zu - nur clientseitig laden.
+const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").then((m) => m.MatchesMap), {
+  ssr: false,
+  loading: () => <div className="flex h-[320px] items-center justify-center rounded-lg border text-sm text-gray-400" style={{ borderColor: "#dde3ea" }}>Karte wird geladen…</div>,
+})
 
 interface Origin {
   campaignId: string | null
@@ -29,26 +43,63 @@ function berufsbildLabel(value: string | null): string {
 }
 
 // Reiter "Zuordnung" im Kandidatenprofil (Atlas T-35, Zielbild T-31): Herkunft des
-// Leads, Zuordnungen zu Kanzlei-Kampagnen (1:n) und "Weiterschieben" an beliebige
-// weitere Kanzlei-Kampagnen. Die Matching-Anzeige wurde am 02.10.2026 entfernt -
-// passende Kandidaten findet man in der Kanzlei-Kampagne.
+// Leads, Zuordnungen zu Kanzlei-Kampagnen (1:n) und eine Karte mit Wohnort und den
+// Kanzleien in der Nähe (Paket 13). Zugeordnet wird nur noch in der Kanzlei-Kampagne
+// ("Passende Kandidaten"), "Weiterschieben" wurde entfernt.
 export function AssignmentTab({
-  candidateId,
+  candidateName,
   berufsbild,
+  selfLat,
+  selfLng,
   origin,
   activeAssignments,
   clients,
   kanzleiCampaigns,
 }: {
-  candidateId: string
+  candidateName: string
   berufsbild: string | null
+  selfLat: number | null
+  selfLng: number | null
   origin: Origin
   activeAssignments: ActiveAssignment[]
   clients: ClientOption[]
   kanzleiCampaigns: KanzleiCampaignOption[]
 }) {
-  const assignedCampaignIds = new Set(activeAssignments.map((a) => a.campaignId).filter(Boolean) as string[])
   const clientName = (id: string) => clients.find((c) => c.id === id)?.name ?? "Unbekannter Kunde"
+
+  // Kanzleien (mit aktiven Kanzlei-Kampagnen) im Umkreis, je Kanzlei ein Punkt.
+  const nearby = useMemo(() => {
+    if (selfLat === null || selfLng === null) return []
+    const byClient = new Map<string, { clientId: string; name: string; lat: number; lng: number; distanceKm: number; campaigns: KanzleiCampaignOption[] }>()
+    for (const c of kanzleiCampaigns) {
+      if (!c.clientId || c.lat === null || c.lng === null) continue
+      const distanceKm = haversineDistanceKm(selfLat, selfLng, c.lat, c.lng)
+      if (distanceKm > NEARBY_KM) continue
+      const entry = byClient.get(c.clientId) ?? { clientId: c.clientId, name: c.clientName, lat: c.lat, lng: c.lng, distanceKm, campaigns: [] }
+      entry.campaigns.push(c)
+      entry.distanceKm = Math.min(entry.distanceKm, distanceKm)
+      byClient.set(c.clientId, entry)
+    }
+    return [...byClient.values()].sort((a, b) => a.distanceKm - b.distanceKm)
+  }, [kanzleiCampaigns, selfLat, selfLng])
+  const fits = (k: (typeof nearby)[number]) => !!berufsbild && k.campaigns.some((c) => c.berufsbild === berufsbild)
+
+  // Suchumkreis als Kreis, damit die Karte auch ohne Kanzlei in der Nähe sinnvoll zoomt.
+  const circles: MapCircle[] = useMemo(
+    () => (selfLat !== null && selfLng !== null ? [{ lat: selfLat, lng: selfLng, radiusKm: NEARBY_KM, label: `Umkreis ${NEARBY_KM} km`, color: "#94a3b8" }] : []),
+    [selfLat, selfLng]
+  )
+  const points: MapPoint[] = useMemo(() => [
+    { lat: selfLat, lng: selfLng, label: candidateName, sublabel: "Wohnort (PLZ)", isSelf: true },
+    ...nearby.map((k) => ({
+      lat: k.lat,
+      lng: k.lng,
+      label: k.name,
+      sublabel: `${Math.round(k.distanceKm)} km · ${k.campaigns.map((c) => c.title).join(", ")}`,
+      href: `/dashboard/clients/${k.clientId}`,
+      color: fits(k) ? MATCH_COLOR : OTHER_COLOR,
+    })),
+  ], [nearby, candidateName, selfLat, selfLng, berufsbild]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col gap-6">
@@ -92,13 +143,30 @@ export function AssignmentTab({
         )}
       </Section>
 
-      <Section title="Weiterschieben an weitere Kanzlei-Kampagne">
-        <PushForward
-          candidateId={candidateId}
-          berufsbild={berufsbild}
-          kanzleiCampaigns={kanzleiCampaigns}
-          assignedCampaignIds={assignedCampaignIds}
-        />
+      <Section title={`Wohnort und Kanzleien im Umkreis von ${NEARBY_KM} km (${nearby.length})`}>
+        {selfLat === null || selfLng === null ? (
+          <p className="text-sm text-gray-400">Kein Wohnort bekannt – PLZ im Profil eintragen, dann erscheint die Karte.</p>
+        ) : (
+          <>
+            <p className="mb-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+              <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: MATCH_COLOR }} /> sucht {berufsbildLabel(berufsbild)}</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: OTHER_COLOR }} /> andere Stelle</span>
+            </p>
+            <MatchesMap points={points} circles={circles} height="320px" fitCircles />
+            {nearby.length > 0 && (
+              <ul className="mt-3 flex flex-col gap-1 text-xs text-gray-600">
+                {nearby.slice(0, 8).map((k) => (
+                  <li key={k.clientId}>
+                    <Link href={`/dashboard/clients/${k.clientId}`} className="font-medium hover:underline" style={{ color: fits(k) ? MATCH_COLOR : "#1e56a0" }}>
+                      {k.name}
+                    </Link>{" "}
+                    – {Math.round(k.distanceKm)} km · {k.campaigns.map((c) => c.title).join(", ")}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
       </Section>
     </div>
   )
@@ -110,114 +178,5 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{title}</p>
       {children}
     </section>
-  )
-}
-
-function AssignButton({
-  candidateId,
-  campaignId,
-  assigned,
-  onAssigned,
-}: {
-  candidateId: string
-  campaignId: string
-  assigned: boolean
-  onAssigned?: () => void
-}) {
-  const router = useRouter()
-  const [pending, startTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
-
-  if (assigned) {
-    return <span className="text-xs font-medium" style={{ color: "#1a9a6a" }}>Zugeordnet</span>
-  }
-
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() =>
-          startTransition(async () => {
-            setError(null)
-            const result = await assignToCampaignAction(candidateId, campaignId)
-            if (result?.error) {
-              setError(result.error)
-              return
-            }
-            onAssigned?.()
-            router.refresh()
-          })
-        }
-        className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-        style={{ backgroundColor: "#1e56a0" }}
-      >
-        {pending ? "…" : "Zuordnen"}
-      </button>
-      {error && <p className="text-xs text-red-600">{error}</p>}
-    </div>
-  )
-}
-
-function PushForward({
-  candidateId,
-  berufsbild,
-  kanzleiCampaigns,
-  assignedCampaignIds,
-}: {
-  candidateId: string
-  berufsbild: string | null
-  kanzleiCampaigns: KanzleiCampaignOption[]
-  assignedCampaignIds: Set<string>
-}) {
-  const [onlySameBerufsbild, setOnlySameBerufsbild] = useState(!!berufsbild)
-  const [query, setQuery] = useState("")
-  const [selected, setSelected] = useState("")
-
-  const options = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return kanzleiCampaigns
-      .filter((c) => !assignedCampaignIds.has(c.id))
-      .filter((c) => !onlySameBerufsbild || !berufsbild || c.berufsbild === berufsbild)
-      .filter((c) => !q || c.title.toLowerCase().includes(q) || c.clientName.toLowerCase().includes(q))
-      .sort((a, b) => a.clientName.localeCompare(b.clientName) || a.title.localeCompare(b.title))
-  }, [kanzleiCampaigns, assignedCampaignIds, onlySameBerufsbild, berufsbild, query])
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Kanzlei oder Kampagne suchen"
-          className="min-w-[200px] flex-1 rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
-          style={{ borderColor: "#dde3ea" }}
-        />
-        {berufsbild && (
-          <label className="flex items-center gap-1.5 text-xs text-gray-600">
-            <input type="checkbox" checked={onlySameBerufsbild} onChange={(e) => setOnlySameBerufsbild(e.target.checked)} />
-            nur {berufsbildLabel(berufsbild)}
-          </label>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-          className="min-w-[260px] flex-1 rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
-          style={{ borderColor: "#dde3ea" }}
-        >
-          <option value="">{options.length === 0 ? "Keine passende Kanzlei-Kampagne" : `Kanzlei-Kampagne wählen (${options.length})`}</option>
-          {options.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.clientName} – {c.title} ({berufsbildLabel(c.berufsbild)})
-            </option>
-          ))}
-        </select>
-        {selected && (
-          <AssignButton key={selected} candidateId={candidateId} campaignId={selected} assigned={false} onAssigned={() => setSelected("")} />
-        )}
-      </div>
-    </div>
   )
 }

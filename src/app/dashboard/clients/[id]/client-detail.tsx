@@ -14,6 +14,9 @@ import {
 } from "./actions"
 import { ContactsSection, type Contact } from "./contacts-section"
 import { ProjectTab, type ProjectMeta, type ClientProfileData } from "./project-tab"
+import { ProjectComments } from "./project-comments"
+import { ClientTasksTab, type ClientTask } from "./client-tasks-tab"
+import { AdCoverageBadge, type CoverageArea } from "./ad-coverage-badge"
 import type { ClientPosition } from "./project-positions"
 import type { ProjectComment } from "./project-comments"
 import { PROJECT_PHASES } from "@/lib/client-project"
@@ -124,9 +127,10 @@ interface ClientDetailProps {
   portalUsers: PortalUser[]
   assignedCandidates: AssignedCandidate[]
   kanzleiCampaigns: KanzleiCampaign[]
-  adCoverage: { campaignId: string; campaignTitle: string; label: string; radiusKm: number | null; distanceKm: number }[]
+  adCoverage: CoverageArea[]
   adAreasKnown: boolean
   kpis: DashboardKpis
+  tasks: ClientTask[]
   project: {
     meta: ProjectMeta
     profile: ClientProfileData | null
@@ -136,7 +140,7 @@ interface ClientDetailProps {
     currentUserId: string
     isAdmin: boolean
   }
-  initialTab?: "projekt"
+  initialTab?: "projekt" | "aufgaben"
 }
 
 type ModalStep = null | "choice" | "delete_confirm"
@@ -159,10 +163,11 @@ export function ClientDetail({
   adAreasKnown,
   kpis,
   project,
+  tasks,
   initialTab,
 }: ClientDetailProps) {
   const router = useRouter()
-  const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "dateien" | "projekt">(initialTab ?? "kampagnen")
+  const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "dateien" | "projekt" | "aufgaben">(initialTab ?? "kampagnen")
   const [editMode, setEditMode] = useState(false)
   const [displayLogoUrl, setDisplayLogoUrl] = useState(client.logo_url)
 
@@ -389,6 +394,10 @@ export function ClientDetail({
             </a>
           )}
 
+          {adAreasKnown && client.lat !== null && client.lng !== null && (
+            <AdCoverageBadge clientName={client.name} lat={client.lat} lng={client.lng} areas={adCoverage} />
+          )}
+
           <span
             className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
             style={{
@@ -445,40 +454,10 @@ export function ClientDetail({
         <KpiCard icon={ClipboardCheck} label="Bearbeitet" value={kpis.processed} iconColor="#1a9a6a" />
       </div>
 
-      {/* Abdeckung durch laufende Meta-Kampagnen (Atlas T-38) - nur sinnvoll mit Standort
-          und wenn überhaupt Werbegebiete importiert sind. */}
-      {adAreasKnown && client.lat !== null && client.lng !== null && (
-        <div
-          className="rounded-lg border px-4 py-2.5 text-sm"
-          style={
-            adCoverage.length > 0
-              ? { borderColor: "#86efac", backgroundColor: "#f0fdf4", color: "#166534" }
-              : { borderColor: "#fcd34d", backgroundColor: "#fffbeb", color: "#92400e" }
-          }
-        >
-          {adCoverage.length > 0 ? (
-            <>
-              Werbegebiet abgedeckt durch{" "}
-              {adCoverage.slice(0, 3).map((a, i) => (
-                <span key={`${a.campaignId}-${a.label}`}>
-                  {i > 0 && ", "}
-                  <Link href={`/dashboard/campaigns/${a.campaignId}`} className="font-medium hover:underline">
-                    {a.campaignTitle}
-                  </Link>{" "}
-                  ({a.label}, {Math.round(a.distanceKm)} km entfernt, Radius {a.radiusKm} km)
-                </span>
-              ))}
-              {adCoverage.length > 3 && ` und ${adCoverage.length - 3} weitere`}
-            </>
-          ) : (
-            "Dieser Standort liegt in keinem Werbegebiet einer laufenden Meta-Kampagne – ggf. neue Kampagne nötig."
-          )}
-        </div>
-      )}
-
-      {/* ── Tabs ── */}
-      <div>
-        <div className="flex gap-0 overflow-x-auto border-b" style={{ borderColor: "#dde3ea" }}>
+      {/* ── Tabs + Kommentare (auf jedem Reiter sichtbar, Paket 13) ── */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <div className="min-w-0 xl:col-span-2">
+        <div className="flex flex-wrap gap-0 border-b" style={{ borderColor: "#dde3ea" }}>
           <TabButton active={tab === "kampagnen"} onClick={() => setTab("kampagnen")}>
             Kampagnen ({campaignTotalCount})
           </TabButton>
@@ -504,6 +483,9 @@ export function ClientDetail({
             </span>
             {!project.profile?.finalized_at && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" title="Kanzleiprofil nicht final" />}
           </TabButton>
+          <TabButton active={tab === "aufgaben"} onClick={() => setTab("aufgaben")}>
+            Aufgaben ({tasks.filter((t) => t.status !== "erledigt").length})
+          </TabButton>
         </div>
 
         <div className="mt-4">
@@ -514,12 +496,10 @@ export function ClientDetail({
               profile={project.profile}
               positions={project.positions}
               campaigns={kanzleiCampaigns.map((c) => ({ id: c.id, title: c.title }))}
-              comments={project.comments}
               team={project.team}
-              currentUserId={project.currentUserId}
-              isAdmin={project.isAdmin}
             />
           )}
+          {tab === "aufgaben" && <ClientTasksTab clientId={client.id} tasks={tasks} team={project.team} />}
           {tab === "kampagnen" && (
             <KampagnenTab
               clientId={client.id}
@@ -554,6 +534,16 @@ export function ClientDetail({
           )}
         </div>
       </div>
+      <div className="min-w-0 xl:sticky xl:top-4 xl:self-start">
+        <ProjectComments
+          clientId={client.id}
+          comments={project.comments}
+          team={project.team}
+          currentUserId={project.currentUserId}
+          isAdmin={project.isAdmin}
+        />
+      </div>
+      </div>
     </div>
   )
 }
@@ -570,7 +560,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className="inline-flex shrink-0 items-center whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors"
+      className="inline-flex shrink-0 items-center whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors"
       style={{
         color: active ? "#1e56a0" : "#6b7280",
         borderBottom: active ? "2px solid #1e56a0" : "2px solid transparent",

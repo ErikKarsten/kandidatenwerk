@@ -17,6 +17,7 @@ const FIELD_RULES: { test: RegExp; keys: string[] }[] = [
   { test: /alter.*wohnort|wohnort.*alter/, keys: ["alter", "wohnort_plz"] },
   { test: /wohnort|postleitzahl|\bplz\b/, keys: ["wohnort_plz"] },
   { test: /^alter\b|wie alt/, keys: ["alter"] },
+  { test: /gehalt|lohnvorstellung|verdienst|vergütung|verguetung/, keys: ["gehaltsvorstellung"] },
   { test: /ausbildung|abschluss|qualifikation/, keys: ["ausbildung"] },
   { test: /erreich/, keys: ["erreichbarkeit"] },
   { test: /wechselgrund|wechslegrund|warum.*wechsel|wechseln/, keys: ["wechselgrund"] },
@@ -32,7 +33,7 @@ const FIELD_RULES: { test: RegExp; keys: string[] }[] = [
 
 // Bereits als feste Spalten übernommen (Name, E-Mail, Telefon) - nicht doppelt ablegen.
 const CORE_TITLES =
-  /^(deine? |ihre? )?(full ?name|vollständiger name|name|vor- und nachname|vorname|nachname|e ?-?mail(-? ?adresse)?|email|mail-?adresse|phone( ?number)?|telefon(nummer)?|handy(nummer)?|mobil(nummer)?)$/
+  /^(deine? |ihre? )?(full ?name|vollständiger name|name|vor- und nachname|vorname|nachname|first ?name|last ?name|e ?-?mail(-? ?adresse)?|email|mail-?adresse|phone( ?number)?|telefon(nummer)?|handy(nummer)?|mobil(nummer)?)$/
 
 // Kein Inhalt (Platzhalter, Einwilligungen).
 const IGNORED_TITLES = /^(test|leer)$|datenschutz|einwilligung|ich (verstehe|akzeptiere|stimme)/
@@ -40,7 +41,7 @@ const IGNORED_TITLES = /^(test|leer)$|datenschutz|einwilligung|ich (verstehe|akz
 // Technische Werte aus Meta/Leadtable (Anzeigen-IDs usw.), ohne Mehrwert im Profil.
 const TECHNICAL_TITLES = new Set([
   "adid", "adgroupid", "formid", "pageid", "leadgenid", "isorganic", "adname", "adsetname",
-  "campaignid", "campaignname", "platform", "eventid", "createdtime", "id",
+  "campaignid", "campaignname", "platform", "eventid", "createdtime", "id", "inboxurl",
 ])
 
 export function normalizeTitle(title: string): string {
@@ -92,7 +93,12 @@ export function mapLeadFormAnswers(profile: Record<string, { title?: string; val
 
     const rule = FIELD_RULES.find((r) => r.test.test(norm))
     if (rule) {
-      for (const key of rule.keys) result.fields[key] = result.fields[key] ? `${result.fields[key]}; ${answer}` : answer
+      for (const key of rule.keys) {
+        const existing = result.fields[key]
+        // Gleiche Antwort aus zwei Fragen nicht doppelt ablegen ("X; X").
+        if (!existing) result.fields[key] = answer
+        else if (!existing.split("; ").some((part) => part.toLowerCase() === answer.toLowerCase())) result.fields[key] = `${existing}; ${answer}`
+      }
       if (rule.keys.includes("wohnort_plz") && !result.plz) result.plz = answer.match(/\b\d{5}\b/)?.[0] ?? null
     } else {
       result.extras.push({ question: displayTitle(title), answer })

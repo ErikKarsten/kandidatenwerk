@@ -22,6 +22,9 @@ export interface MapPoint {
   // href bleibt das Label reiner Text - Rückwärtskompatibilität für matches-section.tsx
   // / matches-tab.tsx, die das (noch) nicht setzen.
   href?: string
+  // Statt Link: Klick auf den Namen ruft das auf (z.B. Kandidaten-Seitenfenster,
+  // Paket 13) - die Seite mit Karte und Suche bleibt erhalten.
+  onSelect?: () => void
 }
 
 type ValidMapPoint = MapPoint & { lat: number; lng: number }
@@ -130,7 +133,11 @@ function groupByLocation(points: ValidMapPoint[]): PointGroup[] {
 function PointDetails({ point }: { point: MapPoint }) {
   return (
     <div>
-      {point.href ? (
+      {point.onSelect ? (
+        <button type="button" onClick={point.onSelect} className="text-left font-medium hover:underline" style={{ color: "#1e56a0" }}>
+          {point.label}
+        </button>
+      ) : point.href ? (
         <Link href={point.href} className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
           {point.label}
         </Link>
@@ -160,17 +167,21 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
   circles?: MapCircle[]
   height?: string
   scrollWheelZoom?: boolean
-}>(function MatchesMap({ points, circles = [], height = "280px", scrollWheelZoom = false }, ref) {
+  // Kartenausschnitt auch nach den Kreisen richten (z.B. Werbegebiete am Kanzleistandort,
+  // Paket 13) - sonst zoomt die Karte bei nur einem Punkt ganz nah heran.
+  fitCircles?: boolean
+}>(function MatchesMap({ points, circles = [], height = "280px", scrollWheelZoom = false, fitCircles = false }, ref) {
   const validPoints = useMemo(() => points.filter(hasCoords), [points])
   const groups = useMemo(() => groupByLocation(validPoints), [validPoints])
   // Referenziell stabil, solange sich die Punktmenge nicht ändert - sonst würde JEDER
   // Re-Render (z.B. durch einen Marker-Klick, der eine Popup öffnet) ein neues
   // L.LatLngBounds-Objekt erzeugen und MapContainers "bounds"-Prop erneut auslösen, was
   // die Karte ungewollt wieder auf alle Punkte zurückzoomt (siehe Bug-Report 25.09.2026).
-  const bounds = useMemo(
-    () => L.latLngBounds(validPoints.map((p) => [p.lat, p.lng] as [number, number])),
-    [validPoints]
-  )
+  const bounds = useMemo(() => {
+    const b = L.latLngBounds(validPoints.map((p) => [p.lat, p.lng] as [number, number]))
+    if (fitCircles) for (const c of circles) b.extend(L.latLng(c.lat, c.lng).toBounds(c.radiusKm * 2000))
+    return b
+  }, [validPoints, circles, fitCircles])
 
   // WICHTIG: bewusst useState statt useRef für die Map-Instanz. react-leaflets
   // MapContainer befüllt seinen ref-Wert erst asynchron über einen Folge-Render

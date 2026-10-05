@@ -3,7 +3,6 @@
 import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Paperclip, Pencil, Trash2 } from "lucide-react"
-import { COMMENT_KINDS } from "@/lib/client-project"
 import { addCommentAction, deleteCommentAction, getCommentFileUrlAction, updateCommentAction } from "./project-actions"
 
 export interface ProjectComment {
@@ -46,34 +45,49 @@ export function ProjectComments({
 }) {
   const router = useRouter()
   const [content, setContent] = useState("")
-  const [kind, setKind] = useState("notiz")
-  const [mentions, setMentions] = useState<string[]>([])
   const [files, setFiles] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
-  const colleagues = team.filter((t) => t.id !== currentUserId)
+  const textarea = useRef<HTMLTextAreaElement>(null)
+  const colleagues = team.filter((t) => t.id !== currentUserId && t.full_name)
+  // Erwähnt ist, wessen "@Vorname Nachname" im Text steht.
+  const mentions = colleagues.filter((t) => content.includes(`@${t.full_name}`)).map((t) => t.id)
+  const suggestions =
+    mentionQuery === null ? [] : colleagues.filter((t) => t.full_name!.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 6)
 
-  function addMention(id: string) {
-    const person = team.find((t) => t.id === id)
-    if (!person || mentions.includes(id)) return
-    setMentions([...mentions, id])
-    setContent((c) => `${c}${c && !c.endsWith(" ") ? " " : ""}@${person.full_name ?? "Kollege"} `)
+  // "@" + Buchstaben direkt vor dem Cursor öffnet die Vorschlagsliste.
+  function handleChange(value: string, caret: number) {
+    setContent(value)
+    const match = value.slice(0, caret).match(/(?:^|\s)@([\p{L}.-]*)$/u)
+    setMentionQuery(match ? match[1] : null)
+  }
+
+  function insertMention(name: string) {
+    const el = textarea.current
+    const caret = el?.selectionStart ?? content.length
+    const before = content.slice(0, caret).replace(/@([\p{L}.-]*)$/u, `@${name} `)
+    const next = before + content.slice(caret)
+    setContent(next)
+    setMentionQuery(null)
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(before.length, before.length)
+    })
   }
 
   function handleSubmit() {
     setError(null)
     const fd = new FormData()
     fd.append("content", content)
-    fd.append("kind", kind)
+    fd.append("kind", "notiz")
     fd.append("mentions", JSON.stringify(mentions))
     for (const f of files) fd.append("files", f)
     startTransition(async () => {
       const result = await addCommentAction(clientId, fd)
       if (result?.error) return setError(result.error)
       setContent("")
-      setKind("notiz")
-      setMentions([])
       setFiles([])
       if (fileInput.current) fileInput.current.value = ""
       router.refresh()
@@ -84,37 +98,35 @@ export function ProjectComments({
     <div className="flex flex-col gap-3 rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
       <h3 className="text-sm font-semibold text-gray-900">Kommentare</h3>
 
-      <div className="flex flex-col gap-2">
+      <div className="relative flex flex-col gap-2">
         <textarea
+          ref={textarea}
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => handleChange(e.target.value, e.target.selectionStart)}
+          onKeyDown={(e) => {
+            if (suggestions.length > 0 && (e.key === "Enter" || e.key === "Tab")) {
+              e.preventDefault()
+              insertMention(suggestions[0].full_name!)
+            } else if (e.key === "Escape") setMentionQuery(null)
+          }}
+          onBlur={() => setTimeout(() => setMentionQuery(null), 150)}
           rows={3}
-          placeholder="Kommentar schreiben, z.B. Ergebnis eines Termins…"
+          placeholder="Kommentar schreiben … Kollegen mit @Name erwähnen"
           className="w-full rounded-md border px-3 py-2 text-sm"
           style={{ borderColor: "#dde3ea" }}
         />
+        {suggestions.length > 0 && (
+          <ul className="absolute left-2 top-full z-10 -mt-1 w-56 overflow-hidden rounded-md border bg-white text-sm shadow-lg" style={{ borderColor: "#dde3ea" }}>
+            {suggestions.map((t) => (
+              <li key={t.id}>
+                <button type="button" onMouseDown={(e) => (e.preventDefault(), insertMention(t.full_name!))} className="w-full px-3 py-1.5 text-left hover:bg-gray-50">
+                  @{t.full_name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="flex flex-wrap items-center gap-2">
-          <select value={kind} onChange={(e) => setKind(e.target.value)} className="rounded-md border px-2 py-1 text-xs" style={{ borderColor: "#dde3ea" }} aria-label="Art">
-            {COMMENT_KINDS.map((k) => (
-              <option key={k.value} value={k.value}>
-                {k.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value=""
-            onChange={(e) => addMention(e.target.value)}
-            className="rounded-md border px-2 py-1 text-xs"
-            style={{ borderColor: "#dde3ea" }}
-            aria-label="Kollegen erwähnen"
-          >
-            <option value="">@ Erwähnen…</option>
-            {colleagues.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.full_name ?? "Ohne Namen"}
-              </option>
-            ))}
-          </select>
           <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-gray-600 hover:text-gray-900">
             <Paperclip size={13} />
             {files.length > 0 ? `${files.length} Datei${files.length === 1 ? "" : "en"}` : "Anhang"}
@@ -152,7 +164,6 @@ function CommentItem({ clientId, comment, canEdit }: { clientId: string; comment
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(comment.content)
-  const [kind, setKind] = useState(comment.kind)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const style = KIND_STYLE[comment.kind] ?? KIND_STYLE.notiz
@@ -160,7 +171,7 @@ function CommentItem({ clientId, comment, canEdit }: { clientId: string; comment
   function save() {
     setError(null)
     startTransition(async () => {
-      const result = await updateCommentAction(clientId, comment.id, text, kind)
+      const result = await updateCommentAction(clientId, comment.id, text, comment.kind === "system" ? "notiz" : comment.kind)
       if (result?.error) return setError(result.error)
       setEditing(false)
       router.refresh()
@@ -208,13 +219,6 @@ function CommentItem({ clientId, comment, canEdit }: { clientId: string; comment
         <div className="flex flex-col gap-1.5">
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} className="w-full rounded-md border px-2 py-1.5 text-sm" style={{ borderColor: "#dde3ea" }} />
           <div className="flex items-center gap-2">
-            <select value={kind} onChange={(e) => setKind(e.target.value)} className="rounded-md border px-2 py-1 text-xs" style={{ borderColor: "#dde3ea" }}>
-              {COMMENT_KINDS.map((k) => (
-                <option key={k.value} value={k.value}>
-                  {k.label}
-                </option>
-              ))}
-            </select>
             <button type="button" onClick={save} disabled={pending} className="rounded-md px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50" style={{ backgroundColor: "#1e56a0" }}>
               Speichern
             </button>

@@ -16,6 +16,7 @@ import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/u
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { SOURCE_OPTIONS } from "@/lib/candidate-source"
+import { CandidatePanel } from "@/components/dashboard/candidate-panel/candidate-panel"
 
 const STATUS_LABEL = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o.label]))
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -90,6 +91,9 @@ export function CandidatesList({
   // Browser-Zurueck), ohne den fuer setState-in-Effect ueblichen Extra-Render-Zyklus.
   const [prevSearch, setPrevSearch] = useState(search)
   const [searchInput, setSearchInput] = useState(search)
+  // Klick auf den Namen öffnet das Seitenfenster (Paket 13); mit Strg/Cmd-Klick oder
+  // mittlerer Maustaste wie gewohnt das volle Profil in neuem Tab.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   if (search !== prevSearch) {
     setPrevSearch(search)
     setSearchInput(search)
@@ -280,7 +284,16 @@ export function CandidatesList({
                   return (
                     <TableRow key={c.id} style={{ borderColor: "#dde3ea" }}>
                       <TableCell className="font-medium">
-                        <Link href={`/dashboard/candidates/${c.id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
+                        <Link
+                          href={`/dashboard/candidates/${c.id}`}
+                          onClick={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+                            e.preventDefault()
+                            setSelectedId(c.id)
+                          }}
+                          className="hover:underline"
+                          style={{ color: "#1e56a0" }}
+                        >
                           {c.first_name} {c.last_name}
                         </Link>
                       </TableCell>
@@ -336,6 +349,7 @@ export function CandidatesList({
           />
         </div>
       )}
+      {selectedId && <CandidatePanel candidateId={selectedId} onClose={() => setSelectedId(null)} />}
     </div>
   )
 }

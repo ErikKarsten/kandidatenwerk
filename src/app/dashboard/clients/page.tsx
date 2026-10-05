@@ -3,6 +3,7 @@ import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
+import { PROJECT_PHASES } from "@/lib/client-project"
 import { type PipelineSegment } from "@/components/dashboard/client-card"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { ClientsList, type ClientListItem, type ClientsSortOption, type ClientsStatusFilter } from "./clients-list"
@@ -29,6 +30,8 @@ export default async function ClientsPage({
     sort?: string
     page?: string
     pageSize?: string
+    phase?: string
+    kam?: string
   }>
 }) {
   const sp = await searchParams
@@ -41,13 +44,22 @@ export default async function ClientsPage({
     ? (Number(sp.pageSize) as PageSize)
     : DEFAULT_PAGE_SIZE
   const page = Math.max(1, Number(sp.page) || 1)
+  const phaseFilter = PROJECT_PHASES.some((p) => p.value === sp.phase) ? sp.phase! : "alle"
 
   const supabase = await createSupabaseServerClient()
+  const [{ data: { user } }, { data: teamRows }] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("profiles").select("id, full_name").in("role", ["agency_admin", "agency_member"]).order("full_name"),
+  ])
+  const team = (teamRows ?? []).map((t) => ({ id: t.id, full_name: t.full_name }))
+  // "me" = eigene Kunden; sonst eine Profil-ID aus dem Team.
+  const kamFilter = sp.kam === "me" || team.some((t) => t.id === sp.kam) ? sp.kam! : "alle"
+  const kamId = kamFilter === "me" ? user?.id ?? null : kamFilter === "alle" ? null : kamFilter
 
   let query = supabase
     .from("client_list_stats")
     .select(
-      "id, name, contact_name, contact_email, active, status, logo_url, created_at, campaign_count, candidate_count, placement_count, pipeline",
+      "id, name, contact_name, contact_email, active, status, logo_url, created_at, campaign_count, candidate_count, placement_count, pipeline, project_phase, key_account_manager_id, profile_finalized",
       { count: "exact" }
     )
 
@@ -55,6 +67,8 @@ export default async function ClientsPage({
   if (statusFilter === "aktiv") query = query.eq("active", true)
   if (statusFilter === "inaktiv") query = query.eq("active", false)
   if (search) query = query.ilike("name", `%${search}%`)
+  if (phaseFilter !== "alle") query = query.eq("project_phase", phaseFilter)
+  if (kamId) query = query.eq("key_account_manager_id", kamId)
 
   const { column, ascending } = SORT_COLUMNS[sort]
   query = query.order(column, { ascending })
@@ -93,6 +107,15 @@ export default async function ClientsPage({
         platzierungen: client.placement_count ?? 0,
       },
       pipeline,
+      project: (() => {
+        const phase = PROJECT_PHASES.find((p) => p.value === client.project_phase) ?? PROJECT_PHASES[0]
+        return {
+          phaseLabel: phase.label,
+          phaseColor: phase.color,
+          kamName: team.find((t) => t.id === client.key_account_manager_id)?.full_name ?? null,
+          profileFinalized: client.profile_finalized ?? false,
+        }
+      })(),
     }
   })
 
@@ -102,7 +125,7 @@ export default async function ClientsPage({
   // "Noch keine Kunden angelegt" nur im echten Leerfall (keine Filter aktiv) zeigen -
   // eine Such-/Filterkombination ohne Treffer bekommt stattdessen die
   // "Keine Kunden entsprechen den aktuellen Filtern"-Meldung in ClientsList.
-  const trulyEmpty = totalCount === 0 && !search && statusFilter === "alle" && !showArchived
+  const trulyEmpty = totalCount === 0 && !search && statusFilter === "alle" && phaseFilter === "alle" && kamFilter === "alle" && !showArchived
 
   return (
     <div className="flex flex-col gap-8 p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
@@ -159,6 +182,9 @@ export default async function ClientsPage({
           search={search}
           statusFilter={statusFilter}
           sort={sort}
+          phaseFilter={phaseFilter}
+          kamFilter={kamFilter}
+          team={team}
         />
       )}
     </div>

@@ -23,11 +23,14 @@ const inputStyle = { borderColor: "#dde3ea" }
 export function TaskFormModal({
   profiles,
   candidateId,
+  clientId,
   onClose,
   onCreated,
 }: {
   profiles: ProfileOption[]
   candidateId?: string
+  // Aufgabe zu einem Kunden (Reiter "Aufgaben" beim Kunden, Paket 13).
+  clientId?: string
   onClose: () => void
   // Optional statt immer router.refresh(): die Kandidatenseite zeigt selbst keine
   // Aufgabenliste an, für die ein Refresh nötig wäre (siehe candidate-detail.tsx).
@@ -52,6 +55,7 @@ export function TaskFormModal({
     fd.append("assigned_to", assignedTo)
     if (dueDate) fd.append("due_date", dueDate)
     if (candidateId) fd.append("candidate_id", candidateId)
+    if (clientId) fd.append("client_id", clientId)
 
     startTransition(async () => {
       const result = await createTaskAction(fd)
