@@ -13,6 +13,10 @@ import {
   publishClientToKanzleistelleAction,
 } from "./actions"
 import { ContactsSection, type Contact } from "./contacts-section"
+import { ProjectTab, type ProjectMeta, type ClientProfileData } from "./project-tab"
+import type { ClientPosition } from "./project-positions"
+import type { ProjectComment } from "./project-comments"
+import { PROJECT_PHASES } from "@/lib/client-project"
 import { PortalAccessSection, type PortalUser } from "./portal-access-section"
 import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
 import { KpiCard } from "@/components/dashboard/kpi-card"
@@ -123,6 +127,16 @@ interface ClientDetailProps {
   adCoverage: { campaignId: string; campaignTitle: string; label: string; radiusKm: number | null; distanceKm: number }[]
   adAreasKnown: boolean
   kpis: DashboardKpis
+  project: {
+    meta: ProjectMeta
+    profile: ClientProfileData | null
+    positions: ClientPosition[]
+    comments: ProjectComment[]
+    team: { id: string; full_name: string | null }[]
+    currentUserId: string
+    isAdmin: boolean
+  }
+  initialTab?: "projekt"
 }
 
 type ModalStep = null | "choice" | "delete_confirm"
@@ -144,9 +158,11 @@ export function ClientDetail({
   adCoverage,
   adAreasKnown,
   kpis,
+  project,
+  initialTab,
 }: ClientDetailProps) {
   const router = useRouter()
-  const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "dateien">("kampagnen")
+  const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "dateien" | "projekt">(initialTab ?? "kampagnen")
   const [editMode, setEditMode] = useState(false)
   const [displayLogoUrl, setDisplayLogoUrl] = useState(client.logo_url)
 
@@ -360,6 +376,19 @@ export function ClientDetail({
           )}
           <h1 className="text-2xl font-bold text-gray-900">{client.name}</h1>
 
+          {project.meta.close_url && (
+            <a
+              href={project.meta.close_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full border px-2 py-0.5 text-xs font-medium hover:bg-gray-50"
+              style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+              title={project.meta.close_status ? `Status in Close: ${project.meta.close_status}` : "Lead in Close öffnen"}
+            >
+              Close ↗
+            </a>
+          )}
+
           <span
             className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
             style={{
@@ -449,7 +478,7 @@ export function ClientDetail({
 
       {/* ── Tabs ── */}
       <div>
-        <div className="flex gap-0 border-b" style={{ borderColor: "#dde3ea" }}>
+        <div className="flex gap-0 overflow-x-auto border-b" style={{ borderColor: "#dde3ea" }}>
           <TabButton active={tab === "kampagnen"} onClick={() => setTab("kampagnen")}>
             Kampagnen ({campaignTotalCount})
           </TabButton>
@@ -462,9 +491,35 @@ export function ClientDetail({
           <TabButton active={tab === "dateien"} onClick={() => setTab("dateien")}>
             Dateien ({files.length})
           </TabButton>
+          <TabButton active={tab === "projekt"} onClick={() => setTab("projekt")}>
+            Projekt
+            <span
+              className="ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+              style={{
+                backgroundColor: `${PROJECT_PHASES.find((p) => p.value === project.meta.project_phase)?.color ?? "#6b7280"}18`,
+                color: PROJECT_PHASES.find((p) => p.value === project.meta.project_phase)?.color ?? "#6b7280",
+              }}
+            >
+              {PROJECT_PHASES.find((p) => p.value === project.meta.project_phase)?.label ?? project.meta.project_phase}
+            </span>
+            {!project.profile?.finalized_at && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" title="Kanzleiprofil nicht final" />}
+          </TabButton>
         </div>
 
         <div className="mt-4">
+          {tab === "projekt" && (
+            <ProjectTab
+              clientId={client.id}
+              meta={project.meta}
+              profile={project.profile}
+              positions={project.positions}
+              campaigns={kanzleiCampaigns.map((c) => ({ id: c.id, title: c.title }))}
+              comments={project.comments}
+              team={project.team}
+              currentUserId={project.currentUserId}
+              isAdmin={project.isAdmin}
+            />
+          )}
           {tab === "kampagnen" && (
             <KampagnenTab
               clientId={client.id}
@@ -515,7 +570,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className="px-4 py-2.5 text-sm font-medium transition-colors"
+      className="inline-flex shrink-0 items-center whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors"
       style={{
         color: active ? "#1e56a0" : "#6b7280",
         borderBottom: active ? "2px solid #1e56a0" : "2px solid transparent",

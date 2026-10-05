@@ -22,6 +22,7 @@ export default async function ClientDetailPage({
     campaign_status?: string
     campaign_page?: string
     campaign_pageSize?: string
+    tab?: string
   }>
 }) {
   const { id } = await params
@@ -92,6 +93,45 @@ export default async function ClientDetailPage({
   ])
 
   if (!client) notFound()
+
+  // Projekt-Reiter (Paket 9): Kanzleiprofil, Stellen, Kommentare, Team.
+  const [{ data: profileRow }, { data: positionRows }, { data: commentRows }, { data: teamRows }, { data: { user } }] = await Promise.all([
+    supabase.from("client_profiles").select("*").eq("client_id", id).maybeSingle(),
+    supabase.from("client_positions").select("*").eq("client_id", id).order("sort_order").order("created_at"),
+    supabase.from("client_comments").select("id, author_id, kind, content, created_at, edited_at").eq("client_id", id).order("created_at", { ascending: false }).limit(300),
+    supabase.from("profiles").select("id, full_name, role").in("role", ["agency_admin", "agency_member"]).order("full_name"),
+    supabase.auth.getUser(),
+  ])
+  const team = (teamRows ?? []).map((t) => ({ id: t.id, full_name: t.full_name }))
+  const nameOf = (profileId: string | null) => (profileId ? team.find((t) => t.id === profileId)?.full_name ?? "Unbekannt" : "System")
+  const commentFiles = (fileRows ?? []).filter((f) => f.comment_id)
+  const project = {
+    meta: {
+      project_phase: client.project_phase ?? "onboarding",
+      contract_start: client.contract_start ?? null,
+      contract_term_months: client.contract_term_months ?? null,
+      key_account_manager_id: client.key_account_manager_id ?? null,
+      close_lead_id: client.close_lead_id ?? null,
+      close_url: client.close_url ?? null,
+      close_status: client.close_status ?? null,
+      close_status_at: client.close_status_at ?? null,
+    },
+    profile: profileRow ? { ...profileRow, finalized_by_name: profileRow.finalized_by ? nameOf(profileRow.finalized_by) : null } : null,
+    positions: (positionRows ?? []).map((p) => ({ ...p, campaign_id: p.campaign_id ?? null })),
+    comments: (commentRows ?? []).map((c) => ({
+      id: c.id,
+      authorId: c.author_id,
+      authorName: nameOf(c.author_id),
+      kind: c.kind,
+      content: c.content,
+      createdAt: c.created_at,
+      editedAt: c.edited_at,
+      files: commentFiles.filter((f) => f.comment_id === c.id).map((f) => ({ id: f.id, name: f.file_name, path: f.file_path })),
+    })),
+    team,
+    currentUserId: user?.id ?? "",
+    isAdmin: (teamRows ?? []).find((t) => t.id === user?.id)?.role === "agency_admin",
+  }
 
   // Liegt die Kanzlei im Werbegebiet einer laufenden Meta-Kampagne? Hilft bei neuen
   // Kunden zu entscheiden, ob eine neue Kampagne nötig ist (Atlas T-38).
@@ -234,6 +274,8 @@ export default async function ClientDetailPage({
       adCoverage={adCoverage}
       adAreasKnown={adAreas.length > 0}
       kpis={kpis}
+      project={project}
+      initialTab={sp.tab === "projekt" ? "projekt" : undefined}
     />
   )
 }
