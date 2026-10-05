@@ -798,6 +798,7 @@ export type Database = {
           kanzleistelle_application_id: string | null
           leadtable_lead_id: string | null
           meta_lead_id: string | null
+          is_demo: boolean
         }
         Insert: {
           id?: string
@@ -820,6 +821,7 @@ export type Database = {
           kanzleistelle_application_id?: string | null
           leadtable_lead_id?: string | null
           meta_lead_id?: string | null
+          is_demo?: boolean
         }
         Update: {
           id?: string
@@ -842,6 +844,7 @@ export type Database = {
           kanzleistelle_application_id?: string | null
           leadtable_lead_id?: string | null
           meta_lead_id?: string | null
+          is_demo?: boolean
         }
         Relationships: [
           {

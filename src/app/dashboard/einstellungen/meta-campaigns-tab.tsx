@@ -7,6 +7,7 @@ import { RefreshCw } from "lucide-react"
 import { syncMetaCampaignsNowAction } from "./actions"
 import type { LeadCampaignOverview } from "@/lib/meta-campaigns-queries"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 
 const STATUS_STYLE: Record<string, { label: string; bg: string; text: string }> = {
   active: { label: "Läuft", bg: "#1a9a6a18", text: "#1a9a6a" },
@@ -24,7 +25,15 @@ function areaSummary(c: LeadCampaignOverview): string {
 // Einstellungen -> Meta-Kampagnen (Atlas T-38): die aus dem Meta-Werbekonto
 // importierten Lead-Kampagnen mit Status, verknüpftem Lead-Formular, Werbegebieten
 // und Leads. Abgleich stündlich automatisch oder per Knopf (nur Admins).
-export function MetaCampaignsTab({ campaigns, isAdmin }: { campaigns: LeadCampaignOverview[]; isAdmin: boolean }) {
+export function MetaCampaignsTab({
+  campaigns,
+  isAdmin,
+  warnings = [],
+}: {
+  campaigns: LeadCampaignOverview[]
+  isAdmin: boolean
+  warnings?: { campaignId: string; campaignTitle: string; message: string }[]
+}) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
@@ -57,7 +66,7 @@ export function MetaCampaignsTab({ campaigns, isAdmin }: { campaigns: LeadCampai
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Meta-Kampagnen</h2>
           <p className="mt-1 max-w-xl text-xs text-gray-500">
-            Lead-Kampagnen aus dem Meta-Werbekonto. Neue Kampagnen erscheinen automatisch (stündlicher Abgleich), das
+            Lead-Kampagnen aus dem Meta-Werbekonto – importiert werden nur Kampagnen mit „KS24“ im Namen. Neue Kampagnen erscheinen automatisch (stündlicher Abgleich), das
             Lead-Formular wird verknüpft und die Leads laufen in „Alle Kandidaten“ ein. Die Werbegebiete stehen auf der
             Karte unter „Werbegebiete“.
           </p>
@@ -78,6 +87,18 @@ export function MetaCampaignsTab({ campaigns, isAdmin }: { campaigns: LeadCampai
           </button>
         )}
       </div>
+
+      {warnings.length > 0 && (
+        <div className="rounded-lg border px-4 py-3 text-xs" style={{ borderColor: "#f59e0b66", backgroundColor: "#fffbeb", color: "#92400e" }}>
+          <p className="font-medium">Leads dieser Kampagnen werden nicht abgeholt – die Facebook-Seite ist dem Meta-Systemnutzer nicht freigegeben:</p>
+          <ul className="mt-1 list-disc pl-4">
+            {warnings.map((w) => (
+              <li key={w.campaignId}>{w.campaignTitle}</li>
+            ))}
+          </ul>
+          <p className="mt-1">Im Meta Business Manager die Seite dem Systemnutzer zuweisen, dann klappt der Abruf automatisch.</p>
+        </div>
+      )}
 
       {message && (
         <p className="text-xs" style={{ color: message.type === "success" ? "#1a9a6a" : "#dc2626" }}>
@@ -123,6 +144,7 @@ export function MetaCampaignsTab({ campaigns, isAdmin }: { campaigns: LeadCampai
                       <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: st.bg, color: st.text }}>
                         {st.label}
                       </span>
+                      {!isKs24Campaign(c.title) && <div className="mt-1 text-[10px] text-gray-400">kein KS24 – kein Import</div>}
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-600">{areaSummary(c)}</td>
                     <td className="px-3 py-2 text-xs">

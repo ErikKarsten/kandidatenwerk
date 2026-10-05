@@ -42,6 +42,15 @@ export default async function EinstellungenPage() {
   const customFieldReviewQueue = ownProfile.agency_id ? await getPendingCustomFieldReviewQueue() : []
   const metaCampaigns = ownProfile.agency_id ? await getLeadCampaignsOverview(supabase as unknown as SupabaseClient) : []
   const [fieldTemplates, leadForms] = ownProfile.agency_id ? await Promise.all([getFieldTemplates(), getLeadForms()]) : [[], []]
+  // Hinweise des letzten Meta-Lead-Abgleichs (z.B. Seite nicht freigegeben, T-65).
+  const { data: lastLeadsRun } = await (supabase as unknown as SupabaseClient)
+    .from("cron_job_runs")
+    .select("summary")
+    .eq("job", "meta-leads-sync")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const leadSyncWarnings = ((lastLeadsRun?.summary as { warnings?: { campaignId: string; campaignTitle: string; message: string }[] } | null)?.warnings ?? [])
 
   return (
     <EinstellungenDetail
@@ -61,6 +70,7 @@ export default async function EinstellungenPage() {
       metaCampaigns={metaCampaigns}
       fieldTemplates={fieldTemplates}
       leadForms={leadForms}
+      leadSyncWarnings={leadSyncWarnings}
     />
   )
 }

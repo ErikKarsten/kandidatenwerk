@@ -22,6 +22,10 @@ export interface BugReportListItem {
   reviewedAt: string | null
   reviewerName: string | null
   task: { id: string; title: string; status: string; assigneeName: string | null } | null
+  // System-Einträge (fehlgeschlagene Cronjobs, Paket 14): zusammengefasst mit Zähler.
+  source: string
+  occurrences: number
+  lastSeenAt: string | null
 }
 
 function db(): SupabaseClient {
@@ -43,10 +47,13 @@ interface RawReport {
   reviewed_by: string | null
   reviewed_at: string | null
   task_id: string | null
+  source: string | null
+  occurrences: number | null
+  last_seen_at: string | null
 }
 
 const REPORT_COLUMNS =
-  "id, title, description, status, reporter_id, reporter_role, client_id, page_url, user_agent, created_at, review_note, reviewed_by, reviewed_at, task_id"
+  "id, title, description, status, reporter_id, reporter_role, client_id, page_url, user_agent, created_at, review_note, reviewed_by, reviewed_at, task_id, source, occurrences, last_seen_at"
 
 async function enrich(client: SupabaseClient, rows: RawReport[]): Promise<BugReportListItem[]> {
   const profileIds = [...new Set(rows.flatMap((r) => [r.reporter_id, r.reviewed_by]).filter(Boolean))] as string[]
@@ -81,7 +88,10 @@ async function enrich(client: SupabaseClient, rows: RawReport[]): Promise<BugRep
       description: r.description,
       status: r.status,
       reporterRole: r.reporter_role,
-      reporterName: r.reporter_id ? nameById.get(r.reporter_id) ?? "Unbekannt" : "Gelöschter Nutzer",
+      reporterName: r.source === "system" ? "System" : r.reporter_id ? nameById.get(r.reporter_id) ?? "Unbekannt" : "Gelöschter Nutzer",
+      source: r.source ?? "nutzer",
+      occurrences: r.occurrences ?? 1,
+      lastSeenAt: r.last_seen_at,
       clientName: r.client_id ? clientNameById.get(r.client_id) ?? null : null,
       pageUrl: r.page_url,
       userAgent: r.user_agent,

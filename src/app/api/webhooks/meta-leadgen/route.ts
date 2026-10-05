@@ -28,6 +28,7 @@ import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { fetchMetaPages, fetchMetaLead, isMetaTestLead } from "@/lib/meta-ads-client"
 import { processMetaLead, type MetaSyncCampaign } from "@/lib/meta-leads-sync-shared"
+import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 
 const ARCHIVED_STATUS = "Archiviert"
 
@@ -99,6 +100,10 @@ async function handleLeadgenEvent(value: LeadgenChangeValue) {
       .limit(1)
       .maybeSingle()
     if (campaignError) throw new Error(campaignError.message)
+    if (campaign && campaign.kind === "lead" && !isKs24Campaign(campaign.title)) {
+      console.log(`[meta-webhook] Kampagne "${campaign.title}" ist keine KS24-Kampagne, Lead ${value.leadgen_id} wird nicht importiert.`)
+      return
+    }
     if (!campaign || campaign.status === ARCHIVED_STATUS) {
       console.warn(`[meta-webhook] Keine aktive Kampagne für Formular ${value.form_id} gefunden, ignoriere Lead ${value.leadgen_id}.`)
       return
