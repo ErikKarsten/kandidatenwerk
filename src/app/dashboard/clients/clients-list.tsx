@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Search } from "lucide-react"
 import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import { ClientCard, type ClientCardProps } from "@/components/dashboard/client-card"
+import { PROJECT_PHASES } from "@/lib/client-project"
 
 export type ClientsSortOption = "newest" | "oldest" | "name-asc" | "name-desc"
 export type ClientsStatusFilter = "alle" | "aktiv" | "inaktiv"
@@ -40,6 +41,9 @@ interface ClientsListProps {
   search: string
   statusFilter: ClientsStatusFilter
   sort: ClientsSortOption
+  phaseFilter: string
+  kamFilter: string
+  team: { id: string; full_name: string | null }[]
 }
 
 // Suche/Filter/Sortierung/Pagination laufen jetzt über URL-Suchparameter statt über
@@ -57,6 +61,9 @@ export function ClientsList({
   search,
   statusFilter,
   sort,
+  phaseFilter,
+  kamFilter,
+  team,
 }: ClientsListProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -148,6 +155,35 @@ export function ClientsList({
           <option value="alle">Alle Status</option>
           <option value="aktiv">Aktiv</option>
           <option value="inaktiv">Inaktiv</option>
+        </select>
+        <select
+          value={phaseFilter}
+          onChange={(e) => updateParams({ phase: e.target.value === "alle" ? null : e.target.value, page: null })}
+          className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
+          style={{ borderColor: "#dde3ea" }}
+          aria-label="Projektphase"
+        >
+          <option value="alle">Alle Phasen</option>
+          {PROJECT_PHASES.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={kamFilter}
+          onChange={(e) => updateParams({ kam: e.target.value === "alle" ? null : e.target.value, page: null })}
+          className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
+          style={{ borderColor: "#dde3ea" }}
+          aria-label="Key Account Manager"
+        >
+          <option value="alle">Alle KAM</option>
+          <option value="me">Meine Kunden</option>
+          {team.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.full_name ?? "Ohne Namen"}
+            </option>
+          ))}
         </select>
         <select
           value={sort}

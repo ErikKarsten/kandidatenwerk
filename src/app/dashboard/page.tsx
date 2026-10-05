@@ -46,6 +46,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     applications,
     ads,
     { data: leadCampaigns },
+    { data: onboardingRows },
+    { data: teamRows },
   ] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "active"),
     supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("kind", "lead").eq("status", "active"),
@@ -54,9 +56,22 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     getApplicationStats(supabase, range),
     getMetaAdStats(range),
     supabase.from("campaigns").select("id, meta_campaign_id").eq("kind", "lead").not("meta_campaign_id", "is", null),
+    // Onboarding offen (Paket 13): Kunden in Phase Onboarding ohne abgeschlossenes Kanzleiprofil.
+    supabase
+      .from("clients")
+      .select("id, name, created_at, key_account_manager_id, client_profiles(finalized_at)")
+      .eq("project_phase", "onboarding")
+      .neq("status", "Archiviert")
+      .order("created_at", { ascending: false }),
+    supabase.from("profiles").select("id, full_name").in("role", ["agency_admin", "agency_member"]),
   ])
 
   const unassigned = Math.max(0, (candidateCount ?? 0) - assignedCount)
+  const onboardingOpen = (onboardingRows ?? []).filter((c) => {
+    const profile = Array.isArray(c.client_profiles) ? c.client_profiles[0] : c.client_profiles
+    return !profile?.finalized_at
+  })
+  const kamName = (id: string | null) => (teamRows ?? []).find((t) => t.id === id)?.full_name ?? null
   const campaignIdByMetaId = new Map((leadCampaigns ?? []).map((c) => [c.meta_campaign_id as string, c.id as string]))
   const costPerLead = ads.ok && ads.leads > 0 ? ads.spend / ads.leads : null
   const maxPerDay = Math.max(1, ...applications.byDay.map((d) => d.count))
@@ -75,6 +90,31 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <KpiCard icon={UserSearch} label="Kandidaten" value={candidateCount ?? 0} iconColor="#8b5cf6" href="/dashboard/candidates" />
         <KpiCard icon={UserX} label="Noch keiner Kanzlei zugeordnet" value={unassigned} iconColor="#f59e0b" href="/dashboard/candidates" />
       </div>
+
+      {onboardingOpen.length > 0 && (
+        <section className="rounded-xl border bg-white p-5" style={{ borderColor: "#f59e0b66" }}>
+          <h2 className="mb-1 text-sm font-semibold text-gray-900">Onboarding offen ({onboardingOpen.length})</h2>
+          <p className="mb-3 text-xs text-gray-500">Kunden in der Phase Onboarding, deren Kanzleiprofil noch nicht abgeschlossen ist.</p>
+          <ul className="flex flex-col divide-y" style={{ borderColor: "#eef2f6" }}>
+            {onboardingOpen.slice(0, 8).map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                <Link href={`/dashboard/clients/${c.id}?tab=projekt`} className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
+                  {c.name}
+                </Link>
+                <span className="text-xs text-gray-500">
+                  {kamName(c.key_account_manager_id) ? `KAM: ${kamName(c.key_account_manager_id)}` : "Kein KAM"} · seit{" "}
+                  {new Date(c.created_at).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {onboardingOpen.length > 8 && (
+            <Link href="/dashboard/clients?phase=onboarding" className="mt-2 inline-block text-xs font-medium hover:underline" style={{ color: "#1e56a0" }}>
+              Alle {onboardingOpen.length} anzeigen
+            </Link>
+          )}
+        </section>
+      )}
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">

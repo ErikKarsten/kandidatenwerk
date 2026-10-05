@@ -453,7 +453,7 @@ async function main() {
   fs.mkdirSync(backupDir, { recursive: true })
   const backupTables = [
     "candidates", "candidate_history", "candidate_files", "client_assignments", "client_assignment_notes",
-    "candidate_campaign_matches", "qualified_candidates", "custom_field_review_queue", "campaign_automations",
+    "candidate_campaign_matches", "custom_field_review_queue", "campaign_automations",
     "campaign_automation_runs", "clients", "client_contacts", "client_files", "campaigns", "profiles", "tasks", "locations",
   ]
   for (const t of backupTables) {
@@ -476,7 +476,6 @@ async function main() {
   await del("client_assignment_notes", all)
   await del("client_assignments", all)
   await del("candidate_campaign_matches", all)
-  await del("qualified_candidates", all)
   // campaign_automation_runs: kein DELETE-Recht für service_role, verschwindet per ON
   // DELETE CASCADE mit Automationen/Kandidaten.
   await del("campaign_automations", all)

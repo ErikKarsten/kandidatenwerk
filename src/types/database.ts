@@ -139,7 +139,15 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "client_profiles_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       client_positions: {
         Row: {
@@ -208,7 +216,15 @@ export type Database = {
           created_at?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "client_positions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       client_comments: {
         Row: {
@@ -241,7 +257,15 @@ export type Database = {
           created_at?: string
           edited_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "client_comments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       client_contacts: {
         Row: {
@@ -749,35 +773,6 @@ export type Database = {
           }
         ]
       }
-      qualified_candidates: {
-        Row: {
-          id: string
-          candidate_id: string
-          added_at: string
-          criteria_reason: string | null
-        }
-        Insert: {
-          id?: string
-          candidate_id: string
-          added_at?: string
-          criteria_reason?: string | null
-        }
-        Update: {
-          id?: string
-          candidate_id?: string
-          added_at?: string
-          criteria_reason?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "qualified_candidates_candidate_id_fkey"
-            columns: ["candidate_id"]
-            isOneToOne: false
-            referencedRelation: "candidates"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       candidates: {
         Row: {
           id: string
@@ -993,6 +988,9 @@ export type Database = {
           candidate_count: number | null
           placement_count: number | null
           pipeline: Json | null
+          project_phase: string | null
+          key_account_manager_id: string | null
+          profile_finalized: boolean | null
         }
         Insert: {
           id?: string | null
@@ -1007,6 +1005,9 @@ export type Database = {
           candidate_count?: number | null
           placement_count?: number | null
           pipeline?: Json | null
+          project_phase?: string | null
+          key_account_manager_id?: string | null
+          profile_finalized?: boolean | null
         }
         Update: {
           id?: string | null
@@ -1021,6 +1022,9 @@ export type Database = {
           candidate_count?: number | null
           placement_count?: number | null
           pipeline?: Json | null
+          project_phase?: string | null
+          key_account_manager_id?: string | null
+          profile_finalized?: boolean | null
         }
         Relationships: []
       }
