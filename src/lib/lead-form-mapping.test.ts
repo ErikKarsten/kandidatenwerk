@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { applyFormMapping, suggestTarget, type FormQuestion } from "./lead-form-mapping"
 
-const fieldKeys = new Set(["ausbildung", "erreichbarkeit", "wohnort_plz", "alter"])
+const fieldKeys = new Set(["ausbildung", "erreichbarkeit", "wohnort_plz", "alter", "gehaltsvorstellung"])
 
 describe("suggestTarget", () => {
   it("nutzt den Fragetyp von Meta", () => {
@@ -12,6 +12,7 @@ describe("suggestTarget", () => {
   it("schlägt Zusatzfelder über die Beschriftung vor", () => {
     expect(suggestTarget({ key: "x", label: "Welche Ausbildung hast du absolviert?", type: "CUSTOM" }, fieldKeys)).toBe("field:ausbildung")
     expect(suggestTarget({ key: "x", label: "Wohnort (PLZ)", type: "CUSTOM" }, fieldKeys)).toBe("plz")
+    expect(suggestTarget({ key: "x", label: "Was ist deine Gehaltsvorstellung?", type: "CUSTOM" }, fieldKeys)).toBe("field:gehaltsvorstellung")
   })
   it("ohne Treffer in die Beschreibung, Kontaktfelder ohne Typ erkannt", () => {
     expect(suggestTarget({ key: "wie_viel_berufserfahrung_hast_du?" }, fieldKeys)).toBe("beschreibung")

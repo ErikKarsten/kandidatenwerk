@@ -35,28 +35,51 @@ export type ProfileFieldKey =
   | "software"
   | "arbeitszeiten"
   | "homeoffice"
+  | "gehaltsgefuege"
   | "ansprechpartner_bewerbung"
   | "painpoints"
   | "ziele_zusammenarbeit"
   | "vertriebsnotizen"
 
+// Abschnitte des Kanzleiprofils (Paket 13). "angebot" = was die Kanzlei Bewerbern bietet,
+// "intern" = Vertriebswissen, geht nicht in die Kanzleistelle24-Anzeige.
+export const PROFILE_GROUPS = [
+  { value: "kanzlei", label: "Kanzlei" },
+  { value: "angebot", label: "Arbeitgeberangebot" },
+  { value: "intern", label: "Vertrieb (intern)" },
+] as const
+export type ProfileGroup = (typeof PROFILE_GROUPS)[number]["value"]
+
 // required: muss gefüllt sein, bevor der Key Account Manager das Profil abschließen
 // kann (diese Angaben braucht auch die Stellenanzeige auf Kanzleistelle24).
-// internal: nur für das Team (Vertriebswissen), geht nicht in die Kanzleistelle24-Anzeige.
-export const PROFILE_FIELDS: { key: ProfileFieldKey; label: string; multiline?: boolean; required?: boolean; internal?: boolean; placeholder?: string }[] = [
-  { key: "kurzbeschreibung", label: "Kurzbeschreibung", required: true, placeholder: "Ein Satz, z.B. Moderne Steuerkanzlei mit 15 Mitarbeitenden in Köln" },
-  { key: "intro", label: "Intro zur Kanzlei", multiline: true, required: true, placeholder: "Wer ist die Kanzlei, was macht sie aus?" },
-  { key: "website", label: "Website" },
-  { key: "mitarbeiterzahl", label: "Mitarbeiterzahl", required: true },
-  { key: "standorte", label: "Standort(e)", required: true },
-  { key: "mandantenstruktur", label: "Mandantenstruktur / Branchen", multiline: true },
-  { key: "software", label: "Software", placeholder: "z.B. DATEV, Addison" },
-  { key: "arbeitszeiten", label: "Arbeitszeiten", placeholder: "z.B. Gleitzeit, 4-Tage-Woche möglich" },
-  { key: "homeoffice", label: "Homeoffice" },
-  { key: "ansprechpartner_bewerbung", label: "Ansprechpartner für Bewerbungsgespräche" },
-  { key: "painpoints", label: "Painpoints – warum arbeitet die Kanzlei mit uns?", multiline: true, internal: true },
-  { key: "ziele_zusammenarbeit", label: "Ziele / Erwartungen an die Zusammenarbeit", multiline: true, internal: true },
-  { key: "vertriebsnotizen", label: "Notizen aus dem Vertrieb", multiline: true, internal: true },
+export const PROFILE_FIELDS: {
+  key: ProfileFieldKey
+  label: string
+  group: ProfileGroup
+  multiline?: boolean
+  required?: boolean
+  placeholder?: string
+}[] = [
+  { key: "kurzbeschreibung", label: "Kurzbeschreibung", group: "kanzlei", required: true, placeholder: "Ein Satz, z.B. Moderne Steuerkanzlei mit 15 Mitarbeitenden in Köln" },
+  { key: "intro", label: "Intro zur Kanzlei", group: "kanzlei", multiline: true, required: true, placeholder: "Wer ist die Kanzlei, was macht sie aus?" },
+  { key: "website", label: "Website", group: "kanzlei" },
+  { key: "mitarbeiterzahl", label: "Mitarbeiterzahl", group: "kanzlei", required: true },
+  { key: "standorte", label: "Standort(e)", group: "kanzlei", required: true },
+  { key: "mandantenstruktur", label: "Mandantenstruktur / Branchen", group: "kanzlei", multiline: true },
+  { key: "software", label: "Software", group: "kanzlei", placeholder: "z.B. DATEV, Addison" },
+  { key: "ansprechpartner_bewerbung", label: "Ansprechpartner für Bewerbungsgespräche", group: "kanzlei" },
+  {
+    key: "gehaltsgefuege",
+    label: "Gehaltsgefüge",
+    group: "angebot",
+    multiline: true,
+    placeholder: "z.B. Steuerfachangestellte 42.000–52.000 € je nach Erfahrung, 13. Gehalt, jährliche Gehaltsrunde",
+  },
+  { key: "arbeitszeiten", label: "Arbeitszeiten", group: "angebot", placeholder: "z.B. Gleitzeit, 4-Tage-Woche möglich" },
+  { key: "homeoffice", label: "Homeoffice", group: "angebot" },
+  { key: "painpoints", label: "Painpoints – warum arbeitet die Kanzlei mit uns?", group: "intern", multiline: true },
+  { key: "ziele_zusammenarbeit", label: "Ziele / Erwartungen an die Zusammenarbeit", group: "intern", multiline: true },
+  { key: "vertriebsnotizen", label: "Notizen aus dem Vertrieb", group: "intern", multiline: true },
 ]
 
 export interface ClientProfileValues extends Partial<Record<ProfileFieldKey, string | null>> {

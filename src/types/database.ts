@@ -87,6 +87,7 @@ export type Database = {
           software: string | null
           arbeitszeiten: string | null
           homeoffice: string | null
+          gehaltsgefuege: string | null
           benefits: string[]
           ansprechpartner_bewerbung: string | null
           vertriebsnotizen: string | null
@@ -108,6 +109,7 @@ export type Database = {
           software?: string | null
           arbeitszeiten?: string | null
           homeoffice?: string | null
+          gehaltsgefuege?: string | null
           benefits?: string[]
           ansprechpartner_bewerbung?: string | null
           vertriebsnotizen?: string | null
@@ -129,6 +131,7 @@ export type Database = {
           software?: string | null
           arbeitszeiten?: string | null
           homeoffice?: string | null
+          gehaltsgefuege?: string | null
           benefits?: string[]
           ansprechpartner_bewerbung?: string | null
           vertriebsnotizen?: string | null

@@ -73,3 +73,10 @@ begin
 end $$;
 
 notify pgrst, 'reload schema';
+
+-- Gehalt (Paket 13): Gehaltsgefüge der Kanzlei im Kanzleiprofil (geht später auch in
+-- die Stellenanzeige auf Kanzleistelle24).
+alter table public.client_profiles
+  add column if not exists gehaltsgefuege text;
+
+notify pgrst, 'reload schema';

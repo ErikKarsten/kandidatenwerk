@@ -28,6 +28,7 @@ ergänzt der Key Account Manager im Kanzleiprofil.
 | `key_account_manager_email` | E-Mail des KAM (muss ein Team-Mitglied in Kandidatenwerk sein) |
 | `vertriebsnotizen` | Notizen aus dem Vertrieb |
 | `kurzbeschreibung`, `intro`, `mitarbeiterzahl`, `standorte`, `mandantenstruktur`, `software`, `arbeitszeiten`, `homeoffice`, `ansprechpartner_bewerbung` | Kanzleiprofil |
+| `gehaltsgefuege` | Gehaltsgefüge der Kanzlei (Spannen je Rolle, 13. Gehalt, Bonus, Gehaltsentwicklung) |
 | `benefits` | Liste, getrennt durch Komma, Semikolon oder Zeilenumbruch |
 | `painpoints` | Warum die Kanzlei mit uns arbeitet (nur intern) |
 | `ziele_zusammenarbeit` | Ziele/Erwartungen an die Zusammenarbeit (nur intern) |

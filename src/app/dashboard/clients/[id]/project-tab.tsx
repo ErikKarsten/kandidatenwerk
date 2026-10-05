@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, AlertTriangle, Plus, X } from "lucide-react"
-import { PROFILE_FIELDS, PROJECT_PHASES, contractEnd, missingProfileItems, type ClientProfileValues } from "@/lib/client-project"
+import { PROFILE_FIELDS, PROFILE_GROUPS, PROJECT_PHASES, contractEnd, missingProfileItems, type ClientProfileValues } from "@/lib/client-project"
 import { finalizeClientProfileAction, saveClientProfileAction, updateProjectMetaAction } from "./project-actions"
 import { ProjectPositions, type ClientPosition } from "./project-positions"
 
@@ -276,66 +276,75 @@ function ProfileCard({ clientId, profile, missing }: { clientId: string; profile
       </div>
 
       {editing ? (
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {PROFILE_FIELDS.map((f) => (
-              <label key={f.key} className={`flex flex-col gap-1 ${f.multiline ? "sm:col-span-2" : ""}`}>
-                <span className="text-xs font-medium text-gray-500">
-                  {f.label}
-                  {f.required ? " *" : ""}
-                </span>
-                {f.multiline ? (
-                  <textarea
-                    className={input}
-                    style={f.required && !(v[f.key] ?? "").trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
-                    rows={4}
-                    value={v[f.key] ?? ""}
-                    placeholder={f.placeholder}
-                    onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
-                  />
-                ) : (
-                  <input
-                    className={input}
-                    style={f.required && !(v[f.key] ?? "").trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
-                    value={v[f.key] ?? ""}
-                    placeholder={f.placeholder}
-                    onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
-                  />
-                )}
-              </label>
-            ))}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-gray-500">Benefits *</span>
-            <div className="flex flex-wrap gap-1.5">
-              {(v.benefits ?? []).map((b, i) => (
-                <span key={`${b}-${i}`} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
-                  {b}
-                  <button type="button" onClick={() => setV({ ...v, benefits: (v.benefits ?? []).filter((_, j) => j !== i) })} aria-label={`${b} entfernen`}>
-                    <X size={11} />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                className={input}
-                style={(v.benefits ?? []).length === 0 && !newBenefit.trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
-                value={newBenefit}
-                placeholder="z.B. Jobrad, 30 Tage Urlaub, Fortbildungsbudget"
-                onChange={(e) => setNewBenefit(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
-                    addBenefit()
-                  }
-                }}
-              />
-              <button type="button" onClick={addBenefit} className="rounded-md border p-1.5 text-gray-500 hover:bg-gray-50" style={{ borderColor: "#dde3ea" }} aria-label="Benefit hinzufügen">
-                <Plus size={14} />
-              </button>
-            </div>
-          </div>
+        <div className="flex flex-col gap-5">
+          {PROFILE_GROUPS.map((g) => (
+            <section key={g.value} className="flex flex-col gap-3">
+              <h4 className="border-b pb-1 text-xs font-semibold uppercase tracking-wide text-gray-400" style={{ borderColor: "#eef2f6" }}>
+                {g.label}
+              </h4>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {PROFILE_FIELDS.filter((f) => f.group === g.value).map((f) => (
+                  <label key={f.key} className={`flex flex-col gap-1 ${f.multiline ? "sm:col-span-2" : ""}`}>
+                    <span className="text-xs font-medium text-gray-500">
+                      {f.label}
+                      {f.required ? " *" : ""}
+                    </span>
+                    {f.multiline ? (
+                      <textarea
+                        className={input}
+                        style={f.required && !(v[f.key] ?? "").trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
+                        rows={f.key === "gehaltsgefuege" ? 3 : 4}
+                        value={v[f.key] ?? ""}
+                        placeholder={f.placeholder}
+                        onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
+                      />
+                    ) : (
+                      <input
+                        className={input}
+                        style={f.required && !(v[f.key] ?? "").trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
+                        value={v[f.key] ?? ""}
+                        placeholder={f.placeholder}
+                        onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+              {g.value === "angebot" && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-gray-500">Benefits *</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(v.benefits ?? []).map((b, i) => (
+                      <span key={`${b}-${i}`} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
+                        {b}
+                        <button type="button" onClick={() => setV({ ...v, benefits: (v.benefits ?? []).filter((_, j) => j !== i) })} aria-label={`${b} entfernen`}>
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      className={input}
+                      style={(v.benefits ?? []).length === 0 && !newBenefit.trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
+                      value={newBenefit}
+                      placeholder="z.B. Jobrad, 30 Tage Urlaub, Fortbildungsbudget"
+                      onChange={(e) => setNewBenefit(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          addBenefit()
+                        }
+                      }}
+                    />
+                    <button type="button" onClick={addBenefit} className="rounded-md border p-1.5 text-gray-500 hover:bg-gray-50" style={{ borderColor: "#dde3ea" }} aria-label="Benefit hinzufügen">
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          ))}
           <div className="flex items-center gap-3">
             <button type="button" onClick={save} disabled={pending} className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50" style={{ backgroundColor: "#1e56a0" }}>
               {pending ? "Speichert…" : "Profil speichern"}
@@ -349,39 +358,54 @@ function ProfileCard({ clientId, profile, missing }: { clientId: string; profile
       ) : !profile ? (
         <p className="text-sm text-gray-400">Noch kein Kanzleiprofil – „Ausfüllen“ klicken.</p>
       ) : (
-        <dl className="flex flex-col gap-3">
-          {PROFILE_FIELDS.filter((f) => (profile[f.key] ?? "").trim() || missing.includes(f.label)).map((f) =>
-            (profile[f.key] ?? "").trim() ? (
-              <div key={f.key}>
-                <dt className="text-xs font-medium text-gray-400">{f.label}</dt>
-                <dd className="whitespace-pre-wrap text-sm text-gray-800">{profile[f.key]}</dd>
-              </div>
-            ) : (
-              <div key={f.key} className="rounded-md border px-2 py-1" style={MISSING_STYLE}>
-                <dt className="text-xs font-medium text-amber-800">{f.label}</dt>
-                <dd className="text-xs text-amber-700">fehlt noch</dd>
-              </div>
+        <div className="flex flex-col gap-5">
+          {PROFILE_GROUPS.map((g) => {
+            const fields = PROFILE_FIELDS.filter((f) => f.group === g.value && ((profile[f.key] ?? "").trim() || missing.includes(f.label)))
+            const benefits = g.value === "angebot" ? profile.benefits ?? [] : []
+            const benefitsMissing = g.value === "angebot" && missing.includes("Benefits")
+            if (fields.length === 0 && benefits.length === 0 && !benefitsMissing) return null
+            return (
+              <section key={g.value}>
+                <h4 className="mb-2 border-b pb-1 text-xs font-semibold uppercase tracking-wide text-gray-400" style={{ borderColor: "#eef2f6" }}>
+                  {g.label}
+                </h4>
+                <dl className="flex flex-col gap-3">
+                  {fields.map((f) =>
+                    (profile[f.key] ?? "").trim() ? (
+                      <div key={f.key}>
+                        <dt className="text-xs font-medium text-gray-400">{f.label}</dt>
+                        <dd className="whitespace-pre-wrap text-sm text-gray-800">{profile[f.key]}</dd>
+                      </div>
+                    ) : (
+                      <div key={f.key} className="rounded-md border px-2 py-1" style={MISSING_STYLE}>
+                        <dt className="text-xs font-medium text-amber-800">{f.label}</dt>
+                        <dd className="text-xs text-amber-700">fehlt noch</dd>
+                      </div>
+                    )
+                  )}
+                  {benefitsMissing && (
+                    <div className="rounded-md border px-2 py-1" style={MISSING_STYLE}>
+                      <dt className="text-xs font-medium text-amber-800">Benefits</dt>
+                      <dd className="text-xs text-amber-700">fehlt noch</dd>
+                    </div>
+                  )}
+                  {benefits.length > 0 && (
+                    <div>
+                      <dt className="text-xs font-medium text-gray-400">Benefits</dt>
+                      <dd className="mt-1 flex flex-wrap gap-1.5">
+                        {benefits.map((b, i) => (
+                          <span key={`${b}-${i}`} className="rounded-full px-2 py-0.5 text-xs" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
+                            {b}
+                          </span>
+                        ))}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </section>
             )
-          )}
-          {missing.includes("Benefits") && (
-            <div className="rounded-md border px-2 py-1" style={MISSING_STYLE}>
-              <dt className="text-xs font-medium text-amber-800">Benefits</dt>
-              <dd className="text-xs text-amber-700">fehlt noch</dd>
-            </div>
-          )}
-          {(profile.benefits ?? []).length > 0 && (
-            <div>
-              <dt className="text-xs font-medium text-gray-400">Benefits</dt>
-              <dd className="mt-1 flex flex-wrap gap-1.5">
-                {(profile.benefits ?? []).map((b, i) => (
-                  <span key={`${b}-${i}`} className="rounded-full px-2 py-0.5 text-xs" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
-                    {b}
-                  </span>
-                ))}
-              </dd>
-            </div>
-          )}
-        </dl>
+          })}
+        </div>
       )}
     </div>
   )

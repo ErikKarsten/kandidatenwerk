@@ -17,6 +17,7 @@ const FIELD_RULES: { test: RegExp; keys: string[] }[] = [
   { test: /alter.*wohnort|wohnort.*alter/, keys: ["alter", "wohnort_plz"] },
   { test: /wohnort|postleitzahl|\bplz\b/, keys: ["wohnort_plz"] },
   { test: /^alter\b|wie alt/, keys: ["alter"] },
+  { test: /gehalt|lohnvorstellung|verdienst|vergütung|verguetung/, keys: ["gehaltsvorstellung"] },
   { test: /ausbildung|abschluss|qualifikation/, keys: ["ausbildung"] },
   { test: /erreich/, keys: ["erreichbarkeit"] },
   { test: /wechselgrund|wechslegrund|warum.*wechsel|wechseln/, keys: ["wechselgrund"] },
