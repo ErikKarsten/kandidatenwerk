@@ -22,6 +22,9 @@ export interface MapPoint {
   // href bleibt das Label reiner Text - Rückwärtskompatibilität für matches-section.tsx
   // / matches-tab.tsx, die das (noch) nicht setzen.
   href?: string
+  // Statt Link: Klick auf den Namen ruft das auf (z.B. Kandidaten-Seitenfenster,
+  // Paket 13) - die Seite mit Karte und Suche bleibt erhalten.
+  onSelect?: () => void
 }
 
 type ValidMapPoint = MapPoint & { lat: number; lng: number }
@@ -130,7 +133,11 @@ function groupByLocation(points: ValidMapPoint[]): PointGroup[] {
 function PointDetails({ point }: { point: MapPoint }) {
   return (
     <div>
-      {point.href ? (
+      {point.onSelect ? (
+        <button type="button" onClick={point.onSelect} className="text-left font-medium hover:underline" style={{ color: "#1e56a0" }}>
+          {point.label}
+        </button>
+      ) : point.href ? (
         <Link href={point.href} className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
           {point.label}
         </Link>

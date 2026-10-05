@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useTransition } from "react"
-import Link from "next/link"
+import { CandidatePanel } from "@/components/dashboard/candidate-panel/candidate-panel"
 import { useRouter } from "next/navigation"
 import { Search } from "lucide-react"
 import dynamic from "next/dynamic"
@@ -68,6 +68,8 @@ export function AvailableCandidatesPanel({
   const [loading, startLoading] = useTransition()
   const [assigningId, setAssigningId] = useState<string | null>(null)
   const [assignedKeys, setAssignedKeys] = useState<Set<string>>(new Set())
+  // Kandidat im Seitenfenster (Paket 13): Suche, Filter und Seite bleiben erhalten.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   // Suche erst 300 ms nach dem letzten Tastendruck auslösen.
   useEffect(() => {
@@ -167,7 +169,7 @@ export function AvailableCandidatesPanel({
         <MatchesMap
           points={[
             { lat: campaign.lat, lng: campaign.lng, label: campaign.title, isSelf: true } as MapPoint,
-            ...result.items.map((c) => ({ lat: c.lat, lng: c.lng, label: c.name, sublabel: c.plz ?? undefined })),
+            ...result.items.map((c) => ({ lat: c.lat, lng: c.lng, label: c.name, sublabel: c.plz ?? undefined, onSelect: () => setSelectedId(c.id) })),
           ]}
         />
       )}
@@ -200,9 +202,9 @@ export function AvailableCandidatesPanel({
                 return (
                   <tr key={c.id} className="border-b last:border-0" style={{ borderColor: "#eef2f6" }}>
                     <td className="px-4 py-2.5">
-                      <Link href={`/dashboard/candidates/${c.id}`} className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
+                      <button type="button" onClick={() => setSelectedId(c.id)} className="text-left font-medium hover:underline" style={{ color: "#1e56a0" }}>
                         {c.name}
-                      </Link>
+                      </button>
                       {c.email && <div className="text-xs text-gray-400">{c.email}</div>}
                     </td>
                     <td className="px-4 py-2.5">
@@ -267,6 +269,14 @@ export function AvailableCandidatesPanel({
             </button>
           </div>
         </div>
+      )}
+      {selectedId && (
+        <CandidatePanel
+          candidateId={selectedId}
+          onClose={() => setSelectedId(null)}
+          campaign={{ id: campaign.id, title: campaign.title }}
+          onAssigned={(id) => setAssignedKeys((prev) => new Set(prev).add(`${campaignId}:${id}`))}
+        />
       )}
     </div>
   )

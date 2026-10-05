@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react"
 import dynamic from "next/dynamic"
 import { Search } from "lucide-react"
 import type { MapCircle, MapPoint, MatchesMapHandle } from "@/components/dashboard/matches-map"
+import { CandidatePanel } from "@/components/dashboard/candidate-panel/candidate-panel"
 import type { AdArea } from "@/lib/meta-campaigns-queries"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { searchLocationAction } from "./actions"
@@ -95,6 +96,8 @@ export function MapOverview({
     [adAreas]
   )
   const [accuracyFilter, setAccuracyFilter] = useState<AccuracyFilter>("all")
+  // Kandidat im Seitenfenster statt Seitenwechsel (Paket 13, T-55).
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
 
   const mapRef = useRef<MatchesMapHandle>(null)
   const [locationQuery, setLocationQuery] = useState("")
@@ -163,7 +166,7 @@ export function MapOverview({
       color: CANDIDATE_COLOR,
       approximate: c.approximate,
       note: c.approximate ? "Ungefährer Standort, keine eigene PLZ hinterlegt" : undefined,
-      href: `/dashboard/candidates/${c.id}`,
+      onSelect: () => setSelectedCandidateId(c.id),
     }))
 
     return [...clientPoints, ...candidatePoints]
@@ -289,6 +292,7 @@ export function MapOverview({
       </div>
 
       <MatchesMap ref={mapRef} points={points} circles={showAdAreas ? adCircles : []} height="600px" scrollWheelZoom />
+      {selectedCandidateId && <CandidatePanel candidateId={selectedCandidateId} onClose={() => setSelectedCandidateId(null)} />}
     </div>
   )
 }

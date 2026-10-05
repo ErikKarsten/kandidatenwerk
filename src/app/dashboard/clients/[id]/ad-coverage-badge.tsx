@@ -68,7 +68,7 @@ export function AdCoverageBadge({
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
           <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b px-5 py-3" style={{ borderColor: "#eef2f6" }}>
               <h2 className="text-sm font-semibold text-gray-900">Werbegebiete am Standort von {clientName}</h2>
