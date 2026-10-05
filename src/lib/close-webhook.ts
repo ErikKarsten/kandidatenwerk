@@ -39,6 +39,12 @@ export interface CloseWebhookPayload {
   homeoffice?: string
   benefits?: string | string[]
   ansprechpartner_bewerbung?: string
+  // Aus den Gesprächstranskripten (Zapier-AI), nur intern:
+  painpoints?: string
+  ziele_zusammenarbeit?: string
+  gespraechszusammenfassung?: string
+  // Mehrere Stellen als JSON-Liste: [{"titel": "...", "berufsbild": "...", "plz": "...", ...}]
+  stellen_json?: string | PositionPayload[]
   stelle_titel?: string
   stelle_berufsbild?: string
   stelle_plz?: string
@@ -51,6 +57,53 @@ export interface CloseWebhookPayload {
   stelle_start?: string
   stelle_aufgaben?: string
   stelle_anforderungen?: string
+}
+
+export interface PositionPayload {
+  titel?: string
+  berufsbild?: string
+  plz?: string
+  ort?: string
+  umkreis_km?: string | number
+  arbeitszeit?: string
+  berufserfahrung?: string
+  software?: string
+  gehalt?: string
+  start?: string
+  aufgaben?: string
+  anforderungen?: string
+}
+
+// Stellen aus stellen_json (Liste) und den Einzelfeldern stelle_* zusammenführen.
+export function collectPositions(payload: CloseWebhookPayload): PositionPayload[] {
+  let list: PositionPayload[] = []
+  const raw = payload.stellen_json
+  if (Array.isArray(raw)) list = raw
+  else if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw.trim().replace(/^```(json)?|```$/g, ""))
+      list = Array.isArray(parsed) ? parsed : []
+    } catch {
+      list = []
+    }
+  }
+  if (text(payload.stelle_titel)) {
+    list.push({
+      titel: payload.stelle_titel,
+      berufsbild: payload.stelle_berufsbild,
+      plz: payload.stelle_plz,
+      ort: payload.stelle_ort,
+      umkreis_km: payload.stelle_umkreis_km,
+      arbeitszeit: payload.stelle_arbeitszeit,
+      berufserfahrung: payload.stelle_berufserfahrung,
+      software: payload.stelle_software,
+      gehalt: payload.stelle_gehalt,
+      start: payload.stelle_start,
+      aufgaben: payload.stelle_aufgaben,
+      anforderungen: payload.stelle_anforderungen,
+    })
+  }
+  return list.filter((p) => p && typeof p === "object" && text(p.titel))
 }
 
 export interface CloseWebhookResult {
@@ -235,30 +288,34 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
     }
   }
 
-  // 5. Gesuchte Stelle (falls mit diesem Titel noch nicht vorhanden).
-  const positionTitle = text(payload.stelle_titel)
-  if (positionTitle) {
+  // 5. Gesuchte Stellen (nur solche, deren Titel es beim Kunden noch nicht gibt).
+  const incomingPositions = collectPositions(payload)
+  if (incomingPositions.length > 0) {
     const { data: positions } = await db.from("client_positions").select("title").eq("client_id", clientId)
-    if (!(positions ?? []).some((p) => (p.title as string).toLowerCase() === positionTitle.toLowerCase())) {
-      const positionPlz = text(payload.stelle_plz)?.match(/\d{5}/)?.[0] ?? plz
+    const known = new Set((positions ?? []).map((p) => (p.title as string).toLowerCase()))
+    for (const p of incomingPositions) {
+      const positionTitle = text(p.titel)!
+      if (known.has(positionTitle.toLowerCase())) continue
+      known.add(positionTitle.toLowerCase())
+      const positionPlz = text(p.plz)?.match(/\d{5}/)?.[0] ?? plz
       const coords = positionPlz ? geocodePlz(positionPlz) : null
-      const radius = Number(payload.stelle_umkreis_km)
+      const radius = Number(p.umkreis_km)
       await db.from("client_positions").insert({
         client_id: clientId,
         title: positionTitle,
-        berufsbild: mapKanzleistelleBerufsbild(text(payload.stelle_berufsbild) ?? positionTitle),
+        berufsbild: mapKanzleistelleBerufsbild(text(p.berufsbild) ?? positionTitle),
         plz: positionPlz,
-        ort: text(payload.stelle_ort) ?? text(payload.ort),
+        ort: text(p.ort) ?? text(payload.ort),
         lat: coords?.lat ?? null,
         lng: coords?.lng ?? null,
         radius_km: Number.isFinite(radius) && radius > 0 ? Math.round(radius) : 25,
-        arbeitszeit: text(payload.stelle_arbeitszeit),
-        berufserfahrung: text(payload.stelle_berufserfahrung),
-        software: text(payload.stelle_software),
-        gehalt: text(payload.stelle_gehalt),
-        startdatum: text(payload.stelle_start),
-        aufgaben: text(payload.stelle_aufgaben),
-        anforderungen: text(payload.stelle_anforderungen),
+        arbeitszeit: text(p.arbeitszeit),
+        berufserfahrung: text(p.berufserfahrung),
+        software: text(p.software),
+        gehalt: text(p.gehalt),
+        startdatum: text(p.start),
+        aufgaben: text(p.aufgaben),
+        anforderungen: text(p.anforderungen),
       })
       filled.push(`Stelle „${positionTitle}“`)
     }
@@ -280,6 +337,17 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
     kind: "system",
     content: `${intro}${filled.length > 0 ? ` Übernommen: ${filled.join(", ")}.` : " Keine neuen Angaben."}`,
   })
+  // Zusammenfassung des Gesprächs (Zapier-AI aus dem Transkript) als eigener Eintrag -
+  // bei jedem Aufruf, damit z.B. Folgebesprechung und Abschluss beide sichtbar sind.
+  const summary = text(payload.gespraechszusammenfassung)
+  if (summary) {
+    await db.from("client_comments").insert({
+      client_id: clientId,
+      author_id: null,
+      kind: "termin",
+      content: `Gesprächszusammenfassung aus Close${statusLabel ? ` (${statusLabel})` : ""}:\n${summary}`,
+    })
+  }
 
   return { clientId, outcome, filled }
 }

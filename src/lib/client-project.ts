@@ -27,11 +27,14 @@ export type ProfileFieldKey =
   | "arbeitszeiten"
   | "homeoffice"
   | "ansprechpartner_bewerbung"
+  | "painpoints"
+  | "ziele_zusammenarbeit"
   | "vertriebsnotizen"
 
 // required: muss gefüllt sein, bevor der Key Account Manager das Profil abschließen
 // kann (diese Angaben braucht auch die Stellenanzeige auf Kanzleistelle24).
-export const PROFILE_FIELDS: { key: ProfileFieldKey; label: string; multiline?: boolean; required?: boolean; placeholder?: string }[] = [
+// internal: nur für das Team (Vertriebswissen), geht nicht in die Kanzleistelle24-Anzeige.
+export const PROFILE_FIELDS: { key: ProfileFieldKey; label: string; multiline?: boolean; required?: boolean; internal?: boolean; placeholder?: string }[] = [
   { key: "kurzbeschreibung", label: "Kurzbeschreibung", required: true, placeholder: "Ein Satz, z.B. Moderne Steuerkanzlei mit 15 Mitarbeitenden in Köln" },
   { key: "intro", label: "Intro zur Kanzlei", multiline: true, required: true, placeholder: "Wer ist die Kanzlei, was macht sie aus?" },
   { key: "website", label: "Website" },
@@ -42,7 +45,9 @@ export const PROFILE_FIELDS: { key: ProfileFieldKey; label: string; multiline?: 
   { key: "arbeitszeiten", label: "Arbeitszeiten", placeholder: "z.B. Gleitzeit, 4-Tage-Woche möglich" },
   { key: "homeoffice", label: "Homeoffice" },
   { key: "ansprechpartner_bewerbung", label: "Ansprechpartner für Bewerbungsgespräche", required: true },
-  { key: "vertriebsnotizen", label: "Notizen aus dem Vertrieb", multiline: true },
+  { key: "painpoints", label: "Painpoints – warum arbeitet die Kanzlei mit uns?", multiline: true, internal: true },
+  { key: "ziele_zusammenarbeit", label: "Ziele / Erwartungen an die Zusammenarbeit", multiline: true, internal: true },
+  { key: "vertriebsnotizen", label: "Notizen aus dem Vertrieb", multiline: true, internal: true },
 ]
 
 export interface ClientProfileValues extends Partial<Record<ProfileFieldKey, string | null>> {

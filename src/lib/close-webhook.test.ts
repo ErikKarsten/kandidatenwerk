@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { closeLeadUrl, closeStatusLabel, normalizeCompanyName, parseGermanDate, splitBenefits } from "./close-webhook"
+import { closeLeadUrl, closeStatusLabel, collectPositions, normalizeCompanyName, parseGermanDate, splitBenefits } from "./close-webhook"
 
 describe("parseGermanDate", () => {
   it.each([
@@ -37,5 +37,18 @@ describe("closeStatusLabel", () => {
   })
   it("baut den Link zum Lead", () => {
     expect(closeLeadUrl("lead_abc")).toBe("https://app.close.com/lead/lead_abc/")
+  })
+})
+
+describe("collectPositions", () => {
+  it("liest die JSON-Liste der Zapier-AI (auch mit Code-Block) und die Einzelfelder", () => {
+    const r = collectPositions({
+      stellen_json: '```json\n[{"titel":"Steuerfachangestellte","software":"DATEV"},{"titel":""}]\n```',
+      stelle_titel: "Bilanzbuchhalter",
+    })
+    expect(r.map((p) => p.titel)).toEqual(["Steuerfachangestellte", "Bilanzbuchhalter"])
+  })
+  it("ignoriert kaputtes JSON", () => {
+    expect(collectPositions({ stellen_json: "keine Liste" })).toEqual([])
   })
 })

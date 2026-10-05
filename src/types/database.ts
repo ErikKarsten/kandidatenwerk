@@ -90,6 +90,8 @@ export type Database = {
           benefits: string[]
           ansprechpartner_bewerbung: string | null
           vertriebsnotizen: string | null
+          painpoints: string | null
+          ziele_zusammenarbeit: string | null
           finalized_at: string | null
           finalized_by: string | null
           updated_at: string
@@ -109,6 +111,8 @@ export type Database = {
           benefits?: string[]
           ansprechpartner_bewerbung?: string | null
           vertriebsnotizen?: string | null
+          painpoints?: string | null
+          ziele_zusammenarbeit?: string | null
           finalized_at?: string | null
           finalized_by?: string | null
           updated_at?: string
@@ -128,6 +132,8 @@ export type Database = {
           benefits?: string[]
           ansprechpartner_bewerbung?: string | null
           vertriebsnotizen?: string | null
+          painpoints?: string | null
+          ziele_zusammenarbeit?: string | null
           finalized_at?: string | null
           finalized_by?: string | null
           updated_at?: string
