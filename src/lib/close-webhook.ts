@@ -160,6 +160,33 @@ export function splitBenefits(v: string | string[] | undefined): string[] {
     .filter(Boolean)
 }
 
+// Zapier ordnet beim Kontakt leicht das ganze Close-Kontakt-Objekt zu - dann kommt ein
+// Block "contact_first_name: Anna\ncontact_last_name: Muster\nemail: …\nphone: …".
+export function parseContactBlock(value: string): { name?: string; email?: string; phone?: string } | null {
+  if (!/contact_(first|last)_name\s*:|^\s*(name|email|phone)\s*:/im.test(value)) return null
+  const field = (key: string) => value.match(new RegExp(`^\\s*${key}\\s*:\\s*(.+)$`, "im"))?.[1]?.trim()
+  const name = [field("contact_first_name"), field("contact_last_name")].filter(Boolean).join(" ") || field("name")
+  return { name: name || undefined, email: field("email"), phone: field("phone") }
+}
+
+// Feldnamen aus Zapier tolerant lesen: "Close Lead ID", " close_lead_id ", "close-lead-id"
+// -> "close_lead_id". Verschachtelte Objekte (z.B. {"data": {...}}) werden aufgelöst.
+export function normalizePayload(raw: unknown): CloseWebhookPayload {
+  const source = Array.isArray(raw) ? raw[0] : raw
+  if (!source || typeof source !== "object") return {}
+  const entries = Object.entries(source as Record<string, unknown>)
+  // Zapier-"Wrap in data"-Fälle: einziges Objekt-Feld enthält die eigentlichen Daten.
+  if (entries.length === 1 && entries[0][1] && typeof entries[0][1] === "object" && !Array.isArray(entries[0][1])) {
+    return normalizePayload(entries[0][1])
+  }
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of entries) {
+    const k = key.trim().toLowerCase().replace(/[\s-]+/g, "_")
+    out[k] = value
+  }
+  return out as CloseWebhookPayload
+}
+
 export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebhookPayload): Promise<CloseWebhookResult> {
   const closeLeadId = text(payload.close_lead_id)
   const firma = text(payload.firma)
@@ -228,7 +255,15 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
     if (coords) Object.assign(updates, { lat: coords.lat, lng: coords.lng })
     filled.push("PLZ")
   }
-  fill("ort", text(payload.ort), "Ort")
+  // Ohne zugeordnete Adresse: PLZ/Ort aus "standorte" (z.B. "Laiberstr. 32, 72160 Horb").
+  const standortMatch = !plz ? text(payload.standorte)?.match(/\b(\d{5})\s+([A-ZÄÖÜa-zäöüß][\wäöüß .-]*)/) : null
+  if (standortMatch && !client!.plz) {
+    const coords = geocodePlz(standortMatch[1])
+    updates.plz = standortMatch[1]
+    if (coords) Object.assign(updates, { lat: coords.lat, lng: coords.lng })
+    filled.push("PLZ")
+  }
+  fill("ort", text(payload.ort) ?? standortMatch?.[2]?.split(/[;,]/)[0].trim() ?? null, "Ort")
   fill("contract_start", parseGermanDate(payload.vertragsstart), "Vertragsstart")
   const term = Number(payload.laufzeit_monate)
   fill("contract_term_months", Number.isInteger(term) && term > 0 ? term : null, "Laufzeit")
@@ -270,8 +305,10 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
   }
 
   // 4. Ansprechpartner als Kontakt (falls E-Mail noch nicht vorhanden).
-  const contactName = text(payload.ansprechpartner_name)
-  const contactEmail = text(payload.ansprechpartner_email)?.toLowerCase() ?? null
+  const block = text(payload.ansprechpartner_name) ? parseContactBlock(text(payload.ansprechpartner_name)!) : null
+  const contactName = block ? text(block.name) : text(payload.ansprechpartner_name)
+  const contactEmail = (text(payload.ansprechpartner_email) ?? text(block?.email))?.toLowerCase() ?? null
+  const contactPhone = text(payload.ansprechpartner_telefon) ?? text(block?.phone)
   if (contactName) {
     const { data: contacts } = await db.from("client_contacts").select("email, name").eq("client_id", clientId)
     const exists = (contacts ?? []).some((c) => (contactEmail && (c.email as string | null)?.toLowerCase() === contactEmail) || c.name === contactName)
@@ -280,7 +317,7 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
         client_id: clientId,
         name: contactName,
         email: contactEmail,
-        phone: text(payload.ansprechpartner_telefon),
+        phone: contactPhone,
         role: text(payload.ansprechpartner_position),
       })
       filled.push("Ansprechpartner")
