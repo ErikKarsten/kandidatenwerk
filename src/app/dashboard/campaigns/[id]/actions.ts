@@ -20,8 +20,6 @@ import { fetchMetaPages, fetchMetaLeadForms, createMetaTestLead, buildFormToPage
 import { ensureClientAssignment } from "@/lib/client-assignment"
 import type { TablesUpdate } from "@/types/database"
 import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
-import { after } from "next/server"
-import { notifyClientAboutAssignment } from "@/lib/assignment-notify"
 
 
 // requireStaffUser() aus src/lib/auth-guards.ts (Security-Review 08./09.09.2026) -
@@ -607,9 +605,9 @@ export async function assignCandidateToCampaignAction(
   if (!campaign) return { error: "Kampagne nicht gefunden." }
 
   try {
-    const assignment = await ensureCampaignAssignment(supabase, candidateId, campaignId, guard.staff.userId)
-    // Neue Zuordnung: Kanzlei per Mail informieren (Paket 20, T-90), nach der Antwort.
-    if (assignment.created) after(() => notifyClientAboutAssignment(supabase, assignment.id, guard.staff.userId))
+    // Mails dazu laufen ausschließlich über die Automatisierungen der Kampagne (Auslöser
+    // "Kandidat der Kampagne zugeordnet", Paket 21).
+    await ensureCampaignAssignment(supabase, candidateId, campaignId, guard.staff.userId)
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }

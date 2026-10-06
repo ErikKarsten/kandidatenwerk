@@ -8,16 +8,16 @@ import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 export const AUTOMATION_TRIGGER_OPTIONS = [
   { value: "new_lead", label: "Neuer Lead" },
   { value: "status_change", label: "Statusänderung" },
-  // Geht an die Kanzlei, sobald ihr ein Kandidat zugeordnet wird - unabhängig von Kampagnen
-  // (Paket 20, T-90).
-  { value: "client_assigned", label: "Kandidat einer Kanzlei zugeordnet" },
+  // Kanzlei-Kampagnen: sobald der Kampagne ein Kandidat zugeordnet wird (Paket 21) - z.B.
+  // "Neuer Kandidat für Sie" mit #Bewerberlink an die Portal-Zugänge der Kanzlei.
+  { value: "client_assigned", label: "Kandidat der Kampagne zugeordnet" },
   // Nur im Reiter "Kommunikation" beim Kandidaten nutzbar, nie automatisch (Paket 19, T-88).
   { value: "manual", label: "Nur manuell (Kommunikation)" },
 ]
 
 // Auslöser, die in Kampagnen als Automatisierung laufen.
 export function isCampaignTrigger(trigger: string): boolean {
-  return trigger === "new_lead" || trigger === "status_change"
+  return trigger === "new_lead" || trigger === "status_change" || trigger === "client_assigned"
 }
 export const CAMPAIGN_TRIGGER_OPTIONS = AUTOMATION_TRIGGER_OPTIONS.filter((o) => isCampaignTrigger(o.value))
 
@@ -32,8 +32,8 @@ export const AUTOMATION_DELAY_OPTIONS = [
 
 export const AUTOMATION_RECIPIENT_OPTIONS = [
   { value: "candidate", label: "Kandidat" },
-  { value: "client", label: "Kunde (primärer Ansprechpartner)" },
-  { value: "all_contacts", label: "Alle Kunden-Ansprechpartner" },
+  { value: "client", label: "Kanzlei: alle Portal-Zugänge (ohne Zugang: Kontakt-E-Mail)" },
+  { value: "all_contacts", label: "Kanzlei: alle Ansprechpartner (Stammdaten)" },
 ]
 
 export const AUTOMATION_VARIABLES = ["#Kandidatenname", "#Kampagnenname", "#Kundenname", "#Email", "#Telefon", "#Bewerberlink"]
@@ -41,7 +41,7 @@ export const AUTOMATION_VARIABLES = ["#Kandidatenname", "#Kampagnenname", "#Kund
 export function automationTriggerLabel(trigger: string, triggerStatus: string | null): string {
   if (trigger === "new_lead") return "Neuer Lead"
   if (trigger === "manual") return "Nur manuell (Kommunikation)"
-  if (trigger === "client_assigned") return "Kandidat einer Kanzlei zugeordnet"
+  if (trigger === "client_assigned") return "Kandidat der Kampagne zugeordnet"
   const status = CANDIDATE_STATUS_OPTIONS.find((s) => s.value === triggerStatus)?.label ?? triggerStatus ?? "–"
   return `Statusänderung → ${status}`
 }

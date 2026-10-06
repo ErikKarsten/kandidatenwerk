@@ -90,8 +90,7 @@ function TemplatesCard({ templates }: { templates: AutomationTemplate[] }) {
           <h2 className="text-sm font-semibold text-gray-900">E-Mail-Vorlagen</h2>
           <p className="text-xs text-gray-500">
             Alle Mails, die Kandidatenwerk verschickt: als Automatisierung in Kampagnen und – bei Empfänger „Kandidat“ – im Reiter „Kommunikation“ beim
-            Kandidaten. „Kandidat einer Kanzlei zugeordnet“ geht bei jeder neuen Zuordnung an die Kanzlei (mit #Bewerberlink), „Nur manuell“ nie
-            automatisch.
+            Kandidaten. Verschickt wird nur, was in einer Kampagne unter „Automatisierungen“ eingeschaltet ist – „Nur manuell“ nie automatisch.
           </p>
         </div>
         <button
