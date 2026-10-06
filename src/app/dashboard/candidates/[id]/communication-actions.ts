@@ -8,6 +8,8 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getStaffContext } from "@/lib/auth-guards"
 import { sendEmail } from "@/lib/brevo-mail"
 import { wrapAutomationEmailHtml } from "@/lib/automation-engine"
+import { randomUUID } from "node:crypto"
+import { replyAddressFor } from "@/lib/inbound-replies"
 
 export async function sendCandidateEmailAction(
   candidateId: string,
@@ -35,11 +37,19 @@ export async function sendCandidateEmailAction(
   if (!to) return { error: "Für den Kandidaten ist keine E-Mail-Adresse hinterlegt." }
 
   const name = me?.full_name?.trim()
-  const replyTo = me?.email ? { email: me.email, ...(name ? { name } : {}) } : undefined
+  // Mit eingerichteter Antwort-Domain (Paket 19, T-89) laufen Antworten über das
+  // Kandidatenwerk (Kopie an den Mitarbeiter), sonst direkt an den Mitarbeiter.
+  const messageId = randomUUID()
+  const inboundAddress = replyAddressFor(messageId)
+  const replyTo = inboundAddress
+    ? { email: inboundAddress, ...(name ? { name } : {}) }
+    : me?.email
+      ? { email: me.email, ...(name ? { name } : {}) }
+      : undefined
   let status = "gesendet"
   let sendError: string | null = null
   try {
-    await sendEmail([to], subject, wrapAutomationEmailHtml(body), {
+    await sendEmail([to], subject, wrapAutomationEmailHtml(body, name ? `Gesendet von ${name} · Endlich Mitarbeiter` : null), {
       senderName: name ? `${name} | Endlich Mitarbeiter` : "Endlich Mitarbeiter",
       replyTo,
     })
@@ -49,8 +59,10 @@ export async function sendCandidateEmailAction(
   }
 
   await supabase.from("candidate_messages").insert({
+    id: messageId,
     candidate_id: candidateId,
     channel: "email",
+    direction: "ausgehend",
     to_address: to,
     subject,
     body,

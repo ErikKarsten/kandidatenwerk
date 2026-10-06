@@ -43,6 +43,7 @@ function validate(t: AutomationTemplateInput): string | null {
   if (!AUTOMATION_TRIGGER_OPTIONS.some((o) => o.value === t.trigger)) return "Ungültiger Auslöser."
   if (t.trigger === "status_change" && !CANDIDATE_STATUS_OPTIONS.some((o) => o.value === t.trigger_status)) return "Bitte den Status wählen."
   if (!AUTOMATION_RECIPIENT_OPTIONS.some((o) => o.value === t.recipient)) return "Ungültiger Empfänger."
+  if (t.trigger === "manual" && t.recipient !== "candidate") return "Manuelle Vorlagen gehen immer an den Kandidaten."
   if (!Number.isFinite(t.delay_seconds) || t.delay_seconds < 0) return "Ungültige Verzögerung."
   if (!t.subject.trim()) return "Betreff ist ein Pflichtfeld."
   if (!t.body_html.trim()) return "Text ist ein Pflichtfeld."

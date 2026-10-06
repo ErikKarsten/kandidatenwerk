@@ -19,10 +19,8 @@ import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { fetchMetaPages, fetchMetaLeadForms, createMetaTestLead, buildFormToPageAccessTokenMap, type MetaPage, type MetaLeadForm } from "@/lib/meta-ads-client"
 import { ensureClientAssignment } from "@/lib/client-assignment"
 import type { TablesUpdate } from "@/types/database"
+import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
 
-// Siehe src/app/dashboard/candidates/page.tsx / clients-list.tsx / campaigns-list.tsx -
-// derselbe Wert wird dort für "isArchived"-Prüfungen genutzt.
-const ARCHIVED_STATUS = "Archiviert"
 
 // requireStaffUser() aus src/lib/auth-guards.ts (Security-Review 08./09.09.2026) -
 // schützt u.a. die Meta-Actions unten: die listen Facebook-Seiten-/Formularnamen aller
@@ -557,7 +555,9 @@ export async function searchAvailableCandidatesAction(
   let query = supabase
     .from("candidates")
     .select("id, first_name, last_name, email, plz, lat, lng, berufsbild, status, source, created_at")
-    .neq("status", ARCHIVED_STATUS)
+    // Kanzleien bekommen nur vorqualifizierte Kandidaten (Paket 19, T-86).
+    .eq("status", ASSIGNABLE_STATUS)
+    .eq("is_demo", false)
     .eq("berufsbild", campaign.berufsbild)
     .order("created_at", { ascending: false })
     .limit(MAX_CANDIDATE_ROWS)
@@ -565,7 +565,6 @@ export async function searchAvailableCandidatesAction(
   // Zeichen entfernen, die in der PostgREST-or()-Syntax eine Bedeutung haben.
   const q = filters.q.replace(/[%,()"\\*]/g, " ").trim()
   if (q) query = query.or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,plz.ilike.${q}%`)
-  if (filters.status && filters.status !== "alle") query = query.eq("status", filters.status)
 
   const [{ data: rows, error }, { data: assigned }] = await Promise.all([
     query,

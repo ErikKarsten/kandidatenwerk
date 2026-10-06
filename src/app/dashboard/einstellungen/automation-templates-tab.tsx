@@ -85,7 +85,13 @@ function TemplatesCard({ templates }: { templates: AutomationTemplate[] }) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border bg-white p-5" style={{ borderColor: "#dde3ea" }}>
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900">Automatisierungs-Vorlagen</h2>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">E-Mail-Vorlagen</h2>
+          <p className="text-xs text-gray-500">
+            Alle Mails, die Kandidatenwerk verschickt: als Automatisierung in Kampagnen und – bei Empfänger „Kandidat“ – im Reiter „Kommunikation“ beim
+            Kandidaten. „Nur manuell“ geht nie automatisch raus.
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => (setEditing({ id: null, form: EMPTY }), setError(null))}
@@ -139,7 +145,7 @@ function TemplatesCard({ templates }: { templates: AutomationTemplate[] }) {
               </Field>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Auslöser">
-                  <select className={inputClass} style={inputStyle} value={editing.form.trigger} onChange={(e) => set({ trigger: e.target.value, trigger_status: null })}>
+                  <select className={inputClass} style={inputStyle} value={editing.form.trigger} onChange={(e) => set({ trigger: e.target.value, trigger_status: null, ...(e.target.value === "manual" ? { recipient: "candidate" } : {}) })}>
                     {AUTOMATION_TRIGGER_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
@@ -155,6 +161,7 @@ function TemplatesCard({ templates }: { templates: AutomationTemplate[] }) {
                     </select>
                   </Field>
                 )}
+                {editing.form.trigger !== "manual" && (
                 <Field label="Verzögerung">
                   <select className={inputClass} style={inputStyle} value={editing.form.delay_seconds} onChange={(e) => set({ delay_seconds: Number(e.target.value) })}>
                     {AUTOMATION_DELAY_OPTIONS.map((o) => (
@@ -162,8 +169,9 @@ function TemplatesCard({ templates }: { templates: AutomationTemplate[] }) {
                     ))}
                   </select>
                 </Field>
+                )}
                 <Field label="Empfänger">
-                  <select className={inputClass} style={inputStyle} value={editing.form.recipient} onChange={(e) => set({ recipient: e.target.value })}>
+                  <select className={inputClass} style={inputStyle} value={editing.form.recipient} disabled={editing.form.trigger === "manual"} onChange={(e) => set({ recipient: e.target.value })}>
                     {AUTOMATION_RECIPIENT_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
@@ -284,7 +292,7 @@ function SetsCard({ templates, sets }: { templates: AutomationTemplate[]; sets: 
           </Field>
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-gray-600">Vorlagen im Set</span>
-            {templates.map((t) => (
+            {templates.filter((t) => t.trigger !== "manual").map((t) => (
               <label key={t.id} className="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   type="checkbox"

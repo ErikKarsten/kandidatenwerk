@@ -78,7 +78,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
         <div className="flex gap-0 overflow-x-auto border-b" style={{ borderColor: "#dde3ea" }}>
           <TabButton active={tab === "konto"} onClick={() => setTab("konto")}>Mein Konto</TabButton>
           <TabButton active={tab === "team"} onClick={() => setTab("team")}>Team ({team.length})</TabButton>
-          <TabButton active={tab === "automatisierung"} onClick={() => setTab("automatisierung")}>Automatisierung</TabButton>
+          <TabButton active={tab === "automatisierung"} onClick={() => setTab("automatisierung")}>E-Mail-Vorlagen</TabButton>
           <TabButton active={tab === "felder"} onClick={() => setTab("felder")}>Felder ({activeFields.length})</TabButton>
           <TabButton active={tab === "leadanbindung"} onClick={() => setTab("leadanbindung")}>Lead-Anbindung</TabButton>
         </div>
@@ -93,7 +93,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
           {tab === "team" && <TeamTab team={team} ownProfileId={ownProfile.id} />}
           {tab === "automatisierung" && agencyId && (
             <div className="flex flex-col gap-3">
-              <Section title="Automatisierungs-Vorlagen und Vorlagensets" meta={`${automationTemplates.templates.length} Vorlagen, ${automationTemplates.sets.length} Sets`} defaultOpen>
+              <Section title="E-Mail-Vorlagen und Vorlagensets" meta={`${automationTemplates.templates.length} Vorlagen, ${automationTemplates.sets.length} Sets`} defaultOpen>
                 <AutomationTemplatesTab templates={automationTemplates.templates} sets={automationTemplates.sets} />
               </Section>
               <Section title="Benachrichtigung bei neuen Leads" meta={`${leadNotificationRecipientIds.length} Empfänger`}>

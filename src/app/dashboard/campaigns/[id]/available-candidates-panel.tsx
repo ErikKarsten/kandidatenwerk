@@ -59,7 +59,6 @@ export function AvailableCandidatesPanel({
   const campaignId = campaign.id
   const [q, setQ] = useState("")
   const [debouncedQ, setDebouncedQ] = useState("")
-  const [status, setStatus] = useState("alle")
   const [radius, setRadius] = useState("kampagne")
   const [sort, setSort] = useState<AvailableSort>("distance")
   const [page, setPage] = useState(1)
@@ -81,7 +80,7 @@ export function AvailableCandidatesPanel({
     startLoading(async () => {
       const res = await searchAvailableCandidatesAction(campaignId, {
         q: debouncedQ,
-        status,
+        status: "vorqualifiziert",
         radius: radius === "kampagne" || radius === "alle" ? radius : Number(radius),
         sort,
         page,
@@ -94,7 +93,7 @@ export function AvailableCandidatesPanel({
       setError(null)
       setResult(res)
     })
-  }, [campaignId, debouncedQ, status, radius, sort, page])
+  }, [campaignId, debouncedQ, radius, sort, page])
 
   // Jede Filteränderung startet wieder auf Seite 1.
   function changeFilter(update: () => void) {
@@ -139,12 +138,10 @@ export function AvailableCandidatesPanel({
             style={borderStyle}
           />
         </div>
-        <select value={status} onChange={(e) => changeFilter(() => setStatus(e.target.value))} className={selectClass} style={borderStyle}>
-          <option value="alle">Alle Status</option>
-          {CANDIDATE_STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+        {/* Nur vorqualifizierte Kandidaten sind zuordenbar (Paket 19, T-86). */}
+        <span className="self-center rounded-full px-2.5 py-1 text-xs font-medium" style={{ backgroundColor: "#0ea5e918", color: "#0369a1" }}>
+          Nur vorqualifizierte Kandidaten
+        </span>
         <select value={radius} onChange={(e) => changeFilter(() => setRadius(e.target.value))} className={selectClass} style={borderStyle}>
           {RADIUS_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>

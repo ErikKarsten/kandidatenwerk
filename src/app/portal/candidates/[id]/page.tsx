@@ -8,6 +8,7 @@ import { PortalFilesList, type PortalFile } from "./files-list"
 import { PortalStatusSelector } from "./status-selector"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { isPortalVisible } from "@/lib/portal-visibility"
 
 export default async function PortalCandidateDetailPage({
   params,
@@ -31,7 +32,7 @@ export default async function PortalCandidateDetailPage({
       .maybeSingle(),
   ])
 
-  if (!candidate || !assignment) notFound()
+  if (!candidate || !assignment || !isPortalVisible(candidate)) notFound()
 
   // Zusatzfelder-Definitionen (Umbau vom 25.09.2026, Schritt 2/3) - bewusst per
   // Service-Role-Client statt über die RLS-Session des Portal-Nutzers gelesen:

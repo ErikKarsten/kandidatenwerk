@@ -25,10 +25,8 @@ import {
   candidatePortalLink,
   substituteTemplateVars,
   resolveAutomationRecipients,
-  usesCandidateLink,
   wrapAutomationEmailHtml,
 } from "@/lib/automation-engine"
-import { ensureClientAssignment } from "@/lib/client-assignment"
 
 type Supabase = SupabaseClient<Database>
 
@@ -207,12 +205,8 @@ export async function runAutomations(
             `[DRY-RUN] "${automation.name}" | Kampagne "${campaign.title}" | Kandidat ${candidateName} <${candidate.email ?? "-"}> | Empfänger: ${recipients.join(", ")} | Betreff: "${subject}"`
           )
         } else {
-          // Bewerberlink an den Kunden: Kandidat dem Kunden zuordnen, sonst führt der Link
-          // im Portal ins Leere (Paket 16, T-76).
-          const linkClientId = campaign.client_id ?? candidate.client_id
-          if (automation.recipient !== "candidate" && linkClientId && usesCandidateLink(automation)) {
-            await ensureClientAssignment(supabase, candidate.id, linkClientId)
-          }
+          // Keine automatische Kanzlei-Zuordnung mehr (Paket 19, T-86) - der #Bewerberlink
+          // öffnet im Portal nur, wenn das Team den Kandidaten der Kanzlei zugeordnet hat.
           await sendEmail(recipients, subject, emailHtml)
 
           await supabase.from("campaign_automation_runs").insert({

@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { signedAvatarUrl } from "@/lib/team-avatar"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
+import { isPortalVisible } from "@/lib/portal-visibility"
 
 // Kandidaten nach Status = Status der Zuordnung beim Kunden (Paket 15, T-71) - dieselben
 // Namen wie im Backend und in der Kandidatenliste (src/lib/assignment-status.ts).
@@ -21,7 +22,7 @@ export default async function PortalDashboardPage() {
   const [{ data: assignments }, { data: campaigns }] = await Promise.all([
     supabase
       .from("client_assignments")
-      .select("status")
+      .select("status, candidates(status, is_demo)")
       .is("removed_at", null),
     supabase
       .from("campaigns")
@@ -29,7 +30,9 @@ export default async function PortalDashboardPage() {
       .neq("status", "Archiviert"),
   ])
 
-  const statuses = (assignments ?? []).map((a) => a.status)
+  const statuses = (assignments ?? [])
+    .filter((a) => isPortalVisible(Array.isArray(a.candidates) ? a.candidates[0] : a.candidates))
+    .map((a) => a.status)
   const contact = await loadAccountManager(supabase)
 
   const totalCandidates = statuses.length

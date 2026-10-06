@@ -1,3 +1,4 @@
+import { hasEmailLayout, renderEmailLayout } from "@/lib/email-layout"
 // Versand von Transactional-E-Mails über die Brevo-API (POST /v3/smtp/email). Bewusst
 // getrennt von der SMTP-Konfiguration, die Supabase Auth für Login-/Bestätigungsmails
 // nutzt - anderer Schlüsseltyp (BREVO_API_KEY beginnt mit "xkeysib-", der SMTP-Key mit
@@ -13,7 +14,7 @@ export async function sendEmail(
   to: string[],
   subject: string,
   htmlContent: string,
-  options: { senderName?: string; replyTo?: { email: string; name?: string } } = {}
+  options: { senderName?: string; replyTo?: { email: string; name?: string }; footerSender?: string } = {}
 ): Promise<void> {
   const apiKey = process.env.BREVO_API_KEY
   if (!apiKey) throw new Error("BREVO_API_KEY ist nicht gesetzt.")
@@ -31,7 +32,8 @@ export async function sendEmail(
       ...(options.replyTo ? { replyTo: options.replyTo } : {}),
       to: to.map((email) => ({ email })),
       subject,
-      htmlContent,
+      // Einheitliches Layout für alle Mails (Paket 19, T-87).
+      htmlContent: hasEmailLayout(htmlContent) ? htmlContent : renderEmailLayout({ contentHtml: htmlContent, footerSender: options.footerSender }),
     }),
   })
 

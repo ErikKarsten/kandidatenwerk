@@ -1115,6 +1115,9 @@ export type Database = {
           status: string
           error: string | null
           created_at: string
+          direction: string
+          from_address: string | null
+          external_id: string | null
         }
         Insert: {
           id?: string
@@ -1128,6 +1131,9 @@ export type Database = {
           status?: string
           error?: string | null
           created_at?: string
+          direction?: string
+          from_address?: string | null
+          external_id?: string | null
         }
         Update: {
           id?: string
@@ -1141,6 +1147,9 @@ export type Database = {
           status?: string
           error?: string | null
           created_at?: string
+          direction?: string
+          from_address?: string | null
+          external_id?: string | null
         }
         Relationships: []
       }

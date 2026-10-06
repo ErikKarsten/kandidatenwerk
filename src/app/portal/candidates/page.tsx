@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { assignmentStatusLabel } from "@/lib/assignment-status"
+import { isPortalVisible } from "@/lib/portal-visibility"
 
 
 export default async function PortalCandidatesPage() {
@@ -13,10 +14,10 @@ export default async function PortalCandidatesPage() {
   // ja nicht direkt in dieser Query, das übernimmt die Policy).
   const { data: assignments } = await supabase
     .from("client_assignments")
-    .select("id, status, candidates(id, first_name, last_name, berufsbild, plz)")
+    .select("id, status, candidates(id, first_name, last_name, berufsbild, plz, status, is_demo)")
     .order("created_at", { ascending: false })
 
-  const rows = (assignments ?? []).filter((a) => a.candidates)
+  const rows = (assignments ?? []).filter((a) => a.candidates && isPortalVisible(a.candidates))
 
   return (
     <div className="p-4 sm:p-6">

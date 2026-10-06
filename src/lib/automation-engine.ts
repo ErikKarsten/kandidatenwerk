@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
+import { renderEmailLayout } from "@/lib/email-layout"
 
 type Supabase = SupabaseClient<Database>
 
@@ -66,20 +67,9 @@ function linkify(html: string): string {
 // Texteingabe in automations-tab.tsx bleibt reiner Fließtext, nur der Versand hier
 // rendert Absätze/Zeilenumbrüche jetzt als HTML statt sie 1:1 unformatiert an Brevo
 // weiterzureichen.
-export function wrapAutomationEmailHtml(bodyText: string): string {
-  return `
-<div style="max-width:600px;margin:0 auto;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;font-family:-apple-system,Helvetica,Arial,sans-serif;overflow:hidden;">
-  <div style="padding:28px 28px 4px;">
-    <div style="font-size:20px;font-weight:700;color:#1e56a0;">Kandidatenwerk</div>
-  </div>
-  <div style="padding:16px 28px 4px;font-size:14px;color:#111827;line-height:1.6;">
-    ${textToHtmlParagraphs(bodyText)}
-  </div>
-  <div style="padding:20px 28px 24px;margin-top:8px;border-top:1px solid #e5e7eb;">
-    <div style="font-size:11px;color:#9ca3af;">Automatisch generiert von Kandidatenwerk</div>
-  </div>
-</div>
-`.trim()
+export function wrapAutomationEmailHtml(bodyText: string, footerSender?: string | null): string {
+  // Gleiches Layout wie alle anderen Mails (Paket 19, T-87).
+  return renderEmailLayout({ contentHtml: textToHtmlParagraphs(bodyText), footerSender })
 }
 
 // Empfänger-Auflösung für die 3 Recipient-Optionen aus automations-tab.tsx.

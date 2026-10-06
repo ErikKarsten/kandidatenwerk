@@ -1,11 +1,8 @@
 import { createSupabaseAdminClient } from "./supabase-admin"
 import { sendEmail } from "./brevo-mail"
+import { emailButton, renderEmailLayout } from "@/lib/email-layout"
 
 const APP_BASE_URL = "https://kandidatenwerk.kanzleistelle24.de"
-const BRAND_BLUE = "#1e56a0"
-const BORDER_GRAY = "#e5e7eb"
-const TEXT_LIGHT_GRAY = "#9ca3af"
-const FONT_STACK = "-apple-system, Helvetica, Arial, sans-serif"
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -86,21 +83,10 @@ export async function notifyLeadRecipients(candidateId: string, candidateName: s
 
   const link = `${APP_BASE_URL}/dashboard/candidates/${candidateId}`
   const subject = `Neuer Lead: ${candidateName}`
-  const html = `
-<div style="max-width:600px;margin:0 auto;background-color:#ffffff;border:1px solid ${BORDER_GRAY};border-radius:8px;font-family:${FONT_STACK};overflow:hidden;">
-  <div style="padding:28px 28px 4px;">
-    <div style="font-size:20px;font-weight:700;color:${BRAND_BLUE};">Kandidatenwerk</div>
-    <div style="font-size:16px;font-weight:600;color:#111827;margin-top:6px;">Neuer Lead: ${escapeHtml(candidateName)}</div>
-  </div>
-  <div style="padding:16px 28px 24px;">
-    <p style="margin:0;font-size:14px;color:#374151;">Ein neuer Kandidat wurde soeben angelegt.</p>
-    <p style="margin-top:16px;"><a href="${link}" style="color:${BRAND_BLUE};text-decoration:none;font-weight:500;">Kandidat ansehen</a></p>
-  </div>
-  <div style="padding:20px 28px 24px;margin-top:8px;border-top:1px solid ${BORDER_GRAY};">
-    <div style="font-size:11px;color:${TEXT_LIGHT_GRAY};">Automatisch generiert von Kandidatenwerk</div>
-  </div>
-</div>
-`.trim()
+  const html = renderEmailLayout({
+    heading: `Neuer Lead: ${escapeHtml(candidateName)}`,
+    contentHtml: `<p style="margin:0;text-align:center;">Ein neuer Kandidat wurde soeben angelegt.</p>${emailButton(link, "Kandidat ansehen")}`,
+  })
 
   await sendEmail(emails, subject, html)
 }

@@ -8,7 +8,12 @@ import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 export const AUTOMATION_TRIGGER_OPTIONS = [
   { value: "new_lead", label: "Neuer Lead" },
   { value: "status_change", label: "Statusänderung" },
+  // Nur im Reiter "Kommunikation" beim Kandidaten nutzbar, nie automatisch (Paket 19, T-88).
+  { value: "manual", label: "Nur manuell (Kommunikation)" },
 ]
+
+// Auslöser, die in Kampagnen als Automatisierung laufen (alles außer "manual").
+export const CAMPAIGN_TRIGGER_OPTIONS = AUTOMATION_TRIGGER_OPTIONS.filter((o) => o.value !== "manual")
 
 export const AUTOMATION_DELAY_OPTIONS = [
   { value: 10, label: "10 Sekunden" },
@@ -29,6 +34,7 @@ export const AUTOMATION_VARIABLES = ["#Kandidatenname", "#Kampagnenname", "#Kund
 
 export function automationTriggerLabel(trigger: string, triggerStatus: string | null): string {
   if (trigger === "new_lead") return "Neuer Lead"
+  if (trigger === "manual") return "Nur manuell (Kommunikation)"
   const status = CANDIDATE_STATUS_OPTIONS.find((s) => s.value === triggerStatus)?.label ?? triggerStatus ?? "–"
   return `Statusänderung → ${status}`
 }
@@ -54,7 +60,8 @@ export async function applyTemplatesToCampaign(db: Db, campaignId: string, templ
   if (error) throw new Error(error.message)
   const already = new Set((existing ?? []).map((e) => e.template_id))
   const rows = (templates ?? [])
-    .filter((t) => !already.has(t.id))
+    // Manuelle Vorlagen (Kommunikation) werden nie zu Automatisierungen.
+    .filter((t) => !already.has(t.id) && t.trigger !== "manual")
     .map((t) => ({
       campaign_id: campaignId,
       template_id: t.id,
