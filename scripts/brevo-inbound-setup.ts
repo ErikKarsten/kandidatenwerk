@@ -32,7 +32,11 @@ async function brevo(method: string, p: string, body?: unknown) {
 
 async function main() {
   if (!process.env.BREVO_API_KEY) throw new Error("BREVO_API_KEY fehlt in .env.local")
-  const existing = (await brevo("GET", "/webhooks?type=inbound")).webhooks as { id: number; url: string; domain?: string }[] | undefined
+  // Ohne vorhandene Inbound-Webhooks antwortet Brevo mit 400 "document_not_found".
+  const existing = (await brevo("GET", "/webhooks?type=inbound").catch((err: Error) => {
+    if (err.message.includes("document_not_found")) return { webhooks: [] }
+    throw err
+  })).webhooks as { id: number; url: string; domain?: string }[] | undefined
   const ours = (existing ?? []).find((w) => w.url.startsWith(BASE))
   if (ours) {
     console.log(`Inbound-Webhook besteht bereits: ${ours.id} (${ours.domain ?? DOMAIN}).`)
