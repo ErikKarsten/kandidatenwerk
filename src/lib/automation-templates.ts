@@ -21,7 +21,10 @@ export function isCampaignTrigger(trigger: string): boolean {
 }
 export const CAMPAIGN_TRIGGER_OPTIONS = AUTOMATION_TRIGGER_OPTIONS.filter((o) => isCampaignTrigger(o.value))
 
+// Bis 1 Minute wird beim Ereignis sofort verschickt (Paket 22), längere Verzögerungen über
+// den 5-Minuten-Job.
 export const AUTOMATION_DELAY_OPTIONS = [
+  { value: 0, label: "Sofort" },
   { value: 10, label: "10 Sekunden" },
   { value: 30, label: "30 Sekunden" },
   { value: 60, label: "1 Minute" },

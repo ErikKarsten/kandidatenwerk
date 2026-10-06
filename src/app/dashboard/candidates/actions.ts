@@ -7,6 +7,7 @@ import { requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
+import { triggerAutomationsNow } from "@/lib/automation-trigger"
 
 export type CreateCandidateState = { error: string } | null
 
@@ -74,6 +75,7 @@ export async function createCandidateAction(
     console.error("Lead-Benachrichtigung fehlgeschlagen für Kandidat", candidate.id, notifyError)
   }
 
+  triggerAutomationsNow([campaign_id])
   redirect(redirect_to)
 }
 
@@ -92,7 +94,7 @@ export async function updateCandidateStatusAction(
 
   const { data: existing } = await supabase
     .from("candidates")
-    .select("status")
+    .select("status, campaign_id")
     .eq("id", candidateId)
     .single()
 
@@ -113,7 +115,12 @@ export async function updateCandidateStatusAction(
   }
 
   // Die frühere automatische Kunden-Benachrichtigung bei "vorqualifiziert" (Haken in den
-  // Stammdaten) ist entfallen (Paket 16) - das übernehmen die Automatisierungen.
+  // Stammdaten) ist entfallen (Paket 16) - das übernehmen die Automatisierungen, seit
+  // Paket 22 sofort: Herkunftskampagne und zugeordnete Kanzlei-Kampagnen.
+  if (existing && existing.status !== status) {
+    const { data: assigned } = await supabase.from("client_assignments").select("campaign_id").eq("candidate_id", candidateId).is("removed_at", null)
+    triggerAutomationsNow([existing.campaign_id, ...(assigned ?? []).map((a) => a.campaign_id)])
+  }
 
   if (campaignId) revalidatePath(`/dashboard/campaigns/${campaignId}`)
   revalidatePath("/dashboard/candidates")
