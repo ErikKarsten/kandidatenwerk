@@ -324,8 +324,8 @@ function TeamAvatar({ member, size = 36 }: { member: Pick<TeamMember, "full_name
   )
 }
 
-// Team-Mitglieder mit Pflichtangaben Name, Telefon und Foto (Paket 15, T-73) - der Key
-// Account Manager erscheint damit als Ansprechpartner im Kundenportal.
+// Team-Mitglieder: Name und E-Mail Pflicht, Telefon und Foto optional (Paket 24). Beim Key
+// Account Manager erscheinen sie als Ansprechpartner im Kundenportal.
 function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: string }) {
   const router = useRouter()
 
@@ -421,7 +421,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
                   <input autoFocus className={inputClass} style={inputStyle} value={editName} onChange={(e) => setEditName(e.target.value)} />
                 </div>
                 <div className="flex min-w-[160px] flex-1 flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-600">Telefon *</label>
+                  <label className="text-xs font-medium text-gray-600">Telefon</label>
                   <input type="tel" className={inputClass} style={inputStyle} value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="0221 123456" />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -441,7 +441,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
               <div className="flex flex-wrap items-center gap-3">
                 <TeamAvatar member={m} size={40} />
                 <div className="flex min-w-[200px] flex-1 flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-600">{m.avatarUrl ? "Foto ersetzen" : "Foto *"}</label>
+                  <label className="text-xs font-medium text-gray-600">{m.avatarUrl ? "Foto ersetzen" : "Foto"}</label>
                   <input type="file" accept="image/jpeg,image/png,image/webp" className={fileInputClass} onChange={(e) => setEditAvatar(e.target.files?.[0] ?? null)} />
                 </div>
                 <button onClick={handleSaveEdit} disabled={editPending} className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50" style={{ backgroundColor: "#1e56a0" }}>
@@ -461,11 +461,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
                   <p className="text-xs text-gray-500">
                     {[m.email, m.phone].filter(Boolean).join(" · ") || "—"}
                   </p>
-                  {(!m.phone || !m.avatarUrl) && (
-                    <p className="text-xs font-medium" style={{ color: "#dc2626" }}>
-                      Fehlt: {[!m.phone && "Telefon", !m.avatarUrl && "Foto"].filter(Boolean).join(", ")}
-                    </p>
-                  )}
+
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -518,7 +514,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
               <input type="email" placeholder="name@firma.de" className={inputClass} style={inputStyle} value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">Telefon *</label>
+              <label className="text-xs font-medium text-gray-600">Telefon</label>
               <input type="tel" placeholder="0221 123456" className={inputClass} style={inputStyle} value={invitePhone} onChange={(e) => setInvitePhone(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
@@ -534,14 +530,14 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
               </select>
             </div>
             <div className="flex flex-col gap-1 sm:col-span-2">
-              <label className="text-xs font-medium text-gray-600">Foto * (JPG, PNG oder WebP, max. 5 MB)</label>
+              <label className="text-xs font-medium text-gray-600">Foto (optional, JPG, PNG oder WebP, max. 5 MB)</label>
               <input type="file" accept="image/jpeg,image/png,image/webp" className={fileInputClass} onChange={(e) => setInviteAvatar(e.target.files?.[0] ?? null)} />
             </div>
           </div>
           <div>
             <button
               onClick={handleInvite}
-              disabled={invitePending || !inviteEmail.trim() || !inviteName.trim() || !invitePhone.trim() || !inviteAvatar}
+              disabled={invitePending || !inviteEmail.trim() || !inviteName.trim()}
               className="rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
               style={{ backgroundColor: "#1e56a0" }}
             >

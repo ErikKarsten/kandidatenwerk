@@ -25,6 +25,7 @@ import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/li
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
 import { CommunicationTab, type CandidateMessage, type MessageTemplate } from "./communication-tab"
 import type { TemplateVars } from "@/lib/automation-engine"
+import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -275,13 +276,16 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
               {berufsbildOrigin && <span className="text-xs text-gray-400">{berufsbildOrigin}</span>}
             </div>
           </div>
-          <button
-            onClick={() => { setModalStep("choice"); setModalError(null) }}
-            className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-red-50"
-            style={{ borderColor: "#fca5a5", color: "#dc2626" }}
-          >
-            Löschen
-          </button>
+          <div className="flex items-center gap-2">
+            <CvExportMenu candidateId={candidate.id} />
+            <button
+              onClick={() => { setModalStep("choice"); setModalError(null) }}
+              className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-red-50"
+              style={{ borderColor: "#fca5a5", color: "#dc2626" }}
+            >
+              Löschen
+            </button>
+          </div>
         </div>
         {!candidate.berufsbild && (
           <p className="mt-2 text-xs font-medium text-red-600">

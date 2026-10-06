@@ -10,6 +10,7 @@ import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import { updateCandidateBerufsbildAction } from "@/app/dashboard/candidates/[id]/actions"
 import { assignCandidateToCampaignAction } from "@/app/dashboard/campaigns/[id]/actions"
 import { getCandidatePanelDataAction, type CandidatePanelData } from "./actions"
+import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
 
 // Seitenfenster für einen Kandidaten (Paket 13, T-55/T-56): öffnet rechts über Karte
 // oder Liste, ohne die Seite zu verlassen - Suche, Filter und Kartenausschnitt bleiben.
@@ -195,7 +196,7 @@ export function CandidatePanel({
           )}
         </div>
 
-        <div className="border-t px-5 py-3" style={{ borderColor: "#eef2f6" }}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3" style={{ borderColor: "#eef2f6" }}>
           <a
             href={`/dashboard/candidates/${candidateId}`}
             target="_blank"
@@ -205,6 +206,7 @@ export function CandidatePanel({
           >
             Vollständiges Profil <ExternalLink size={13} />
           </a>
+          <CvExportMenu candidateId={candidateId} openUp />
         </div>
       </aside>
     </>

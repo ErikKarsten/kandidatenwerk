@@ -90,8 +90,8 @@ export async function getTeamMembers(agencyId: string): Promise<TeamMember[]> {
   return resolved
 }
 
-// Seit Paket 15 (T-73) mit Pflichtangaben Name, Telefon und Foto - der Key Account
-// Manager erscheint damit als Ansprechpartner im Kundenportal.
+// Pflicht: Name und E-Mail; Telefon und Foto optional (Paket 24) - wer Key Account
+// Manager ist, sollte beides pflegen, es erscheint im Kundenportal.
 export async function inviteTeamMemberAction(formData: FormData): Promise<{ error: string } | null> {
   const trimmedEmail = String(formData.get("email") ?? "").trim()
   const fullName = String(formData.get("full_name") ?? "").trim()
@@ -100,9 +100,12 @@ export async function inviteTeamMemberAction(formData: FormData): Promise<{ erro
   const avatar = formData.get("avatar") as File | null
   if (!fullName) return { error: "Name ist ein Pflichtfeld." }
   if (!trimmedEmail) return { error: "E-Mail-Adresse ist ein Pflichtfeld." }
-  if (!phone) return { error: "Telefonnummer ist ein Pflichtfeld." }
-  const avatarError = validateAvatar(avatar)
-  if (avatarError) return { error: avatarError }
+  // Telefon und Foto optional (Paket 24) - z.B. Vertrieb braucht nur Zugriff.
+  const hasAvatar = !!avatar && avatar.size > 0
+  if (hasAvatar) {
+    const avatarError = validateAvatar(avatar)
+    if (avatarError) return { error: avatarError }
+  }
 
   // Nur Agentur-Admins dürfen Team-Zugänge anlegen - vorher reichte ein beliebiger
   // Login, ein Mitarbeiter konnte sich so z.B. weitere Admins einladen
@@ -126,11 +129,13 @@ export async function inviteTeamMemberAction(formData: FormData): Promise<{ erro
   if (!data.user) return { error: "Einladung konnte nicht erstellt werden." }
 
   let avatarPath: string | null = null
-  try {
-    avatarPath = await uploadAvatar(admin, data.user.id, avatar!)
-  } catch (err) {
-    await admin.auth.admin.deleteUser(data.user.id)
-    return { error: `Foto konnte nicht gespeichert werden: ${err instanceof Error ? err.message : err}` }
+  if (hasAvatar) {
+    try {
+      avatarPath = await uploadAvatar(admin, data.user.id, avatar!)
+    } catch (err) {
+      await admin.auth.admin.deleteUser(data.user.id)
+      return { error: `Foto konnte nicht gespeichert werden: ${err instanceof Error ? err.message : err}` }
+    }
   }
 
   const { error: profileError } = await admin.from("profiles").insert({
@@ -139,7 +144,7 @@ export async function inviteTeamMemberAction(formData: FormData): Promise<{ erro
     agency_id: ownProfile.agency_id,
     email: trimmedEmail,
     full_name: fullName,
-    phone,
+    phone: phone || null,
     avatar_path: avatarPath,
   })
 
@@ -155,14 +160,13 @@ export async function inviteTeamMemberAction(formData: FormData): Promise<{ erro
 
 // Team-Mitglied bearbeiten (Name, Rolle, Telefon, Foto) - nur Admins, nur eigene
 // Agentur. Die eigene Rolle ist gesperrt, und der letzte Admin kann nicht herabgestuft
-// werden. Telefon und Foto sind Pflicht (Paket 15, T-73); ein neues Foto ersetzt das alte.
+// werden. Telefon und Foto sind optional (Paket 24); ein neues Foto ersetzt das alte.
 export async function updateTeamMemberAction(profileId: string, formData: FormData): Promise<{ error: string } | null> {
   const name = String(formData.get("full_name") ?? "").trim()
   const phone = String(formData.get("phone") ?? "").trim()
   const role = String(formData.get("role") ?? "")
   const avatar = formData.get("avatar") as File | null
   if (!name) return { error: "Name ist ein Pflichtfeld." }
-  if (!phone) return { error: "Telefonnummer ist ein Pflichtfeld." }
   if (role !== "agency_admin" && role !== "agency_member") return { error: "Ungültige Rolle." }
   const newAvatar = avatar && avatar.size > 0 ? avatar : null
   if (newAvatar) {
@@ -189,8 +193,6 @@ export async function updateTeamMemberAction(profileId: string, formData: FormDa
     if ((count ?? 0) <= 1) return { error: "Es muss mindestens ein Admin bleiben." }
   }
 
-  if (!newAvatar && !target.avatar_path) return { error: "Bitte ein Foto hochladen." }
-
   let avatarPath = target.avatar_path
   if (newAvatar) {
     try {
@@ -200,7 +202,7 @@ export async function updateTeamMemberAction(profileId: string, formData: FormDa
     }
   }
 
-  const { error } = await admin.from("profiles").update({ full_name: name, role, phone, avatar_path: avatarPath }).eq("id", profileId)
+  const { error } = await admin.from("profiles").update({ full_name: name, role, phone: phone || null, avatar_path: avatarPath }).eq("id", profileId)
   if (error) return { error: error.message }
   revalidatePath("/dashboard/einstellungen")
   return null
