@@ -6,6 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { syncMetaCampaigns } from "@/lib/meta-campaigns-sync"
 import { runTrackedCronJob } from "@/lib/cron/job-runs"
 import { requireAgencyAdmin as getAgencyAdminContext, requireStaffUser } from "@/lib/auth-guards"
+import { removeAvatar, signedAvatarUrl, uploadAvatar, validateAvatar } from "@/lib/team-avatar"
 
 const MIN_PASSWORD_LENGTH = 8
 
@@ -55,6 +56,8 @@ export interface TeamMember {
   full_name: string | null
   email: string | null
   role: "agency_admin" | "agency_member"
+  phone: string | null
+  avatarUrl: string | null
 }
 
 // Teamliste der eigenen Agentur - fuer die Seite selbst (page.tsx), nicht als Action,
@@ -70,28 +73,36 @@ export async function getTeamMembers(agencyId: string): Promise<TeamMember[]> {
   if (staffError) return []
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, full_name, email, role")
+    .select("id, full_name, email, role, phone, avatar_path")
     .eq("agency_id", agencyId)
     .in("role", ["agency_admin", "agency_member"])
     .order("created_at", { ascending: true })
 
   const admin = createSupabaseAdminClient()
   const resolved = await Promise.all(
-    (profiles ?? []).map(async (p) => {
-      if (p.email) return p as TeamMember
+    (profiles ?? []).map(async ({ avatar_path, ...p }) => {
+      const avatarUrl = await signedAvatarUrl(admin, avatar_path)
+      if (p.email) return { ...p, avatarUrl } as TeamMember
       const { data } = await admin.auth.admin.getUserById(p.id)
-      return { ...p, email: data.user?.email ?? null } as TeamMember
+      return { ...p, avatarUrl, email: data.user?.email ?? null } as TeamMember
     })
   )
   return resolved
 }
 
-export async function inviteTeamMemberAction(
-  email: string,
-  role: "agency_admin" | "agency_member"
-): Promise<{ error: string } | null> {
-  const trimmedEmail = email.trim()
+// Seit Paket 15 (T-73) mit Pflichtangaben Name, Telefon und Foto - der Key Account
+// Manager erscheint damit als Ansprechpartner im Kundenportal.
+export async function inviteTeamMemberAction(formData: FormData): Promise<{ error: string } | null> {
+  const trimmedEmail = String(formData.get("email") ?? "").trim()
+  const fullName = String(formData.get("full_name") ?? "").trim()
+  const phone = String(formData.get("phone") ?? "").trim()
+  const role = formData.get("role") === "agency_admin" ? "agency_admin" : "agency_member"
+  const avatar = formData.get("avatar") as File | null
+  if (!fullName) return { error: "Name ist ein Pflichtfeld." }
   if (!trimmedEmail) return { error: "E-Mail-Adresse ist ein Pflichtfeld." }
+  if (!phone) return { error: "Telefonnummer ist ein Pflichtfeld." }
+  const avatarError = validateAvatar(avatar)
+  if (avatarError) return { error: avatarError }
 
   // Nur Agentur-Admins dürfen Team-Zugänge anlegen - vorher reichte ein beliebiger
   // Login, ein Mitarbeiter konnte sich so z.B. weitere Admins einladen
@@ -106,7 +117,7 @@ export async function inviteTeamMemberAction(
 
   // Gleiches Muster wie inviteClientPortalUserAction (clients/[id]/actions.ts): Invite
   // ueber die Auth-Admin-API, danach eigene profiles-Zeile nachziehen. Bei
-  // Profil-Insert-Fehler den bereits eingeladenen Auth-User wieder entfernen, damit
+  // Profil-/Foto-Fehler den bereits eingeladenen Auth-User wieder entfernen, damit
   // kein verwaister Login ohne Profil zurueckbleibt.
   const { data, error } = await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
     redirectTo: "https://kandidatenwerk.kanzleistelle24.de/set-password",
@@ -114,14 +125,26 @@ export async function inviteTeamMemberAction(
   if (error) return { error: error.message }
   if (!data.user) return { error: "Einladung konnte nicht erstellt werden." }
 
+  let avatarPath: string | null = null
+  try {
+    avatarPath = await uploadAvatar(admin, data.user.id, avatar!)
+  } catch (err) {
+    await admin.auth.admin.deleteUser(data.user.id)
+    return { error: `Foto konnte nicht gespeichert werden: ${err instanceof Error ? err.message : err}` }
+  }
+
   const { error: profileError } = await admin.from("profiles").insert({
     id: data.user.id,
     role,
     agency_id: ownProfile.agency_id,
     email: trimmedEmail,
+    full_name: fullName,
+    phone,
+    avatar_path: avatarPath,
   })
 
   if (profileError) {
+    await removeAvatar(admin, avatarPath)
     await admin.auth.admin.deleteUser(data.user.id)
     return { error: profileError.message }
   }
@@ -130,23 +153,29 @@ export async function inviteTeamMemberAction(
   return null
 }
 
-// Team-Mitglied bearbeiten (Name, Rolle) - nur Admins, nur eigene Agentur. Die eigene
-// Rolle ist gesperrt, und der letzte Admin kann nicht herabgestuft werden.
-export async function updateTeamMemberAction(
-  profileId: string,
-  fullName: string,
-  role: "agency_admin" | "agency_member"
-): Promise<{ error: string } | null> {
-  const name = fullName.trim()
+// Team-Mitglied bearbeiten (Name, Rolle, Telefon, Foto) - nur Admins, nur eigene
+// Agentur. Die eigene Rolle ist gesperrt, und der letzte Admin kann nicht herabgestuft
+// werden. Telefon und Foto sind Pflicht (Paket 15, T-73); ein neues Foto ersetzt das alte.
+export async function updateTeamMemberAction(profileId: string, formData: FormData): Promise<{ error: string } | null> {
+  const name = String(formData.get("full_name") ?? "").trim()
+  const phone = String(formData.get("phone") ?? "").trim()
+  const role = String(formData.get("role") ?? "")
+  const avatar = formData.get("avatar") as File | null
   if (!name) return { error: "Name ist ein Pflichtfeld." }
+  if (!phone) return { error: "Telefonnummer ist ein Pflichtfeld." }
   if (role !== "agency_admin" && role !== "agency_member") return { error: "Ungültige Rolle." }
+  const newAvatar = avatar && avatar.size > 0 ? avatar : null
+  if (newAvatar) {
+    const avatarError = validateAvatar(newAvatar)
+    if (avatarError) return { error: avatarError }
+  }
 
   const supabase = await createSupabaseServerClient()
   const guard = await getAgencyAdminContext(supabase)
   if ("error" in guard) return guard
 
   const admin = createSupabaseAdminClient()
-  const { data: target } = await admin.from("profiles").select("role, agency_id").eq("id", profileId).maybeSingle()
+  const { data: target } = await admin.from("profiles").select("role, agency_id, avatar_path").eq("id", profileId).maybeSingle()
   if (!target || !["agency_admin", "agency_member"].includes(target.role) || !guard.staff.agencyId || target.agency_id !== guard.staff.agencyId) {
     return { error: "Team-Mitglied nicht gefunden." }
   }
@@ -160,7 +189,18 @@ export async function updateTeamMemberAction(
     if ((count ?? 0) <= 1) return { error: "Es muss mindestens ein Admin bleiben." }
   }
 
-  const { error } = await admin.from("profiles").update({ full_name: name, role }).eq("id", profileId)
+  if (!newAvatar && !target.avatar_path) return { error: "Bitte ein Foto hochladen." }
+
+  let avatarPath = target.avatar_path
+  if (newAvatar) {
+    try {
+      avatarPath = await uploadAvatar(admin, profileId, newAvatar, target.avatar_path)
+    } catch (err) {
+      return { error: `Foto konnte nicht gespeichert werden: ${err instanceof Error ? err.message : err}` }
+    }
+  }
+
+  const { error } = await admin.from("profiles").update({ full_name: name, role, phone, avatar_path: avatarPath }).eq("id", profileId)
   if (error) return { error: error.message }
   revalidatePath("/dashboard/einstellungen")
   return null
@@ -179,7 +219,7 @@ export async function removeTeamMemberAction(profileId: string): Promise<{ error
 
   const { data: target } = await admin
     .from("profiles")
-    .select("role, agency_id")
+    .select("role, agency_id, avatar_path")
     .eq("id", profileId)
     .maybeSingle()
   if (
@@ -192,6 +232,7 @@ export async function removeTeamMemberAction(profileId: string): Promise<{ error
   }
   const { error: profileError } = await admin.from("profiles").delete().eq("id", profileId)
   if (profileError) return { error: profileError.message }
+  await removeAvatar(admin, target.avatar_path)
 
   const { error: authError } = await admin.auth.admin.deleteUser(profileId)
   if (authError) return { error: authError.message }
@@ -222,72 +263,6 @@ export async function updateAgencyNameAction(name: string): Promise<{ error: str
   const { error } = await admin.from("agencies").update({ name: trimmed }).eq("id", ownProfile.agency_id)
   if (error) return { error: error.message }
 
-  revalidatePath("/dashboard/einstellungen")
-  return null
-}
-
-export interface EmailTemplate {
-  id: string
-  name: string
-  subject: string
-  body_html: string
-}
-
-// Agenturweite E-Mail-Vorlagen - fuer die Seite selbst (page.tsx) und den
-// Automatisierungs-Editor (campaigns/[id]/page.tsx), analog zu getTeamMembers oben.
-// Kein Admin-Client noetig - RLS auf email_templates scoped automatisch korrekt auf die
-// eigene Agentur (siehe 20260922000004_email_templates.sql), gleiches Prinzip wie bei
-// den bestehenden Automatisierungs-Actions (automations-actions.ts).
-export async function getEmailTemplates(agencyId: string): Promise<EmailTemplate[]> {
-  const supabase = await createSupabaseServerClient()
-  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return []
-  const { data } = await supabase
-    .from("email_templates")
-    .select("id, name, subject, body_html")
-    .eq("agency_id", agencyId)
-    .order("created_at", { ascending: true })
-  return data ?? []
-}
-
-export async function createEmailTemplateAction(
-  agencyId: string,
-  data: { name: string; subject: string; body_html: string }
-): Promise<{ error: string } | null> {
-  if (!data.name.trim()) return { error: "Name ist ein Pflichtfeld." }
-  const supabase = await createSupabaseServerClient()
-  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return staffError
-  const { error } = await supabase.from("email_templates").insert({ agency_id: agencyId, ...data })
-  if (error) return { error: error.message }
-  revalidatePath("/dashboard/einstellungen")
-  return null
-}
-
-export async function updateEmailTemplateAction(
-  id: string,
-  data: { name: string; subject: string; body_html: string }
-): Promise<{ error: string } | null> {
-  if (!data.name.trim()) return { error: "Name ist ein Pflichtfeld." }
-  const supabase = await createSupabaseServerClient()
-  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return staffError
-  const { error } = await supabase.from("email_templates").update(data).eq("id", id)
-  if (error) return { error: error.message }
-  revalidatePath("/dashboard/einstellungen")
-  return null
-}
-
-export async function deleteEmailTemplateAction(id: string): Promise<{ error: string } | null> {
-  const supabase = await createSupabaseServerClient()
-  // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return staffError
-  const { error } = await supabase.from("email_templates").delete().eq("id", id)
-  if (error) return { error: error.message }
   revalidatePath("/dashboard/einstellungen")
   return null
 }

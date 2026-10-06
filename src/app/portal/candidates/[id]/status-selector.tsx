@@ -3,27 +3,10 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { updatePortalAssignmentStatusAction } from "../../actions"
+import { ASSIGNMENT_STATUS_OPTIONS, PORTAL_ASSIGNMENT_STATUS_VALUES, assignmentStatusLabel } from "@/lib/assignment-status"
 
-// Gleiche deutsche Labels wie in page.tsx (Anzeige des tatsächlichen Status, alle 6
-// internen Werte) - eigene, kleine Kopie statt geteiltem Import, siehe bestehendes
-// Muster bei den Portal-STATUS_LABELS (matches-section.tsx-Kommentar).
-const STATUS_LABELS: Record<string, string> = {
-  inbox: "Unbearbeitet",
-  vq: "Vorqualifiziert",
-  vqk: "Vorqualifiziert beim Kunden",
-  vg: "Interview vereinbart",
-  ja: "Angenommen",
-  nein: "Abgelehnt",
-}
-
-// Reduzierte, kundenfreundliche Auswahl (Anfrage vom 28.09.2026, Punkt 1) - die drei
-// internen Vorstufen (inbox/vq/vqk) bleiben nur für Staff änderbar und tauchen hier
-// bewusst nicht als Option auf, unabhängig vom aktuell angezeigten Status oben.
-const PORTAL_STATUS_OPTIONS: { value: string; label: string }[] = [
-  { value: "vg", label: "Interview vereinbart" },
-  { value: "ja", label: "Angenommen" },
-  { value: "nein", label: "Abgelehnt" },
-]
+// Status-Namen zentral in src/lib/assignment-status.ts - identisch zum Backend (Paket 15).
+const PORTAL_STATUS_OPTIONS = ASSIGNMENT_STATUS_OPTIONS.filter((o) => PORTAL_ASSIGNMENT_STATUS_VALUES.includes(o.value))
 
 export function PortalStatusSelector({
   clientAssignmentId,
@@ -56,9 +39,9 @@ export function PortalStatusSelector({
       <div className="flex items-center gap-2">
         <span
           className="rounded-full px-3 py-1 text-xs font-medium"
-          style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}
+          style={{ backgroundColor: assignmentStatusLabel(currentStatus).bg, color: assignmentStatusLabel(currentStatus).text }}
         >
-          {STATUS_LABELS[currentStatus] ?? currentStatus}
+          {assignmentStatusLabel(currentStatus).label}
         </span>
         <select
           defaultValue=""

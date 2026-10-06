@@ -13,12 +13,10 @@
 // sekundengenaue Zusage - eine Automatisierung feuert nie zu früh, aber ggf. bis zu
 // ~5 Minuten später.
 //
-// ACHTUNG new_lead-Trigger: beim ERSTEN Aktivieren einer new_lead-Automatisierung an
-// einer Kampagne mit bereits bestehenden Kandidaten feuert sie im ersten Lauf für ALLE
-// historischen Kandidaten dieser Kampagne (die die delay_seconds-Wartezeit ja längst
-// erfüllen), nicht nur für künftig neu ankommende. Vor dem ersten scharfen Aktivieren
-// einer solchen Automatisierung an einer Kampagne mit Bestandskandidaten das explizit
-// mitbedenken.
+// Keine Rückwirkung (Paket 15, T-74): Eine Automatisierung löst nur für Leads aus, die
+// nach dem Einschalten (active_since) eingegangen sind, bzw. für Statuswechsel nach dem
+// Einschalten. Vorher feuerte z.B. eine frisch aktivierte new_lead-Automatisierung für
+// ALLE Bestandskandidaten der Kampagne - mit Vorlagensets wäre das schnell passiert.
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
@@ -59,27 +57,28 @@ function unwrapOne<T>(rel: T | T[] | null | undefined): T | null {
   return rel ?? null
 }
 
-// Zeitpunkt, seit dem ein Kandidat in `status` steht - aus dem letzten passenden
+// Zeitpunkt, seit dem jeder Kandidat in `status` steht - aus dem letzten passenden
 // status_change-Verlaufseintrag (siehe updateCandidateStatusAction in
-// candidates/actions.ts, Format "Status geändert: alt → neu").
-async function statusReachedAt(
-  supabase: Supabase,
-  candidateId: string,
-  createdAt: string,
-  status: string
-): Promise<string> {
-  const { data: rows } = await supabase
-    .from("candidate_history")
-    .select("content, created_at")
-    .eq("candidate_id", candidateId)
-    .eq("type", "status_change")
-    .order("created_at", { ascending: false })
-
-  const match = (rows ?? []).find((r) => r.content?.endsWith(`→ ${status}`))
+// candidates/actions.ts, Format "Status geändert: alt → neu"). Gesammelt in Paketen statt
+// je Kandidat eine Abfrage (Cloudflare-Grenze von 1000 Unteranfragen pro Lauf).
+async function statusReachedAtMap(supabase: Supabase, candidates: CandidateRow[], status: string): Promise<Map<string, string>> {
+  const latest = new Map<string, string>()
+  for (let i = 0; i < candidates.length; i += 80) {
+    const { data: rows } = await supabase
+      .from("candidate_history")
+      .select("candidate_id, content, created_at")
+      .in("candidate_id", candidates.slice(i, i + 80).map((c) => c.id))
+      .eq("type", "status_change")
+      .like("content", `%→ ${status}`)
+    for (const r of rows ?? []) {
+      const prev = latest.get(r.candidate_id)
+      if (!prev || r.created_at > prev) latest.set(r.candidate_id, r.created_at)
+    }
+  }
   // Fallback für Kandidaten, die z.B. per Import direkt mit diesem Status angelegt
   // wurden (kein status_change-Eintrag vorhanden) - created_at als beste verfügbare
   // Näherung, statt die Automatisierung für diese Kandidaten nie feuern zu lassen.
-  return match?.created_at ?? createdAt
+  return new Map(candidates.map((c) => [c.id, latest.get(c.id) ?? c.created_at]))
 }
 
 // dryRun: zeigt nur (über log), was verschickt würde - kein Versand, kein DB-Schreiben.
@@ -109,9 +108,10 @@ export async function runAutomations(
       .select("id, first_name, last_name, email, phone, status, client_id, created_at")
       .eq("campaign_id", campaign.id)
 
+    const activeSince = automation.active_since ?? automation.created_at
     if (automation.trigger === "new_lead") {
       const cutoff = new Date(Date.now() - automation.delay_seconds * 1000).toISOString()
-      query = query.lte("created_at", cutoff)
+      query = query.lte("created_at", cutoff).gte("created_at", activeSince)
     } else {
       query = query.eq("status", automation.trigger_status!)
     }
@@ -124,26 +124,37 @@ export async function runAutomations(
     }
     if (!candidates?.length) continue
 
-    const { data: alreadyFired } = await supabase
-      .from("campaign_automation_runs")
-      .select("candidate_id")
-      .eq("automation_id", automation.id)
-      .in("candidate_id", candidates.map((c) => c.id))
-
-    const firedIds = new Set((alreadyFired ?? []).map((r) => r.candidate_id))
+    // In Paketen - lange ID-Listen sprengen sonst die URL.
+    const firedIds = new Set<string>()
+    for (let i = 0; i < candidates.length; i += 80) {
+      const { data: alreadyFired } = await supabase
+        .from("campaign_automation_runs")
+        .select("candidate_id")
+        .eq("automation_id", automation.id)
+        .in("candidate_id", candidates.slice(i, i + 80).map((c) => c.id))
+      for (const r of alreadyFired ?? []) firedIds.add(r.candidate_id)
+    }
+    const beforeActivation: string[] = []
+    const pending = (candidates as CandidateRow[]).filter((c) => !firedIds.has(c.id))
+    const reachedAt =
+      automation.trigger === "status_change" && pending.length > 0
+        ? await statusReachedAtMap(supabase, pending, automation.trigger_status!)
+        : new Map<string, string>()
 
     for (const candidate of candidates as CandidateRow[]) {
       if (firedIds.has(candidate.id)) continue
 
       try {
         if (automation.trigger === "status_change") {
-          const reachedAt = await statusReachedAt(
-            supabase,
-            candidate.id,
-            candidate.created_at,
-            automation.trigger_status!
-          )
-          const readyAt = new Date(reachedAt).getTime() + automation.delay_seconds * 1000
+          const statusSince = reachedAt.get(candidate.id) ?? candidate.created_at
+          // Status schon vor dem Einschalten erreicht: einmalig als erledigt vermerken,
+          // ohne Mail - sonst würde jeder Lauf diese Kandidaten erneut prüfen.
+          if (new Date(statusSince).getTime() < new Date(activeSince).getTime()) {
+            beforeActivation.push(candidate.id)
+            skipped++
+            continue
+          }
+          const readyAt = new Date(statusSince).getTime() + automation.delay_seconds * 1000
           if (Date.now() < readyAt) continue
         }
 
@@ -212,6 +223,11 @@ export async function runAutomations(
         // Bewusst KEIN campaign_automation_runs-Eintrag bei echtem Fehler (z.B.
         // Brevo-API kurzzeitig down) - soll beim nächsten Lauf erneut versucht werden.
       }
+    }
+    if (!dryRun && beforeActivation.length > 0) {
+      await supabase
+        .from("campaign_automation_runs")
+        .insert(beforeActivation.map((candidateId) => ({ automation_id: automation.id, candidate_id: candidateId })))
     }
   }
 

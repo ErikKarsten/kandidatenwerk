@@ -8,10 +8,19 @@ import {
   updateAutomationAction,
   deleteAutomationAction,
   toggleAutomationActiveAction,
+  applyAutomationTemplatesAction,
   type AutomationData,
 } from "./automations-actions"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
-import type { EmailTemplate } from "../../einstellungen/actions"
+import {
+  AUTOMATION_DELAY_OPTIONS,
+  AUTOMATION_RECIPIENT_OPTIONS,
+  AUTOMATION_TRIGGER_OPTIONS,
+  AUTOMATION_VARIABLES,
+  automationRecipientLabel,
+  automationTriggerLabel,
+} from "@/lib/automation-templates"
+import type { AutomationTemplate, AutomationTemplateSet } from "../../einstellungen/automation-template-actions"
 
 export interface Automation {
   id: string
@@ -29,76 +38,10 @@ export interface Automation {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const TRIGGER_OPTIONS = [
-  { value: "new_lead", label: "Neuer Lead" },
-  { value: "status_change", label: "Statusänderung" },
-]
-
+const TRIGGER_OPTIONS = AUTOMATION_TRIGGER_OPTIONS
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
-
-const DELAY_OPTIONS = [
-  { value: 10, label: "10 Sekunden" },
-  { value: 30, label: "30 Sekunden" },
-  { value: 60, label: "1 Minute" },
-  { value: 300, label: "5 Minuten" },
-]
-
-const RECIPIENT_OPTIONS = [
-  { value: "candidate", label: "Kandidat" },
-  { value: "client", label: "Kunde (primärer Ansprechpartner)" },
-  { value: "all_contacts", label: "Alle Kunden-Ansprechpartner" },
-]
-
-const TEMPLATES: Array<{
-  id: string
-  label: string
-  trigger: string
-  trigger_status: string | null
-  recipient: string
-  subject: string
-  body_html: string
-}> = [
-  {
-    id: "eingangsbestaetigung",
-    label: "Eingangsbestätigung",
-    trigger: "new_lead",
-    trigger_status: null,
-    recipient: "candidate",
-    subject: "Deine Bewerbung als #Kampagnenname bei #Kundenname",
-    body_html:
-      "Hallo #Kandidatenname,\n\nvielen Dank für deine Bewerbung auf die Stelle als #Kampagnenname bei #Kundenname.\n\nWir haben deine Bewerbung erhalten und melden uns in Kürze bei dir.\n\nMit freundlichen Grüßen",
-  },
-  {
-    id: "qualifizierter_lead",
-    label: "Neuer qualifizierter Lead",
-    trigger: "status_change",
-    trigger_status: "vorgestellt",
-    recipient: "client",
-    subject: "Neuer qualifizierter Bewerber für #Kampagnenname",
-    body_html:
-      "Guten Tag,\n\nfür Ihre Kampagne \"#Kampagnenname\" wurde ein neuer Bewerber qualifiziert.\n\nName: #Kandidatenname\nE-Mail: #Email\nTelefon: #Telefon\n\nWir setzen uns zeitnah mit Ihnen in Verbindung.\n\nMit freundlichen Grüßen",
-  },
-  {
-    id: "nicht_erreicht",
-    label: "Nicht erreicht",
-    trigger: "status_change",
-    trigger_status: "interview",
-    recipient: "candidate",
-    subject: "Ihre Bewerbung als #Kampagnenname – Terminvereinbarung",
-    body_html:
-      "Hallo #Kandidatenname,\n\nwir haben versucht, Sie telefonisch zu erreichen, leider ohne Erfolg.\n\nGerne würden wir einen Termin für ein erstes Gespräch vereinbaren. Bitte melden Sie sich unter #Telefon oder antworten Sie auf diese E-Mail.\n\nMit freundlichen Grüßen",
-  },
-  {
-    id: "absage",
-    label: "Absage",
-    trigger: "status_change",
-    trigger_status: "abgelehnt",
-    recipient: "candidate",
-    subject: "Rückmeldung zu deiner Bewerbung bei #Kundenname",
-    body_html:
-      "Hallo #Kandidatenname,\n\nvielen Dank für dein Interesse an der Stelle als #Kampagnenname bei #Kundenname und die Zeit, die du in deine Bewerbung investiert hast.\n\nNach sorgfältiger Prüfung müssen wir dir leider mitteilen, dass wir uns für einen anderen Kandidaten entschieden haben.\n\nWir wünschen dir für deinen weiteren Weg alles Gute.\n\nMit freundlichen Grüßen",
-  },
-]
+const DELAY_OPTIONS = AUTOMATION_DELAY_OPTIONS
+const RECIPIENT_OPTIONS = AUTOMATION_RECIPIENT_OPTIONS
 
 const DEFAULT_FORM: AutomationData = {
   name: "",
@@ -113,29 +56,30 @@ const DEFAULT_FORM: AutomationData = {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function triggerLabel(t: string, ts: string | null): string {
-  if (t === "new_lead") return "Neuer Lead"
-  const statusLabel = STATUS_OPTIONS.find((s) => s.value === ts)?.label ?? ts
-  return `Statusänderung → ${statusLabel}`
-}
-
-function recipientLabel(r: string): string {
-  return RECIPIENT_OPTIONS.find((o) => o.value === r)?.label ?? r
-}
+const triggerLabel = automationTriggerLabel
+const recipientLabel = automationRecipientLabel
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function AutomationsTab({
   campaignId,
-  automations: initialAutomations,
-  emailTemplates,
+  automations: serverAutomations,
+  templates,
+  templateSets,
 }: {
   campaignId: string
   automations: Automation[]
-  emailTemplates: EmailTemplate[]
+  templates: AutomationTemplate[]
+  templateSets: AutomationTemplateSet[]
 }) {
   const router = useRouter()
-  const [automations, setAutomations] = useState(initialAutomations)
+  // Nur der Aktiv-Schalter wird optimistisch überschrieben; die Liste selbst kommt immer
+  // aus den Server-Props (vorher kopierter Zustand: Neues erschien erst nach Neuladen).
+  const [activeOverrides, setActiveOverrides] = useState<Record<string, boolean>>({})
+  const automations = serverAutomations.map((a) => (a.id in activeOverrides ? { ...a, active: activeOverrides[a.id] } : a))
+  const [applyValue, setApplyValue] = useState("")
+  const [applyMessage, setApplyMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [applyPending, startApplyTransition] = useTransition()
   const [modal, setModal] = useState<{ automation: Automation | null; isNew: boolean } | null>(null)
   const [form, setForm] = useState<AutomationData>(DEFAULT_FORM)
   const [formError, setFormError] = useState<string | null>(null)
@@ -169,34 +113,37 @@ export function AutomationsTab({
     setFormError(null)
   }
 
-  function applyTemplate(templateId: string) {
-    const tpl = TEMPLATES.find((t) => t.id === templateId)
+  // Vorlage aus den Einstellungen in den Editor laden (alle Felder).
+  function handleTemplateSelect(id: string) {
+    const tpl = templates.find((t) => t.id === id)
     if (!tpl) return
     setForm((prev) => ({
       ...prev,
-      name: prev.name || tpl.label,
+      name: prev.name || tpl.name,
       trigger: tpl.trigger,
       trigger_status: tpl.trigger_status,
+      delay_seconds: tpl.delay_seconds,
       recipient: tpl.recipient,
       subject: tpl.subject,
       body_html: tpl.body_html,
     }))
   }
 
-  // Eigene Vorlagen (Einstellungen -> "E-Mail-Vorlagen") bringen kein Trigger/Empfänger
-  // mit, nur Name/Betreff/Text - anders als applyTemplate oben für die 4
-  // Standard-Vorlagen, die zusätzlich Trigger/Empfänger vorbelegen. Trigger/Empfänger/
-  // Status bleiben hier bewusst unangetastet.
-  function applyCustomTemplate(id: string) {
-    const tpl = emailTemplates.find((t) => t.id === id)
-    if (!tpl) return
-    setForm((prev) => ({ ...prev, name: prev.name || tpl.name, subject: tpl.subject, body_html: tpl.body_html }))
-  }
-
-  function handleTemplateSelect(value: string) {
-    if (!value) return
-    if (value.startsWith("custom:")) applyCustomTemplate(value.slice("custom:".length))
-    else if (value.startsWith("builtin:")) applyTemplate(value.slice("builtin:".length))
+  // Vorlage oder Vorlagenset direkt als (ausgeschaltete) Automatisierungen übernehmen.
+  function handleApply() {
+    if (!applyValue) return
+    setApplyMessage(null)
+    const source = applyValue.startsWith("set:") ? { setId: applyValue.slice(4) } : { templateId: applyValue.slice(4) }
+    startApplyTransition(async () => {
+      const result = await applyAutomationTemplatesAction(campaignId, source)
+      if ("error" in result) return setApplyMessage({ ok: false, text: result.error })
+      setApplyMessage({
+        ok: true,
+        text: result.added > 0 ? `${result.added} übernommen – zum Versenden noch einschalten.` : "Schon vorhanden, nichts übernommen.",
+      })
+      setApplyValue("")
+      router.refresh()
+    })
   }
 
   function handleSave() {
@@ -232,11 +179,9 @@ export function AutomationsTab({
   async function handleToggle(a: Automation) {
     setTogglePendingId(a.id)
     const newActive = !a.active
-    setAutomations((prev) => prev.map((x) => x.id === a.id ? { ...x, active: newActive } : x))
+    setActiveOverrides((prev) => ({ ...prev, [a.id]: newActive }))
     const result = await toggleAutomationActiveAction(a.id, campaignId, newActive)
-    if (result?.error) {
-      setAutomations((prev) => prev.map((x) => x.id === a.id ? { ...x, active: a.active } : x))
-    }
+    if (result?.error) setActiveOverrides((prev) => ({ ...prev, [a.id]: a.active }))
     setTogglePendingId(null)
   }
 
@@ -247,10 +192,46 @@ export function AutomationsTab({
   return (
     <div className="flex flex-col gap-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
           {automations.length} Automatisierung{automations.length !== 1 ? "en" : ""}
         </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <select
+              value={applyValue}
+              onChange={(e) => setApplyValue(e.target.value)}
+              className="appearance-none rounded-md border bg-white py-1.5 pl-3 pr-8 text-sm"
+              style={{ borderColor: "#dde3ea" }}
+              aria-label="Vorlage oder Vorlagenset übernehmen"
+            >
+              <option value="">Vorlage übernehmen…</option>
+              {templateSets.length > 0 && (
+                <optgroup label="Vorlagensets">
+                  {templateSets.map((s) => (
+                    <option key={s.id} value={`set:${s.id}`}>{s.name}{s.is_default ? " (Standard)" : ""}</option>
+                  ))}
+                </optgroup>
+              )}
+              {templates.length > 0 && (
+                <optgroup label="Einzelne Vorlagen">
+                  {templates.map((t) => (
+                    <option key={t.id} value={`tpl:${t.id}`}>{t.name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          </div>
+          <button
+            type="button"
+            onClick={handleApply}
+            disabled={!applyValue || applyPending}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+            style={{ borderColor: "#1e56a0", color: "#1e56a0" }}
+          >
+            {applyPending ? "…" : "Übernehmen"}
+          </button>
         <button
           onClick={openNew}
           className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white"
@@ -259,7 +240,9 @@ export function AutomationsTab({
           <Plus size={14} />
           Neue Automatisierung
         </button>
+        </div>
       </div>
+      {applyMessage && <p className="text-xs" style={{ color: applyMessage.ok ? "#1a9a6a" : "#dc2626" }}>{applyMessage.text}</p>}
 
       {/* List */}
       {automations.length === 0 ? (
@@ -373,18 +356,9 @@ export function AutomationsTab({
                       onChange={(e) => handleTemplateSelect(e.target.value)}
                     >
                       <option value="">— Vorlage auswählen —</option>
-                      {emailTemplates.length > 0 && (
-                        <optgroup label="Eigene Vorlagen">
-                          {emailTemplates.map((t) => (
-                            <option key={t.id} value={`custom:${t.id}`}>{t.name}</option>
-                          ))}
-                        </optgroup>
-                      )}
-                      <optgroup label="Standard-Vorlagen">
-                        {TEMPLATES.map((t) => (
-                          <option key={t.id} value={`builtin:${t.id}`}>{t.label}</option>
-                        ))}
-                      </optgroup>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                   </div>
@@ -472,7 +446,7 @@ export function AutomationsTab({
                 <label className="text-xs font-medium text-gray-600">
                   Betreff *{" "}
                   <span className="font-normal text-gray-400">
-                    — Variablen: #Kandidatenname, #Kampagnenname, #Kundenname, #Email, #Telefon
+                    — Variablen: {AUTOMATION_VARIABLES.join(", ")}
                   </span>
                 </label>
                 <input

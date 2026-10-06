@@ -5,10 +5,12 @@ import { MetaCampaignsTab } from "./meta-campaigns-tab"
 import { setCustomFieldSectionAction, type FieldTemplate, type LeadFormOverview } from "./field-actions"
 import { FieldTemplatesTab } from "./field-templates-tab"
 import { LeadFormsTab } from "./lead-forms-tab"
+import { AutomationTemplatesTab } from "./automation-templates-tab"
+import type { AutomationTemplate, AutomationTemplateSet } from "./automation-template-actions"
 import type { LeadCampaignOverview } from "@/lib/meta-campaigns-queries"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Clock, RefreshCw as SyncIcon, Send, Plus, Pencil, Trash2 } from "lucide-react"
+import { Clock, RefreshCw as SyncIcon, Send, Plus, Pencil } from "lucide-react"
 import {
   updateOwnNameAction,
   updateOwnPasswordAction,
@@ -16,9 +18,6 @@ import {
   removeTeamMemberAction,
   updateTeamMemberAction,
   updateAgencyNameAction,
-  createEmailTemplateAction,
-  updateEmailTemplateAction,
-  deleteEmailTemplateAction,
   updateLeadNotificationRecipientsAction,
   createCustomFieldDefinitionAction,
   updateCustomFieldDefinitionLabelAction,
@@ -26,7 +25,6 @@ import {
   dismissCustomFieldReviewQueueEntryAction,
   markCustomFieldReviewQueueEntryDoneAction,
   type TeamMember,
-  type EmailTemplate,
   type CustomFieldDefinition,
   type CustomFieldReviewQueueEntry,
 } from "./actions"
@@ -45,7 +43,7 @@ interface EinstellungenDetailProps {
   agencyName: string
   team: TeamMember[]
   agencyId: string | null
-  emailTemplates: EmailTemplate[]
+  automationTemplates: { templates: AutomationTemplate[]; sets: AutomationTemplateSet[] }
   leadNotificationRecipientIds: string[]
   customFieldDefinitions: CustomFieldDefinition[]
   customFieldReviewQueue: CustomFieldReviewQueueEntry[]
@@ -57,7 +55,7 @@ interface EinstellungenDetailProps {
 
 type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen" | "zusatzfelder" | "feldvorlagen" | "leadformulare" | "meta"
 
-export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, emailTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms, leadSyncWarnings }: EinstellungenDetailProps) {
+export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, automationTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms, leadSyncWarnings }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
 
   return (
@@ -71,7 +69,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
           <TabButton active={tab === "konto"} onClick={() => setTab("konto")}>Mein Konto</TabButton>
           <TabButton active={tab === "team"} onClick={() => setTab("team")}>Team ({team.length})</TabButton>
           <TabButton active={tab === "agentur"} onClick={() => setTab("agentur")}>Agentur</TabButton>
-          <TabButton active={tab === "vorlagen"} onClick={() => setTab("vorlagen")}>E-Mail-Vorlagen ({emailTemplates.length})</TabButton>
+          <TabButton active={tab === "vorlagen"} onClick={() => setTab("vorlagen")}>Automatisierungs-Vorlagen ({automationTemplates.templates.length})</TabButton>
           <TabButton active={tab === "automatisierung"} onClick={() => setTab("automatisierung")}>Automatisierung</TabButton>
           <TabButton active={tab === "zusatzfelder"} onClick={() => setTab("zusatzfelder")}>Felder ({customFieldDefinitions.filter((f) => f.active).length})</TabButton>
           <TabButton active={tab === "feldvorlagen"} onClick={() => setTab("feldvorlagen")}>Feld-Vorlagen ({fieldTemplates.length})</TabButton>
@@ -81,7 +79,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
           <TabButton active={tab === "meta"} onClick={() => setTab("meta")}>Meta-Kampagnen ({metaCampaigns.filter((c) => c.status === "active").length})</TabButton>
         </div>
 
-        <div className={tab === "leadformulare" || tab === "feldvorlagen" || tab === "meta" ? "mt-4 max-w-4xl" : "mt-4 max-w-lg"}>
+        <div className={tab === "leadformulare" || tab === "feldvorlagen" || tab === "meta" || tab === "vorlagen" ? "mt-4 max-w-4xl" : "mt-4 max-w-lg"}>
           {tab === "konto" && <KontoTab ownProfile={ownProfile} />}
           {tab === "feldvorlagen" && (
             <FieldTemplatesTab
@@ -100,7 +98,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, em
           {tab === "meta" && <MetaCampaignsTab campaigns={metaCampaigns} isAdmin={ownProfile.role === "agency_admin"} warnings={leadSyncWarnings} />}
           {tab === "team" && <TeamTab team={team} ownProfileId={ownProfile.id} />}
           {tab === "agentur" && <AgenturTab agencyName={agencyName} />}
-          {tab === "vorlagen" && agencyId && <EmailVorlagenTab agencyId={agencyId} templates={emailTemplates} />}
+          {tab === "vorlagen" && agencyId && <AutomationTemplatesTab templates={automationTemplates.templates} sets={automationTemplates.sets} />}
           {tab === "automatisierung" && agencyId && (
             <AutomatisierungTab agencyId={agencyId} team={team} initialRecipientIds={leadNotificationRecipientIds} />
           )}
@@ -260,19 +258,40 @@ function KontoTab({ ownProfile }: { ownProfile: OwnProfile }) {
   )
 }
 
+function TeamAvatar({ member, size = 36 }: { member: Pick<TeamMember, "full_name" | "avatarUrl">; size?: number }) {
+  if (member.avatarUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={member.avatarUrl} alt={member.full_name ?? ""} className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
+  }
+  const initials = (member.full_name ?? "?").split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase()
+  return (
+    <div className="flex shrink-0 items-center justify-center rounded-full text-xs font-semibold" style={{ width: size, height: size, backgroundColor: "#9ca3af30", color: "#6b7280" }}>
+      {initials}
+    </div>
+  )
+}
+
+// Team-Mitglieder mit Pflichtangaben Name, Telefon und Foto (Paket 15, T-73) - der Key
+// Account Manager erscheint damit als Ansprechpartner im Kundenportal.
 function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: string }) {
   const router = useRouter()
 
   const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteName, setInviteName] = useState("")
+  const [invitePhone, setInvitePhone] = useState("")
+  const [inviteAvatar, setInviteAvatar] = useState<File | null>(null)
   const [inviteRole, setInviteRole] = useState<"agency_admin" | "agency_member">("agency_member")
   const [invitePending, startInviteTransition] = useTransition()
   const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteKey, setInviteKey] = useState(0)
 
   const [removePending, startRemoveTransition] = useTransition()
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null)
 
   const [editId, setEditId] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
+  const [editPhone, setEditPhone] = useState("")
+  const [editAvatar, setEditAvatar] = useState<File | null>(null)
   const [editRole, setEditRole] = useState<"agency_admin" | "agency_member">("agency_member")
   const [editError, setEditError] = useState<string | null>(null)
   const [editPending, startEditTransition] = useTransition()
@@ -280,6 +299,8 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
   function startEdit(m: TeamMember) {
     setEditId(m.id)
     setEditName(m.full_name ?? "")
+    setEditPhone(m.phone ?? "")
+    setEditAvatar(null)
     setEditRole(m.role)
     setEditError(null)
     setRemoveConfirmId(null)
@@ -288,8 +309,13 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
   function handleSaveEdit() {
     if (!editId) return
     setEditError(null)
+    const fd = new FormData()
+    fd.set("full_name", editName)
+    fd.set("phone", editPhone)
+    fd.set("role", editRole)
+    if (editAvatar) fd.set("avatar", editAvatar)
     startEditTransition(async () => {
-      const result = await updateTeamMemberAction(editId, editName, editRole)
+      const result = await updateTeamMemberAction(editId, fd)
       if (result?.error) { setEditError(result.error); return }
       setEditId(null)
       router.refresh()
@@ -298,10 +324,20 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
 
   function handleInvite() {
     setInviteError(null)
+    const fd = new FormData()
+    fd.set("email", inviteEmail)
+    fd.set("full_name", inviteName)
+    fd.set("phone", invitePhone)
+    fd.set("role", inviteRole)
+    if (inviteAvatar) fd.set("avatar", inviteAvatar)
     startInviteTransition(async () => {
-      const result = await inviteTeamMemberAction(inviteEmail, inviteRole)
+      const result = await inviteTeamMemberAction(fd)
       if (result?.error) { setInviteError(result.error); return }
       setInviteEmail("")
+      setInviteName("")
+      setInvitePhone("")
+      setInviteAvatar(null)
+      setInviteKey((k) => k + 1)
       setInviteRole("agency_member")
       router.refresh()
     })
@@ -315,6 +351,8 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
     })
   }
 
+  const fileInputClass = "block w-full text-xs text-gray-600 file:mr-2 file:rounded-md file:border-0 file:px-2.5 file:py-1.5 file:text-xs file:font-medium"
+
   return (
     <div className="flex flex-col gap-4">
       <Card>
@@ -326,8 +364,12 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
             <div key={m.id} className="flex flex-col gap-2 rounded-lg border px-3 py-2.5" style={{ borderColor: "#1e56a0" }}>
               <div className="flex flex-wrap items-end gap-2">
                 <div className="flex min-w-[180px] flex-1 flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-600">Name</label>
+                  <label className="text-xs font-medium text-gray-600">Name *</label>
                   <input autoFocus className={inputClass} style={inputStyle} value={editName} onChange={(e) => setEditName(e.target.value)} />
+                </div>
+                <div className="flex min-w-[160px] flex-1 flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Telefon *</label>
+                  <input type="tel" className={inputClass} style={inputStyle} value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="0221 123456" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-medium text-gray-600">Rolle</label>
@@ -342,6 +384,13 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
                     <option value="agency_admin">Admin</option>
                   </select>
                 </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <TeamAvatar member={m} size={40} />
+                <div className="flex min-w-[200px] flex-1 flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">{m.avatarUrl ? "Foto ersetzen" : "Foto *"}</label>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className={fileInputClass} onChange={(e) => setEditAvatar(e.target.files?.[0] ?? null)} />
+                </div>
                 <button onClick={handleSaveEdit} disabled={editPending} className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50" style={{ backgroundColor: "#1e56a0" }}>
                   {editPending ? "…" : "Speichern"}
                 </button>
@@ -351,10 +400,20 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
               {editError && <p className="text-xs text-red-600">{editError}</p>}
             </div>
             ) : (
-            <div key={m.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
-              <div>
-                <p className="text-sm font-medium text-gray-900">{m.full_name ?? "—"}</p>
-                <p className="text-xs text-gray-500">{m.email ?? "—"}</p>
+            <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
+              <div className="flex min-w-0 items-center gap-3">
+                <TeamAvatar member={m} />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{m.full_name ?? "—"}</p>
+                  <p className="text-xs text-gray-500">
+                    {[m.email, m.phone].filter(Boolean).join(" · ") || "—"}
+                  </p>
+                  {(!m.phone || !m.avatarUrl) && (
+                    <p className="text-xs font-medium" style={{ color: "#dc2626" }}>
+                      Fehlt: {[!m.phone && "Telefon", !m.avatarUrl && "Foto"].filter(Boolean).join(", ")}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 <span
@@ -394,38 +453,48 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
           )}
         </div>
 
-        <div className="flex items-end gap-2 pt-2 border-t" style={{ borderColor: "#dde3ea" }}>
-          <div className="flex flex-col gap-1.5 flex-1">
-            <label className="text-xs font-medium text-gray-600">E-Mail einladen</label>
-            <input
-              type="email"
-              placeholder="name@firma.de"
-              className={inputClass}
-              style={inputStyle}
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-            />
+        <div key={inviteKey} className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "#dde3ea" }}>
+          <span className="text-xs font-semibold text-gray-700">Team-Mitglied einladen</span>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">Name *</label>
+              <input className={inputClass} style={inputStyle} value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Vorname Nachname" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">E-Mail *</label>
+              <input type="email" placeholder="name@firma.de" className={inputClass} style={inputStyle} value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">Telefon *</label>
+              <input type="tel" placeholder="0221 123456" className={inputClass} style={inputStyle} value={invitePhone} onChange={(e) => setInvitePhone(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">Rolle</label>
+              <select
+                className={inputClass}
+                style={inputStyle}
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as "agency_admin" | "agency_member")}
+              >
+                <option value="agency_member">Mitarbeiter</option>
+                <option value="agency_admin">Admin</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <label className="text-xs font-medium text-gray-600">Foto * (JPG, PNG oder WebP, max. 5 MB)</label>
+              <input type="file" accept="image/jpeg,image/png,image/webp" className={fileInputClass} onChange={(e) => setInviteAvatar(e.target.files?.[0] ?? null)} />
+            </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Rolle</label>
-            <select
-              className={inputClass}
-              style={{ ...inputStyle, width: "auto" }}
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value as "agency_admin" | "agency_member")}
+          <div>
+            <button
+              onClick={handleInvite}
+              disabled={invitePending || !inviteEmail.trim() || !inviteName.trim() || !invitePhone.trim() || !inviteAvatar}
+              className="rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              style={{ backgroundColor: "#1e56a0" }}
             >
-              <option value="agency_member">Mitarbeiter</option>
-              <option value="agency_admin">Admin</option>
-            </select>
+              {invitePending ? "…" : "Einladen"}
+            </button>
           </div>
-          <button
-            onClick={handleInvite}
-            disabled={invitePending || !inviteEmail.trim()}
-            className="rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            style={{ backgroundColor: "#1e56a0" }}
-          >
-            {invitePending ? "…" : "Einladen"}
-          </button>
         </div>
         {inviteError && <p className="text-xs text-red-600">{inviteError}</p>}
       </Card>
@@ -473,209 +542,6 @@ function AgenturTab({ agencyName }: { agencyName: string }) {
         {pending ? "Wird gespeichert…" : "Speichern"}
       </button>
     </Card>
-  )
-}
-
-// Kein lokaler Mirror-State fuer die Liste (anders als frueher versucht) - templates
-// kommt direkt aus der Props, die nach router.refresh() vom Server neu durchgereicht
-// wird (gleiches Prinzip wie TeamTab oben, das `team` ebenfalls direkt aus Props
-// rendert). Ein useState(initialTemplates) haette sich nach dem ersten Mount nie wieder
-// mit neuen Props synchronisiert - frisch angelegte/geloeschte Vorlagen waeren in der
-// Liste nicht sichtbar geworden, obwohl der Tab-Zaehler oben (aus derselben Props-Quelle)
-// schon korrekt aktualisiert war.
-function EmailVorlagenTab({ agencyId, templates }: { agencyId: string; templates: EmailTemplate[] }) {
-  const router = useRouter()
-  const [modal, setModal] = useState<{ template: EmailTemplate | null; isNew: boolean } | null>(null)
-  const [name, setName] = useState("")
-  const [subject, setSubject] = useState("")
-  const [bodyHtml, setBodyHtml] = useState("")
-  const [formError, setFormError] = useState<string | null>(null)
-  const [savePending, startSaveTransition] = useTransition()
-  const [deletePending, startDeleteTransition] = useTransition()
-  const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null)
-
-  function openNew() {
-    setName("")
-    setSubject("")
-    setBodyHtml("")
-    setFormError(null)
-    setModal({ template: null, isNew: true })
-  }
-
-  function openEdit(t: EmailTemplate) {
-    setName(t.name)
-    setSubject(t.subject)
-    setBodyHtml(t.body_html)
-    setFormError(null)
-    setModal({ template: t, isNew: false })
-  }
-
-  function closeModal() {
-    setModal(null)
-    setFormError(null)
-  }
-
-  function handleSave() {
-    if (!name.trim()) { setFormError("Name ist ein Pflichtfeld."); return }
-    setFormError(null)
-
-    startSaveTransition(async () => {
-      const data = { name, subject, body_html: bodyHtml }
-      if (modal?.isNew) {
-        const result = await createEmailTemplateAction(agencyId, data)
-        if (result?.error) { setFormError(result.error); return }
-      } else if (modal?.template) {
-        const result = await updateEmailTemplateAction(modal.template.id, data)
-        if (result?.error) { setFormError(result.error); return }
-      }
-      router.refresh()
-      closeModal()
-    })
-  }
-
-  function handleDelete(id: string) {
-    startDeleteTransition(async () => {
-      const result = await deleteEmailTemplateAction(id)
-      if (result?.error) { setFormError(result.error); return }
-      setRemoveConfirmId(null)
-      router.refresh()
-    })
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Card>
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900">E-Mail-Vorlagen</h2>
-          <button
-            onClick={openNew}
-            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
-            style={{ backgroundColor: "#1e56a0" }}
-          >
-            <Plus size={13} />
-            Neue Vorlage
-          </button>
-        </div>
-
-        {templates.length === 0 ? (
-          <p className="text-sm text-gray-400">Noch keine eigenen Vorlagen angelegt.</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {templates.map((t) => (
-              <div key={t.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{t.name}</p>
-                  <p className="text-xs text-gray-500 truncate">{t.subject || "—"}</p>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <button
-                    onClick={() => openEdit(t)}
-                    className="rounded p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                    aria-label="Bearbeiten"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  {removeConfirmId === t.id ? (
-                    <button
-                      onClick={() => handleDelete(t.id)}
-                      disabled={deletePending}
-                      className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
-                    >
-                      {deletePending ? "…" : "Wirklich löschen?"}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setRemoveConfirmId(t.id)}
-                      className="rounded p-1 text-gray-300 hover:text-red-500 hover:bg-red-50"
-                      aria-label="Löschen"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div
-            className="flex w-full max-w-2xl flex-col rounded-xl border bg-white shadow-xl"
-            style={{ borderColor: "#dde3ea", maxHeight: "90vh" }}
-          >
-            <div className="flex items-center justify-between gap-4 border-b px-6 py-4" style={{ borderColor: "#dde3ea" }}>
-              <h2 className="text-base font-semibold text-gray-900">
-                {modal.isNew ? "Neue E-Mail-Vorlage" : "Vorlage bearbeiten"}
-              </h2>
-            </div>
-
-            <div className="flex flex-col gap-5 overflow-y-auto px-6 py-5">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">Name *</label>
-                <input
-                  className={inputClass}
-                  style={inputStyle}
-                  placeholder="z. B. Eingangsbestätigung"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">
-                  Betreff{" "}
-                  <span className="font-normal text-gray-400">
-                    — Variablen: #Kandidatenname, #Kampagnenname, #Kundenname, #Email, #Telefon
-                  </span>
-                </label>
-                <input
-                  className={inputClass}
-                  style={inputStyle}
-                  placeholder="Betreff der E-Mail"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">Text</label>
-                <textarea
-                  className={inputClass}
-                  style={{ ...inputStyle, resize: "vertical" }}
-                  rows={8}
-                  placeholder="Inhalt der E-Mail…"
-                  value={bodyHtml}
-                  onChange={(e) => setBodyHtml(e.target.value)}
-                />
-              </div>
-
-              {formError && <p className="text-xs text-red-600">{formError}</p>}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t px-6 py-4" style={{ borderColor: "#dde3ea" }}>
-              <button
-                onClick={closeModal}
-                disabled={savePending}
-                className="rounded-md border px-4 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                style={{ borderColor: "#dde3ea" }}
-              >
-                Abbrechen
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={savePending}
-                className="rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-                style={{ backgroundColor: "#1e56a0" }}
-              >
-                {savePending ? "Wird gespeichert…" : "Speichern"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
   )
 }
 

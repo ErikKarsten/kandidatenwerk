@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { CANDIDATE_STATUS_OPTIONS, type CandidateStatusValue } from "@/lib/candidate-status"
 import { createCandidateAction, type CreateCandidateState } from "../actions"
 
 const schema = z.object({
@@ -16,7 +17,7 @@ const schema = z.object({
   last_name: z.string().min(1, "Pflichtfeld"),
   email: z.string().email("Ungültige E-Mail").optional().or(z.literal("")),
   phone: z.string().optional(),
-  status: z.enum(["neu", "interview", "vorgestellt", "platziert", "abgelehnt"]),
+  status: z.enum(CANDIDATE_STATUS_OPTIONS.map((o) => o.value) as [CandidateStatusValue, ...CandidateStatusValue[]]),
   notes: z.string().optional(),
   campaign_id: z.string().optional(),
   berufsbild: z.string().optional(),
@@ -123,11 +124,9 @@ export function CandidateForm({
           className="flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
         >
-          <option value="neu">Neu</option>
-          <option value="interview">Interview</option>
-          <option value="vorgestellt">Vorgestellt</option>
-          <option value="platziert">Platziert</option>
-          <option value="abgelehnt">Abgelehnt</option>
+          {CANDIDATE_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
         </select>
       </Field>
 

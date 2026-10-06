@@ -46,18 +46,19 @@ export async function withRetry<T>(fn: () => Promise<T>, retries = 6): Promise<T
   throw new Error("unreachable")
 }
 
-// 1:1-Mapping der Leadtable-Statusnamen auf unsere 8 dafür vorgesehenen Kandidatenwerk-
-// Status ("vorgestellt" hat keine Leadtable-Entsprechung, wird hier nie gesetzt).
+// Mapping der Leadtable-Statusnamen auf den internen Kandidatenstatus. Seit Paket 15 gibt
+// es intern kein Interview/Platziert mehr - Vorstellungsgespräch und Eingestellt werden
+// zu "vorqualifiziert" (der Stand beim Kunden steckt in der Zuordnung).
 export const LEADTABLE_STATUS_MAP: Record<string, string> = {
   Unbearbeitet: "neu",
   Vorqualifiziert: "vorqualifiziert",
   "Nicht erreicht": "nicht_erreicht",
   "2x nicht erreicht + Mail": "nicht_erreicht_mail",
   "In Kontakt": "in_kontakt",
-  Vorstellungsgespräch: "interview",
+  Vorstellungsgespräch: "vorqualifiziert",
   Absage: "abgelehnt",
   "aktuell kein Interesse": "abgelehnt",
-  Eingestellt: "platziert",
+  Eingestellt: "vorqualifiziert",
 }
 
 export function leadtableStatusName(lead: Pick<LeadtableSyncLead, "status" | "statusID">): string {

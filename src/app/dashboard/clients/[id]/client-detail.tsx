@@ -33,18 +33,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { assignmentStatusLabel } from "@/lib/assignment-status"
 
-// Gleiche Labels wie candidates/[id]/matches-section.tsx (ASSIGNMENT_STATUS_OPTIONS) und
-// portal/page.tsx (STATUS_LABELS) - bewusst als eigene kleine Kopie statt geteiltem
-// Import, siehe Begründung dort.
-const ASSIGNMENT_STATUS_LABEL: Record<string, string> = {
-  inbox: "Unbearbeitet",
-  vq: "Vorqualifiziert",
-  vqk: "Vorqualifiziert beim Kunden",
-  vg: "Vorstellungsgespräch",
-  ja: "Ja",
-  nein: "Nein",
-}
 
 const CAMPAIGN_STATUS: Record<string, { label: string; bg: string; dot: string; text: string }> = {
   active: { label: "Aktiv", bg: "#1a9a6a18", dot: "#1a9a6a", text: "#1a9a6a" },
@@ -860,7 +850,7 @@ function KandidatenTab({
                       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                       style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}
                     >
-                      {ASSIGNMENT_STATUS_LABEL[c.assignmentStatus] ?? c.assignmentStatus}
+                      {assignmentStatusLabel(c.assignmentStatus).label}
                     </span>
                   </TableCell>
                   <TableCell className="text-gray-500">
