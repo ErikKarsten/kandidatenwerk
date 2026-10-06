@@ -38,13 +38,37 @@ export interface CloseWebhookEvent {
   event?: { object_type?: string; action?: string; data?: CloseMeeting | null }
 }
 
+// Besprechungen erst ab Einrichtung der Anbindung (Webhook am 06.10.2026 eingerichtet) -
+// kein Altbestand (Entscheidung 06.10.2026).
+export const CLOSE_MEETINGS_SINCE = "2026-10-06T08:00:00Z"
+
+// Close-API (CLOSE_API_KEY): Die Webhook-Ereignisse enthalten die Notetaker-Zusammenfassung
+// NICHT, und wenn sie fertig ist, kommt nur "notetaker_states geändert" (live geprüft
+// 06.10.2026). Die Besprechung wird deshalb immer frisch über die API gelesen.
+async function closeGet<T>(path: string): Promise<T | null> {
+  const key = process.env.CLOSE_API_KEY
+  if (!key) return null
+  const res = await fetch(`https://api.close.com/api/v1${path}`, {
+    headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}` },
+  })
+  if (!res.ok) throw new Error(`Close-API ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  return (await res.json()) as T
+}
+
 // Merkt eine Besprechung mit Notetaker-Zusammenfassung vor. Liefert, was passiert ist.
 export async function recordMeetingFromWebhook(db: SupabaseClient, payload: CloseWebhookEvent): Promise<string> {
   const ev = payload.event
   if (ev?.object_type !== "activity.meeting") return "kein Meeting"
-  const m = ev.data
+  const id = ev.data?.id
+  if (!id) return "ohne ID"
+  const fresh = await closeGet<CloseMeeting>(`/activity/meeting/${id}/`)
+  return recordMeeting(db, fresh ?? ev.data ?? {})
+}
+
+async function recordMeeting(db: SupabaseClient, m: CloseMeeting): Promise<string> {
   const summary = m?.summary?.text?.trim()
   if (!m?.id || !m.lead_id || !summary) return "ohne Zusammenfassung"
+  if (m.starts_at && m.starts_at < CLOSE_MEETINGS_SINCE) return "vor Start der Anbindung"
 
   const { data: client } = await db.from("clients").select("id").eq("close_lead_id", m.lead_id).maybeSingle()
   if (!client) return "Lead gehört zu keinem Kunden"
@@ -65,6 +89,28 @@ export async function recordMeetingFromWebhook(db: SupabaseClient, payload: Clos
   )
   if (error) throw new Error(error.message)
   return "vorgemerkt"
+}
+
+// Absicherung im Cronjob: jüngste Besprechungen der mit Close verknüpften Kunden prüfen -
+// falls Close beim Fertigwerden des Notetakers kein Ereignis schickt.
+export async function pollRecentMeetings(db: SupabaseClient): Promise<number> {
+  if (!process.env.CLOSE_API_KEY) return 0
+  const { data: clients } = await db.from("clients").select("close_lead_id").not("close_lead_id", "is", null)
+  const leads = new Set((clients ?? []).map((c) => c.close_lead_id as string))
+  if (leads.size === 0) return 0
+  const since = new Date(Date.now() - 30 * 86400e3).toISOString()
+  let found = 0
+  for (let skip = 0; skip < 500; skip += 100) {
+    const page = await closeGet<{ data: CloseMeeting[]; has_more?: boolean }>(
+      `/activity/meeting/?date_created__gte=${encodeURIComponent(since)}&_limit=100&_skip=${skip}`
+    )
+    for (const m of page?.data ?? []) {
+      if (!m.lead_id || !leads.has(m.lead_id) || !m.summary?.text?.trim()) continue
+      if ((await recordMeeting(db, m)) === "vorgemerkt") found++
+    }
+    if (!page?.has_more) break
+  }
+  return found
 }
 
 function formatDate(iso: string | null): string | null {
