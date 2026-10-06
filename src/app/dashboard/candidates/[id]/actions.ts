@@ -7,6 +7,7 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { ensureCampaignAssignment } from "@/lib/client-assignment"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { triggerAutomationsNow } from "@/lib/automation-trigger"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -412,6 +413,7 @@ export async function assignToCampaignAction(
     // Mails dazu laufen ausschließlich über die Automatisierungen der Kampagne (Auslöser
     // "Kandidat der Kampagne zugeordnet", Paket 21).
     await ensureCampaignAssignment(supabase, candidateId, campaignId, guard.staff.userId)
+    triggerAutomationsNow([campaignId])
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }

@@ -29,6 +29,7 @@ import type { Database } from "@/types/database"
 import { fetchMetaPages, fetchMetaLead, isMetaTestLead } from "@/lib/meta-ads-client"
 import { processMetaLead, type MetaSyncCampaign } from "@/lib/meta-leads-sync-shared"
 import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
+import { runAutomations } from "@/lib/cron/run-automations"
 
 const ARCHIVED_STATUS = "Archiviert"
 
@@ -143,6 +144,14 @@ async function handleLeadgenEvent(value: LeadgenChangeValue) {
     }
     const outcome = await processMetaLead(supabase, campaignForProcessing, lead)
     console.log(`[meta-webhook] Lead ${value.leadgen_id} (Kampagne "${campaign.title}"): ${outcome.status}`)
+    // Eingangsbestätigung & Co. sofort statt im nächsten 5-Minuten-Lauf (Paket 22).
+    if (outcome.status === "created") {
+      try {
+        await runAutomations(supabase, { campaignIds: [campaign.id], immediate: true, log: () => {} })
+      } catch (autoError) {
+        console.error(`[meta-webhook] Sofort-Automatisierung fehlgeschlagen:`, autoError instanceof Error ? autoError.message : autoError)
+      }
+    }
   } catch (err) {
     console.error(`[meta-webhook] Fehler bei Lead ${value.leadgen_id}:`, err instanceof Error ? err.message : err)
   }

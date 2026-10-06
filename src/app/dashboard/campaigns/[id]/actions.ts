@@ -20,6 +20,7 @@ import { fetchMetaPages, fetchMetaLeadForms, createMetaTestLead, buildFormToPage
 import { ensureClientAssignment } from "@/lib/client-assignment"
 import type { TablesUpdate } from "@/types/database"
 import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
+import { triggerAutomationsNow } from "@/lib/automation-trigger"
 
 
 // requireStaffUser() aus src/lib/auth-guards.ts (Security-Review 08./09.09.2026) -
@@ -608,6 +609,7 @@ export async function assignCandidateToCampaignAction(
     // Mails dazu laufen ausschließlich über die Automatisierungen der Kampagne (Auslöser
     // "Kandidat der Kampagne zugeordnet", Paket 21).
     await ensureCampaignAssignment(supabase, candidateId, campaignId, guard.staff.userId)
+    triggerAutomationsNow([campaignId])
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }

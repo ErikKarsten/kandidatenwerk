@@ -127,14 +127,24 @@ async function loadCampaignCandidates(
 
 // dryRun: zeigt nur (über log), was verschickt würde - kein Versand, kein DB-Schreiben.
 // In dem Fall stehen sent/skipped für "würde verschicken"/"würde überspringen".
+// campaignIds: nur diese Kampagnen (sofortige Auslösung nach einem Ereignis, Paket 22).
+// immediate: Verzögerungen bis 60 Sekunden gelten als "sofort" - der Lauf kommt ja direkt
+// aus dem Ereignis; längere Verzögerungen erledigt weiter der 5-Minuten-Job.
 export async function runAutomations(
   supabase: Supabase,
-  { dryRun = false, log = console.log }: { dryRun?: boolean; log?: (message: string) => void } = {}
+  {
+    dryRun = false,
+    log = console.log,
+    campaignIds,
+    immediate = false,
+  }: { dryRun?: boolean; log?: (message: string) => void; campaignIds?: string[]; immediate?: boolean } = {}
 ): Promise<RunAutomationsResult> {
-  const { data: automations, error: autoError } = await supabase
+  let automationQuery = supabase
     .from("campaign_automations")
     .select("*, campaigns(id, title, kind, client_id, clients(name))")
     .eq("active", true)
+  if (campaignIds) automationQuery = automationQuery.in("campaign_id", campaignIds)
+  const { data: automations, error: autoError } = await automationQuery
 
   if (autoError) throw new Error(autoError.message)
 
@@ -148,7 +158,8 @@ export async function runAutomations(
     if (automation.trigger === "status_change" && !automation.trigger_status) continue
 
     const activeSince = automation.active_since ?? automation.created_at
-    const cutoff = new Date(Date.now() - automation.delay_seconds * 1000).toISOString()
+    const delaySeconds = immediate && automation.delay_seconds <= 60 ? 0 : automation.delay_seconds
+    const cutoff = new Date(Date.now() - delaySeconds * 1000).toISOString()
     let candidates: CandidateRow[]
     // Seit wann ein Kandidat zur Kampagne gehört (Kanzlei-Kampagnen: Zeitpunkt der Zuordnung).
     const joinedAt = new Map<string, string>()
@@ -210,7 +221,7 @@ export async function runAutomations(
             skipped++
             continue
           }
-          const readyAt = new Date(statusSince).getTime() + automation.delay_seconds * 1000
+          const readyAt = new Date(statusSince).getTime() + delaySeconds * 1000
           if (Date.now() < readyAt) continue
         }
 
@@ -263,12 +274,26 @@ export async function runAutomations(
         } else {
           // Keine automatische Kanzlei-Zuordnung mehr (Paket 19, T-86) - der #Bewerberlink
           // öffnet im Portal nur, wenn das Team den Kandidaten der Kanzlei zugeordnet hat.
-          await sendEmail(recipients, subject, emailHtml)
-
-          await supabase.from("campaign_automation_runs").insert({
+          // Erst den Lauf reservieren, dann senden: laufen sofortige Auslösung und
+          // 5-Minuten-Job gleichzeitig, verschickt nur einer (UNIQUE automation/candidate).
+          const { error: claimError } = await supabase.from("campaign_automation_runs").insert({
             automation_id: automation.id,
             candidate_id: candidate.id,
           })
+          if (claimError) {
+            if (claimError.code === "23505") {
+              skipped++
+              continue
+            }
+            throw new Error(claimError.message)
+          }
+          try {
+            await sendEmail(recipients, subject, emailHtml)
+          } catch (sendError) {
+            // Reservierung zurücknehmen, damit der nächste Lauf es erneut versucht.
+            await supabase.from("campaign_automation_runs").delete().eq("automation_id", automation.id).eq("candidate_id", candidate.id)
+            throw sendError
+          }
 
           await supabase.from("candidate_history").insert({
             candidate_id: candidate.id,
