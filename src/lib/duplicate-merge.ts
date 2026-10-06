@@ -91,6 +91,17 @@ export async function mergeClients(db: SupabaseClient, keepId: string, otherId: 
     await check(db.from(table).update({ client_id: keepId }).eq("client_id", otherId), table)
   }
 
+  // Standorte (Paket 16): fehlende PLZ als weitere Standorte übernehmen, nie als zweiten
+  // Hauptstandort. Hat der behaltene Kunde keinen Hauptstandort, wird der erste übernommene es.
+  const { data: locs } = await db.from("client_locations").select("id, client_id, plz, is_primary").in("client_id", [keepId, otherId])
+  const keepLocs = (locs ?? []).filter((l) => l.client_id === keepId)
+  let hasPrimary = keepLocs.some((l) => l.is_primary)
+  for (const l of (locs ?? []).filter((x) => x.client_id === otherId)) {
+    if (keepLocs.some((k) => k.plz === l.plz)) continue
+    await check(db.from("client_locations").update({ client_id: keepId, is_primary: !hasPrimary }).eq("id", l.id), "Standort")
+    hasPrimary = true
+  }
+
   // Kanzleiprofil: fehlt es beim behaltenen Kunden, wird es übernommen, sonst aufgefüllt.
   const { data: profiles } = await db.from("client_profiles").select("*").in("client_id", [keepId, otherId])
   const keepProfile = profiles?.find((p) => p.client_id === keepId)

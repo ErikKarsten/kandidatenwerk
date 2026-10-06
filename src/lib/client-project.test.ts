@@ -3,7 +3,7 @@ import { contractEnd, missingProfileItems } from "./client-project"
 
 describe("missingProfileItems", () => {
   it("listet fehlende Pflichtangaben, Benefits und Stellen", () => {
-    expect(missingProfileItems(null, 0)).toEqual([
+    expect(missingProfileItems(null, 0, 0)).toEqual([
       "Kurzbeschreibung",
       "Intro zur Kanzlei",
       "Mitarbeiterzahl",
@@ -15,7 +15,8 @@ describe("missingProfileItems", () => {
   it("ist leer, wenn alles da ist", () => {
     expect(
       missingProfileItems(
-        { kurzbeschreibung: "a", intro: "b", mitarbeiterzahl: "10", standorte: "Köln", benefits: ["Jobrad"] },
+        { kurzbeschreibung: "a", intro: "b", mitarbeiterzahl: "10", benefits: ["Jobrad"] },
+        1,
         1
       )
     ).toEqual([])

@@ -26,11 +26,13 @@ const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").th
 
 const SEARCH_ZOOM = 12
 
+// Ein Punkt je Standort (Paket 16, T-75) - ein Kunde kann mehrere Punkte haben.
 export interface MapClientPoint {
   id: string
   name: string
   lat: number
   lng: number
+  place?: string | null
 }
 
 export interface MapCandidatePoint {
@@ -135,6 +137,7 @@ export function MapOverview({
   const candidatesWithOwnLocation = useMemo(() => candidates.filter((c) => !c.approximate).length, [candidates])
   const candidatesWithApproxLocation = candidates.length - candidatesWithOwnLocation
 
+  const clientCount = new Set(clients.map((c) => c.id)).size
   const includeClients = typeFilter !== "candidates"
   const includeCandidates = typeFilter !== "clients"
 
@@ -144,7 +147,7 @@ export function MapOverview({
           lat: c.lat,
           lng: c.lng,
           label: c.name,
-          sublabel: "Kanzlei",
+          sublabel: c.place ? `Kanzlei · ${c.place}` : "Kanzlei",
           color: CLIENT_COLOR,
           href: `/dashboard/clients/${c.id}`,
         }))
@@ -179,8 +182,9 @@ export function MapOverview({
         className="rounded-xl border bg-white px-4 py-3 text-sm text-gray-600"
         style={{ borderColor: "#dde3ea" }}
       >
-        <span className="font-medium text-gray-900">{clients.length}</span>{" "}
-        Kanzlei{clients.length !== 1 ? "en" : ""},{" "}
+        <span className="font-medium text-gray-900">{clientCount}</span>{" "}
+        Kanzlei{clientCount !== 1 ? "en" : ""} an{" "}
+        <span className="font-medium text-gray-900">{clients.length}</span> Standort{clients.length !== 1 ? "en" : ""},{" "}
         <span className="font-medium text-gray-900">{candidatesWithOwnLocation}</span>{" "}
         Kandidat{candidatesWithOwnLocation !== 1 ? "en" : ""} mit eigenem Standort,{" "}
         <span className="font-medium text-gray-900">{candidatesWithApproxLocation}</span>{" "}

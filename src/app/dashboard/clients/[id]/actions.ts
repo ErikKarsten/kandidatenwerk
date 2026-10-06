@@ -3,10 +3,8 @@
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { requireStaffUser } from "@/lib/auth-guards"
-import { publishClientToKanzleistelle } from "@/lib/sync-kanzleistelle-jobs"
-import { geocodePlz } from "@/lib/geocode-plz"
-import { reverseGeocodeCity } from "@/lib/reverse-geocode"
-import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
+import { publishClientProfileToKanzleistelle } from "@/lib/kanzleistelle-profile-sync"
+import { scheduleKanzleistelleSync } from "@/lib/kanzleistelle-auto-sync"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 
 // Server Actions verlassen sich nach dem Security-Review vom 09.09.2026 nicht mehr
@@ -26,8 +24,6 @@ export async function updateClientAction(
   const contact_email = formData.get("contact_email") as string
   const phone = formData.get("phone") as string
   const active = formData.get("active") === "true"
-  const plz = formData.get("plz") as string
-  const auto_forward_enabled = formData.get("auto_forward_enabled") === "true"
 
   if (!name) return { error: "Firmenname ist ein Pflichtfeld." }
 
@@ -36,18 +32,6 @@ export async function updateClientAction(
   const staffError = await requireStaffUser(supabase)
   if (staffError) return staffError
 
-  // PLZ wird immer als Rohwert gespeichert, auch wenn sie nicht in der Lookup-Tabelle
-  // gefunden wird (geocodePlz gibt dann null zurück) - lat/lng bleiben in dem Fall
-  // leer statt eines Fehlers, siehe geocode-plz.ts (gleiches Muster wie bei
-  // Kandidaten/Kampagnen, candidates/actions.ts bzw. campaigns/actions.ts).
-  const coords = plz ? geocodePlz(plz) : null
-
-  // Ortsname nur EINMAL beim Speichern per Nominatim ermitteln (nicht bei jedem
-  // Seitenaufruf) - und auch nur, wenn die PLZ überhaupt erfolgreich geocodiert wurde.
-  // Schlägt die Anfrage fehl, bleibt ort einfach null - blockiert nicht das Speichern
-  // von PLZ/lat/lng, die bereits erfolgreich ermittelt wurden (siehe reverse-geocode.ts).
-  const ort = coords ? await reverseGeocodeCity(coords.lat, coords.lng) : null
-
   const { error } = await supabase
     .from("clients")
     .update({
@@ -55,50 +39,13 @@ export async function updateClientAction(
       contact_email: contact_email || null,
       phone: phone || null,
       active,
-      plz: plz || null,
-      lat: coords?.lat ?? null,
-      lng: coords?.lng ?? null,
-      ort,
-      auto_forward_enabled,
     })
     .eq("id", clientId)
 
   if (error) return { error: error.message }
 
-  // Kampagnen ohne eigene PLZ übernehmen automatisch die (neue) Kunden-PLZ inkl.
-  // lat/lng/location_id. Kampagnen, die bereits eine eigene PLZ haben, bleiben
-  // unangetastet, damit eine manuell abweichend gesetzte Kampagnen-PLZ dauerhaft
-  // erhalten bleibt, auch wenn sich die Kunden-PLZ später nochmal ändert. Nicht fatal
-  // bei Fehlern - der Kunde ist zu diesem Zeitpunkt bereits erfolgreich gespeichert
-  // (gleiches "loggen statt abbrechen"-Muster wie beim Matching-Aufruf in
-  // campaigns/actions.ts).
-  try {
-    const { data: campaignsWithoutPlz, error: campaignsFetchError } = await supabase
-      .from("campaigns")
-      .select("id")
-      .eq("client_id", clientId)
-      .is("plz", null)
-
-    if (campaignsFetchError) throw new Error(campaignsFetchError.message)
-
-    if (campaignsWithoutPlz && campaignsWithoutPlz.length > 0) {
-      const location_id = await getOrCreateLocationForPlz(supabase, plz)
-
-      const { error: campaignsUpdateError } = await supabase
-        .from("campaigns")
-        .update({
-          plz: plz || null,
-          lat: coords?.lat ?? null,
-          lng: coords?.lng ?? null,
-          location_id,
-        })
-        .in("id", campaignsWithoutPlz.map((c) => c.id))
-
-      if (campaignsUpdateError) throw new Error(campaignsUpdateError.message)
-    }
-  } catch (cascadeError) {
-    console.error("PLZ-Vererbung an Kampagnen fehlgeschlagen für Kunde", clientId, cascadeError)
-  }
+  // PLZ/Ort kommen seit Paket 16 aus dem Hauptstandort (client_locations, location-actions.ts).
+  scheduleKanzleistelleSync(clientId)
 
   revalidatePath(`/dashboard/clients/${clientId}`)
   revalidatePath("/dashboard/clients")
@@ -138,6 +85,7 @@ export async function uploadClientLogoAction(
 
   if (dbError) return { error: dbError.message }
 
+  scheduleKanzleistelleSync(clientId)
   revalidatePath(`/dashboard/clients/${clientId}`)
   return { url: logo_url }
 }
@@ -224,27 +172,25 @@ export async function deleteClientPermanentlyAction(clientId: string): Promise<{
   return null
 }
 
-// Kunden-Stammdaten -> "Auf Kanzleistelle24 veröffentlichen" bzw. danach "Daten auf
-// Kanzleistelle24 aktualisieren" (Paket 8).
+// "Auf Kanzleistelle24 veröffentlichen" bzw. "Jetzt aktualisieren" (Paket 16, T-52): Firma
+// und alle gesuchten Stellen aus dem abgeschlossenen Kanzleiprofil. Danach überträgt
+// scheduleKanzleistelleSync Änderungen automatisch.
 export async function publishClientToKanzleistelleAction(
   clientId: string
-): Promise<{ success: true; firstPublish: boolean; published: number; errors: string[] } | { success: false; error: string }> {
+): Promise<{ success: true; firstPublish: boolean; created: number; updated: number } | { success: false; error: string }> {
   const supabase = await createSupabaseServerClient()
   // Nur Staff - schreibt in die Kanzleistelle24-Datenbank (Security-Review 02.10.2026).
   const staffError = await requireStaffUser(supabase)
   if (staffError) return { success: false, error: staffError.error }
 
   try {
-    const result = await publishClientToKanzleistelle(clientId)
+    const result = await publishClientProfileToKanzleistelle(clientId)
     revalidatePath(`/dashboard/clients/${clientId}`)
-    return {
-      success: true,
-      firstPublish: result.firstPublish,
-      published: result.published,
-      errors: result.errors.map((e) => `${e.campaign}: ${e.message}`),
-    }
+    return { success: true, ...result }
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) }
+    const message = err instanceof Error ? err.message : String(err)
+    await supabase.from("clients").update({ kanzleistelle_sync_error: message }).eq("id", clientId)
+    return { success: false, error: message }
   }
 }
 

@@ -13,7 +13,7 @@ export default async function MapPage() {
   // trivial günstig. campaigns wird nur für die client_id-Zuordnung gebraucht (Kandidat
   // -> Kampagne -> Kunde), nicht für die Kampagnen-eigenen Koordinaten - der
   // Näherungswert soll laut Vorgabe explizit vom Kanzlei-/Kundenstandort kommen.
-  const [{ data: clients }, { data: candidates }, { data: campaigns }, adAreas] = await Promise.all([
+  const [{ data: clients }, { data: candidates }, { data: campaigns }, adAreas, { data: locations }] = await Promise.all([
     supabase
       .from("clients")
       .select("id, name, lat, lng")
@@ -23,18 +23,29 @@ export default async function MapPage() {
     supabase.from("campaigns").select("id, client_id"),
     // Werbegebiete laufender Meta-Kampagnen (Atlas T-38) für die Ebene "Werbegebiete".
     getActiveAdAreas(supabase as unknown as SupabaseClient),
+    // Alle Standorte aller Kunden als Kanzlei-Punkte (Paket 16, T-75).
+    supabase.from("client_locations").select("client_id, plz, ort, lat, lng, clients(name)").not("lat", "is", null).not("lng", "is", null),
   ])
 
   const clientList = clients ?? []
   const clientById = new Map(clientList.map((c) => [c.id, c]))
   const campaignClientId = new Map((campaigns ?? []).map((c) => [c.id, c.client_id]))
 
-  const clientPoints: MapClientPoint[] = clientList.map((c) => ({
-    id: c.id,
-    name: c.name,
-    lat: c.lat as number,
-    lng: c.lng as number,
-  }))
+  const located = new Set((locations ?? []).map((l) => l.client_id))
+  const clientPoints: MapClientPoint[] = [
+    ...(locations ?? []).map((l) => {
+      const rel = l.clients as { name: string } | { name: string }[] | null
+      return {
+        id: l.client_id,
+        name: (Array.isArray(rel) ? rel[0]?.name : rel?.name) ?? "Kanzlei",
+        lat: l.lat as number,
+        lng: l.lng as number,
+        place: [l.plz, l.ort].filter(Boolean).join(" "),
+      }
+    }),
+    // Kunden ohne Standortliste (sollte nach der Migration nicht vorkommen) wie bisher.
+    ...clientList.filter((c) => !located.has(c.id)).map((c) => ({ id: c.id, name: c.name, lat: c.lat as number, lng: c.lng as number })),
+  ]
 
   const candidatePoints: MapCandidatePoint[] = []
   for (const candidate of candidates ?? []) {

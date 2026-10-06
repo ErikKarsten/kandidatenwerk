@@ -3,14 +3,13 @@
 import { useState, useTransition, useEffect } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Inbox, Send, ClipboardCheck, Search, Globe } from "lucide-react"
+import { Inbox, Send, ClipboardCheck, Search } from "lucide-react"
 import {
   updateClientAction,
   archiveClientAction,
   unarchiveClientAction,
   deleteClientPermanentlyAction,
   uploadClientLogoAction,
-  publishClientToKanzleistelleAction,
 } from "./actions"
 import { ContactsSection, type Contact } from "./contacts-section"
 import { ProjectTab, type ProjectMeta, type ClientProfileData } from "./project-tab"
@@ -18,6 +17,8 @@ import { ProjectComments } from "./project-comments"
 import { ClientTasksTab, type ClientTask } from "./client-tasks-tab"
 import { AdCoverageBadge, type CoverageArea } from "./ad-coverage-badge"
 import type { ClientPosition } from "./project-positions"
+import type { ClientLocation } from "@/lib/client-locations"
+import { LocationsCard } from "./locations-card"
 import type { ProjectComment } from "./project-comments"
 import { PROJECT_PHASES } from "@/lib/client-project"
 import { PortalAccessSection, type PortalUser } from "./portal-access-section"
@@ -34,6 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { assignmentStatusLabel } from "@/lib/assignment-status"
+import { KanzleistelleCard, type KanzleistelleStatus } from "./kanzleistelle-card"
 
 
 const CAMPAIGN_STATUS: Record<string, { label: string; bg: string; dot: string; text: string }> = {
@@ -77,7 +79,6 @@ interface Client {
   lat: number | null
   lng: number | null
   ort: string | null
-  auto_forward_enabled: boolean
   kanzleistelle_company_id: string | null
 }
 
@@ -125,6 +126,8 @@ interface ClientDetailProps {
     meta: ProjectMeta
     profile: ClientProfileData | null
     positions: ClientPosition[]
+    locations: ClientLocation[]
+    kanzleistelle: KanzleistelleStatus
     comments: ProjectComment[]
     team: { id: string; full_name: string | null }[]
     currentUserId: string
@@ -485,6 +488,8 @@ export function ClientDetail({
               meta={project.meta}
               profile={project.profile}
               positions={project.positions}
+              locations={project.locations}
+              kanzleistelle={project.kanzleistelle}
               campaigns={kanzleiCampaigns.map((c) => ({ id: c.id, title: c.title }))}
               team={project.team}
             />
@@ -516,6 +521,8 @@ export function ClientDetail({
               setEditMode={setEditMode}
               contacts={contacts}
               portalUsers={portalUsers}
+              locations={project.locations}
+              kanzleistelle={project.kanzleistelle}
               onLogoUploaded={(url) => setDisplayLogoUrl(url)}
             />
           )}
@@ -869,57 +876,14 @@ function KandidatenTab({
 
 // Kanzleistelle24 (Paket 8): einmal veröffentlichen (Firma + aktive Kanzlei-Kampagnen),
 // danach "aktualisieren" für neu hinzugekommene Kampagnen.
-function KanzleistellePublishCard({ clientId, published }: { clientId: string; published: boolean }) {
-  const router = useRouter()
-  const [pending, startTransition] = useTransition()
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
-
-  function handleClick() {
-    setMessage(null)
-    startTransition(async () => {
-      const result = await publishClientToKanzleistelleAction(clientId)
-      if (!result.success) return setMessage({ ok: false, text: result.error })
-      const base = result.firstPublish
-        ? `Auf Kanzleistelle24 veröffentlicht, ${result.published} Kampagne${result.published === 1 ? "" : "n"}.`
-        : result.published > 0
-          ? `${result.published} neue Kampagne${result.published === 1 ? "" : "n"} auf Kanzleistelle24 veröffentlicht.`
-          : "Kanzleistelle24 ist bereits aktuell."
-      setMessage(result.errors.length > 0 ? { ok: false, text: `${base} Fehler: ${result.errors.join(" · ")}` } : { ok: true, text: base })
-      router.refresh()
-    })
-  }
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white px-6 py-4" style={{ borderColor: "#dde3ea" }}>
-      <div>
-        <p className="text-sm font-medium text-gray-900">Kanzleistelle24</p>
-        <p className="text-xs text-gray-500">{published ? "Kunde ist veröffentlicht." : "Noch nicht veröffentlicht."}</p>
-        {message && (
-          <p className="mt-1 text-xs" style={{ color: message.ok ? "#1a9a6a" : "#dc2626" }}>
-            {message.text}
-          </p>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={pending}
-        className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-        style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-      >
-        <Globe size={12} className={pending ? "animate-spin" : undefined} />
-        {pending ? "Wird übertragen…" : published ? "Daten auf Kanzleistelle24 aktualisieren" : "Auf Kanzleistelle24 veröffentlichen"}
-      </button>
-    </div>
-  )
-}
-
 function StammdatenTab({
   client,
   editMode,
   setEditMode,
   contacts,
   portalUsers,
+  locations,
+  kanzleistelle,
   onLogoUploaded,
 }: {
   client: Client
@@ -927,6 +891,8 @@ function StammdatenTab({
   setEditMode: (v: boolean) => void
   contacts: Contact[]
   portalUsers: PortalUser[]
+  locations: ClientLocation[]
+  kanzleistelle: KanzleistelleStatus
   onLogoUploaded: (url: string) => void
 }) {
   const router = useRouter()
@@ -937,8 +903,6 @@ function StammdatenTab({
   const [localEmail, setLocalEmail] = useState(client.contact_email ?? "")
   const [localPhone, setLocalPhone] = useState(client.phone ?? "")
   const [localActive, setLocalActive] = useState(client.active)
-  const [localPlz, setLocalPlz] = useState(client.plz ?? "")
-  const [localAutoForward, setLocalAutoForward] = useState(client.auto_forward_enabled)
 
   const [localLogoUrl, setLocalLogoUrl] = useState(client.logo_url)
   const [logoUploading, setLogoUploading] = useState(false)
@@ -966,8 +930,6 @@ function StammdatenTab({
     setLocalEmail(client.contact_email ?? "")
     setLocalPhone(client.phone ?? "")
     setLocalActive(client.active)
-    setLocalPlz(client.plz ?? "")
-    setLocalAutoForward(client.auto_forward_enabled)
     setError(null)
     setEditMode(false)
   }
@@ -979,8 +941,6 @@ function StammdatenTab({
     fd.append("contact_email", localEmail)
     fd.append("phone", localPhone)
     fd.append("active", String(localActive))
-    fd.append("plz", localPlz)
-    fd.append("auto_forward_enabled", String(localAutoForward))
     startTransition(async () => {
       const result = await updateClientAction(client.id, fd)
       if (result?.error) { setError(result.error); return }
@@ -994,7 +954,7 @@ function StammdatenTab({
 
   return (
     <div className="flex flex-col gap-4 max-w-lg">
-      <KanzleistellePublishCard clientId={client.id} published={!!client.kanzleistelle_company_id} />
+      <KanzleistelleCard clientId={client.id} status={kanzleistelle} />
       <div className="rounded-xl border bg-white p-6 flex flex-col gap-4" style={{ borderColor: "#dde3ea" }}>
         <FieldRow label="Logo" editMode={editMode}>
           {editMode ? (
@@ -1037,50 +997,11 @@ function StammdatenTab({
             : (client.phone || "—")}
         </FieldRow>
 
-        <FieldRow label="PLZ" editMode={editMode}>
-          <div className="flex flex-col gap-1">
-            {editMode
-              ? (
-                <input
-                  className={inputClass}
-                  style={inputStyle}
-                  value={localPlz}
-                  onChange={(e) => setLocalPlz(e.target.value)}
-                  maxLength={5}
-                  inputMode="numeric"
-                />
-              )
-              : (client.plz ? (client.ort ? `${client.plz} (${client.ort})` : client.plz) : "—")}
-            {/* Koordinaten-Status: rein informativ, basiert auf dem zuletzt gespeicherten
-                Stand (client.lat/lng) - keine Live-Prüfung während der Eingabe. Keine
-                Anzeige ohne PLZ, damit das Feld bei neuen/leeren Kunden nicht unnötig
-                mit einem Hinweis vollgestellt wird. */}
-            {client.plz && (
-              client.lat != null && client.lng != null ? (
-                <span className="text-xs" style={{ color: "#1a9a6a" }}>✓ Koordinaten gefunden</span>
-              ) : (
-                <span className="text-xs" style={{ color: "#b45309" }}>
-                  Koordinaten konnten nicht automatisch ermittelt werden
-                </span>
-              )
-            )}
-          </div>
-        </FieldRow>
-
-        <FieldRow label="Automatisierung" editMode={editMode}>
-          {editMode ? (
-            <label className="flex items-center gap-2 text-sm text-gray-900">
-              <input
-                type="checkbox"
-                checked={localAutoForward}
-                onChange={(e) => setLocalAutoForward(e.target.checked)}
-              />
-              Automatisch bei Vorqualifizierung informieren
-            </label>
-          ) : (
-            client.auto_forward_enabled ? "Automatisch bei Vorqualifizierung informieren: aktiviert" : "—"
-          )}
-        </FieldRow>
+        {/* Standorte statt einzelner PLZ (Paket 16, T-75): dieselbe Liste wie im
+            Kanzleiprofil, der Hauptstandort ist die Stammdaten-PLZ. */}
+        <div className="border-t pt-4" style={{ borderColor: "#eef2f6" }}>
+          <LocationsCard clientId={client.id} locations={locations} />
+        </div>
 
         {editMode && (
           <FieldRow label="Status" editMode={editMode}>

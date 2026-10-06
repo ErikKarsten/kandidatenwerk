@@ -64,7 +64,6 @@ export const PROFILE_FIELDS: {
   { key: "intro", label: "Intro zur Kanzlei", group: "kanzlei", multiline: true, required: true, placeholder: "Wer ist die Kanzlei, was macht sie aus?" },
   { key: "website", label: "Website", group: "kanzlei" },
   { key: "mitarbeiterzahl", label: "Mitarbeiterzahl", group: "kanzlei", required: true },
-  { key: "standorte", label: "Standort(e)", group: "kanzlei", required: true },
   { key: "mandantenstruktur", label: "Mandantenstruktur / Branchen", group: "kanzlei", multiline: true },
   { key: "software", label: "Software", group: "kanzlei", placeholder: "z.B. DATEV, Addison" },
   { key: "ansprechpartner_bewerbung", label: "Ansprechpartner für Bewerbungsgespräche", group: "kanzlei" },
@@ -86,10 +85,13 @@ export interface ClientProfileValues extends Partial<Record<ProfileFieldKey, str
   benefits?: string[] | null
 }
 
-// Fehlende Pflichtangaben für "Profil abschließen" (Benefits und mind. eine Stelle
-// gehören ebenfalls dazu).
-export function missingProfileItems(profile: ClientProfileValues | null, positionCount: number): string[] {
+// Fehlende Pflichtangaben für "Profil abschließen" (Benefits, mind. ein Standort und mind.
+// eine Stelle gehören ebenfalls dazu). Standorte sind seit Paket 16 eine eigene Liste
+// (client_locations) statt eines Textfelds; profile.standorte hält nur noch die
+// Rohangabe aus Close.
+export function missingProfileItems(profile: ClientProfileValues | null, positionCount: number, locationCount: number): string[] {
   const missing = PROFILE_FIELDS.filter((f) => f.required && !(profile?.[f.key] ?? "").trim()).map((f) => f.label)
+  if (locationCount === 0) missing.push("Standort(e)")
   if (!(profile?.benefits ?? []).some((b) => b.trim())) missing.push("Benefits")
   if (positionCount === 0) missing.push("Mindestens eine gesuchte Stelle")
   return missing

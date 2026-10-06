@@ -10,7 +10,7 @@ import type { AutomationTemplate, AutomationTemplateSet } from "./automation-tem
 import type { LeadCampaignOverview } from "@/lib/meta-campaigns-queries"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Clock, RefreshCw as SyncIcon, Send, Plus, Pencil } from "lucide-react"
+import { ChevronDown, Clock, RefreshCw as SyncIcon, Send, Plus, Pencil } from "lucide-react"
 import {
   updateOwnNameAction,
   updateOwnPasswordAction,
@@ -53,10 +53,17 @@ interface EinstellungenDetailProps {
   leadSyncWarnings: { campaignId: string; campaignTitle: string; message: string }[]
 }
 
-type Tab = "konto" | "team" | "agentur" | "automatisierung" | "vorlagen" | "zusatzfelder" | "feldvorlagen" | "leadformulare" | "meta"
+// Reiter zusammengelegt (Paket 16, T-77): Agentur -> Mein Konto, Automatisierung +
+// Vorlagen, Felder + Feld-Vorlagen, Meta-Kampagnen + Lead-Formulare = Lead-Anbindung.
+// Innerhalb eines Reiters sind die Bereiche aufklappbar.
+type Tab = "konto" | "team" | "automatisierung" | "felder" | "leadanbindung"
 
 export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, automationTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms, leadSyncWarnings }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
+  const isAdmin = ownProfile.role === "agency_admin"
+  const activeFields = customFieldDefinitions.filter((f) => f.active)
+  const linkedForms = leadForms.filter((f) => f.campaigns.length > 0).length
+  const activeMetaCampaigns = metaCampaigns.filter((c) => c.status === "active").length
 
   return (
     <div className="flex min-w-0 flex-col gap-6 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
@@ -68,50 +75,72 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
         <div className="flex gap-0 overflow-x-auto border-b" style={{ borderColor: "#dde3ea" }}>
           <TabButton active={tab === "konto"} onClick={() => setTab("konto")}>Mein Konto</TabButton>
           <TabButton active={tab === "team"} onClick={() => setTab("team")}>Team ({team.length})</TabButton>
-          <TabButton active={tab === "agentur"} onClick={() => setTab("agentur")}>Agentur</TabButton>
-          <TabButton active={tab === "vorlagen"} onClick={() => setTab("vorlagen")}>Automatisierungs-Vorlagen ({automationTemplates.templates.length})</TabButton>
           <TabButton active={tab === "automatisierung"} onClick={() => setTab("automatisierung")}>Automatisierung</TabButton>
-          <TabButton active={tab === "zusatzfelder"} onClick={() => setTab("zusatzfelder")}>Felder ({customFieldDefinitions.filter((f) => f.active).length})</TabButton>
-          <TabButton active={tab === "feldvorlagen"} onClick={() => setTab("feldvorlagen")}>Feld-Vorlagen ({fieldTemplates.length})</TabButton>
-          <TabButton active={tab === "leadformulare"} onClick={() => setTab("leadformulare")}>
-            Lead-Formulare ({leadForms.filter((f) => f.campaigns.length > 0).length})
-          </TabButton>
-          <TabButton active={tab === "meta"} onClick={() => setTab("meta")}>Meta-Kampagnen ({metaCampaigns.filter((c) => c.status === "active").length})</TabButton>
+          <TabButton active={tab === "felder"} onClick={() => setTab("felder")}>Felder ({activeFields.length})</TabButton>
+          <TabButton active={tab === "leadanbindung"} onClick={() => setTab("leadanbindung")}>Lead-Anbindung</TabButton>
         </div>
 
-        <div className={tab === "leadformulare" || tab === "feldvorlagen" || tab === "meta" || tab === "vorlagen" ? "mt-4 max-w-4xl" : "mt-4 max-w-lg"}>
-          {tab === "konto" && <KontoTab ownProfile={ownProfile} />}
-          {tab === "feldvorlagen" && (
-            <FieldTemplatesTab
-              templates={fieldTemplates}
-              fields={customFieldDefinitions.filter((f) => f.active && f.section !== "stammdaten")}
-              isAdmin={ownProfile.role === "agency_admin"}
-            />
+        <div className={tab === "konto" || tab === "team" ? "mt-4 max-w-lg" : "mt-4 max-w-4xl"}>
+          {tab === "konto" && (
+            <div className="flex flex-col gap-4">
+              <KontoTab ownProfile={ownProfile} />
+              <AgenturTab agencyName={agencyName} />
+            </div>
           )}
-          {tab === "leadformulare" && (
-            <LeadFormsTab
-              forms={leadForms}
-              fields={customFieldDefinitions.filter((f) => f.active)}
-              isAdmin={ownProfile.role === "agency_admin"}
-            />
-          )}
-          {tab === "meta" && <MetaCampaignsTab campaigns={metaCampaigns} isAdmin={ownProfile.role === "agency_admin"} warnings={leadSyncWarnings} />}
           {tab === "team" && <TeamTab team={team} ownProfileId={ownProfile.id} />}
-          {tab === "agentur" && <AgenturTab agencyName={agencyName} />}
-          {tab === "vorlagen" && agencyId && <AutomationTemplatesTab templates={automationTemplates.templates} sets={automationTemplates.sets} />}
           {tab === "automatisierung" && agencyId && (
-            <AutomatisierungTab agencyId={agencyId} team={team} initialRecipientIds={leadNotificationRecipientIds} />
+            <div className="flex flex-col gap-3">
+              <Section title="Automatisierungs-Vorlagen und Vorlagensets" meta={`${automationTemplates.templates.length} Vorlagen, ${automationTemplates.sets.length} Sets`} defaultOpen>
+                <AutomationTemplatesTab templates={automationTemplates.templates} sets={automationTemplates.sets} />
+              </Section>
+              <Section title="Benachrichtigung bei neuen Leads" meta={`${leadNotificationRecipientIds.length} Empfänger`}>
+                <div className="max-w-lg">
+                  <AutomatisierungTab agencyId={agencyId} team={team} initialRecipientIds={leadNotificationRecipientIds} />
+                </div>
+              </Section>
+            </div>
           )}
-          {tab === "zusatzfelder" && agencyId && (
-            <ZusatzfelderTab
-              agencyId={agencyId}
-              isAgencyAdmin={ownProfile.role === "agency_admin"}
-              fields={customFieldDefinitions}
-              reviewQueue={customFieldReviewQueue}
-            />
+          {tab === "felder" && agencyId && (
+            <div className="flex flex-col gap-3">
+              <Section title="Felder" meta={`${activeFields.length} aktiv`} defaultOpen>
+                <div className="max-w-lg">
+                  <ZusatzfelderTab agencyId={agencyId} isAgencyAdmin={isAdmin} fields={customFieldDefinitions} reviewQueue={customFieldReviewQueue} />
+                </div>
+              </Section>
+              <Section title="Feld-Vorlagen" meta={`${fieldTemplates.length} Vorlagen`}>
+                <FieldTemplatesTab templates={fieldTemplates} fields={activeFields.filter((f) => f.section !== "stammdaten")} isAdmin={isAdmin} />
+              </Section>
+            </div>
+          )}
+          {tab === "leadanbindung" && (
+            <div className="flex flex-col gap-3">
+              <Section title="Meta-Kampagnen" meta={`${activeMetaCampaigns} laufend${leadSyncWarnings.length > 0 ? ` · ${leadSyncWarnings.length} Hinweis(e)` : ""}`} defaultOpen={leadSyncWarnings.length > 0}>
+                <MetaCampaignsTab campaigns={metaCampaigns} isAdmin={isAdmin} warnings={leadSyncWarnings} />
+              </Section>
+              <Section title="Lead-Formulare" meta={`${linkedForms} verknüpft`}>
+                <LeadFormsTab forms={leadForms} fields={activeFields} isAdmin={isAdmin} />
+              </Section>
+            </div>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// Aufklappbarer Bereich innerhalb eines Reiters (Paket 16, T-77).
+function Section({ title, meta, defaultOpen = false, children }: { title: string; meta?: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="rounded-xl border bg-white" style={{ borderColor: "#dde3ea" }}>
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left" aria-expanded={open}>
+        <span className="text-sm font-semibold text-gray-900">{title}</span>
+        <span className="flex items-center gap-2 text-xs text-gray-500">
+          {meta}
+          <ChevronDown size={16} className="transition-transform" style={{ transform: open ? "rotate(180deg)" : undefined }} />
+        </span>
+      </button>
+      {open && <div className="border-t p-4" style={{ borderColor: "#eef2f6", backgroundColor: "#f8fafc" }}>{children}</div>}
     </div>
   )
 }

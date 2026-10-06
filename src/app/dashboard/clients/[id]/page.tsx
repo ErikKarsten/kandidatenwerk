@@ -95,13 +95,15 @@ export default async function ClientDetailPage({
   if (!client) notFound()
 
   // Projekt-Reiter (Paket 9): Kanzleiprofil, Stellen, Kommentare, Team.
-  const [{ data: profileRow }, { data: positionRows }, { data: commentRows }, { data: teamRows }, { data: { user } }] = await Promise.all([
+  const [{ data: profileRow }, { data: positionRows }, { data: commentRows }, { data: teamRows }, { data: { user } }, { data: locationRows }] = await Promise.all([
     supabase.from("client_profiles").select("*").eq("client_id", id).maybeSingle(),
     // Nach Titel sortiert, damit dieselbe Stelle an mehreren Standorten zusammensteht.
     supabase.from("client_positions").select("*").eq("client_id", id).order("title").order("created_at"),
     supabase.from("client_comments").select("id, author_id, kind, content, created_at, edited_at").eq("client_id", id).order("created_at", { ascending: false }).limit(300),
     supabase.from("profiles").select("id, full_name, role").in("role", ["agency_admin", "agency_member"]).order("full_name"),
     supabase.auth.getUser(),
+    // Standorte (Paket 16, T-75) - Kanzleiprofil, Stammdaten und Stellen.
+    supabase.from("client_locations").select("id, strasse, plz, ort, lat, lng, is_primary").eq("client_id", id).order("created_at"),
   ])
   const { data: taskRows } = await supabase
     .from("tasks")
@@ -134,6 +136,15 @@ export default async function ClientDetailPage({
     },
     profile: profileRow ? { ...profileRow, finalized_by_name: profileRow.finalized_by ? nameOf(profileRow.finalized_by) : null } : null,
     positions: (positionRows ?? []).map((p) => ({ ...p, campaign_id: p.campaign_id ?? null })),
+    locations: locationRows ?? [],
+    // Kanzleistelle24-Stand (Paket 16, T-52): veröffentlicht = über das Kanzleiprofil übertragen.
+    kanzleistelle: {
+      published: !!client.kanzleistelle_synced_at,
+      syncedAt: client.kanzleistelle_synced_at ?? null,
+      error: client.kanzleistelle_sync_error ?? null,
+      finalized: !!profileRow?.finalized_at,
+      jobCount: (positionRows ?? []).filter((p) => p.kanzleistelle_job_id).length,
+    },
     comments: (commentRows ?? []).map((c) => ({
       id: c.id,
       authorId: c.author_id,
@@ -270,7 +281,6 @@ export default async function ClientDetailPage({
         lat: client.lat ?? null,
         lng: client.lng ?? null,
         ort: client.ort ?? null,
-        auto_forward_enabled: client.auto_forward_enabled ?? false,
       }}
       campaigns={campaignList}
       campaignSearch={campaignSearch}
