@@ -63,7 +63,7 @@ export default function SetPasswordPage() {
   useEffect(() => {
     const params = readHash()
     if (!params) {
-      setPageError("Kein gültiger Einladungslink gefunden.")
+      setPageError("Kein gültiger Link gefunden.")
       setPageState("error")
       return
     }
@@ -78,7 +78,7 @@ export default function SetPasswordPage() {
 
     const tokens = readHashTokens(params)
     if (!tokens) {
-      setPageError("Kein gültiger Einladungslink gefunden.")
+      setPageError("Kein gültiger Link gefunden.")
       setPageState("error")
       return
     }
@@ -165,16 +165,16 @@ export default function SetPasswordPage() {
           style={{ borderColor: "#dde3ea" }}
         >
           {pageState === "checking" && (
-            <p className="text-center text-sm text-gray-500">Einladungslink wird geprüft…</p>
+            <p className="text-center text-sm text-gray-500">Link wird geprüft…</p>
           )}
 
           {pageState === "error" && (
             <div className="flex flex-col gap-4">
               <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
-                {pageError ?? "Dieser Einladungslink ist ungültig oder abgelaufen."}
+                {pageError ?? "Dieser Link ist ungültig oder abgelaufen."}
               </p>
               <p className="text-sm text-gray-600">
-                Bitte neue Einladung anfordern, oder zurück zum Login:
+                Bitte einen neuen Link anfordern (Login → „Passwort vergessen?“) oder zurück zum Login:
               </p>
               <Link
                 href="/login"

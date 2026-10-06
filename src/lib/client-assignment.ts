@@ -47,13 +47,13 @@ export async function ensureClientAssignment(
 // Zuordnung eines Kandidaten zu einer KANZLEI-KAMPAGNE (Atlas T-36, 1:n): idempotent je
 // (Kandidat, Kampagne). client_id wird aus der Kampagne übernommen - der DB-Trigger
 // client_assignments_sync_campaign erzwingt das zusätzlich und lehnt Lead-Kampagnen ab.
-// Gibt die ID der (bestehenden oder neuen) Zuordnung zurück.
+// Gibt die ID der (bestehenden oder neuen) Zuordnung zurück und ob sie neu ist.
 export async function ensureCampaignAssignment(
   supabase: Supabase,
   candidateId: string,
   campaignId: string,
   createdBy?: string | null
-): Promise<string> {
+): Promise<{ id: string; created: boolean }> {
   const { data: campaign, error: campaignError } = await supabase
     .from("campaigns")
     .select("client_id, kind")
@@ -74,7 +74,7 @@ export async function ensureCampaignAssignment(
     .is("removed_at", null)
     .maybeSingle()
   if (lookupError) throw new Error(lookupError.message)
-  if (existing) return existing.id
+  if (existing) return { id: existing.id, created: false }
 
   const { data: inserted, error: insertError } = await supabase
     .from("client_assignments")
@@ -87,5 +87,5 @@ export async function ensureCampaignAssignment(
     .select("id")
     .single()
   if (insertError) throw new Error(insertError.message)
-  return inserted.id
+  return { id: inserted.id, created: true }
 }

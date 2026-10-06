@@ -6,6 +6,7 @@ import { requireStaffUser } from "@/lib/auth-guards"
 import { publishClientProfileToKanzleistelle } from "@/lib/kanzleistelle-profile-sync"
 import { scheduleKanzleistelleSync } from "@/lib/kanzleistelle-auto-sync"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { createPasswordResetLink, sendPasswordResetMail } from "@/lib/password-reset"
 
 // Server Actions verlassen sich nach dem Security-Review vom 09.09.2026 nicht mehr
 // ausschliesslich auf RLS als einzige Schutzschicht - requireStaffUser() (src/lib/auth-guards.ts)
@@ -452,4 +453,33 @@ export async function removeClientPortalUserAction(
 
   revalidatePath(`/dashboard/clients/${clientId}`)
   return null
+}
+
+// Passwort eines Portal-Zugangs zurücksetzen (Paket 20, T-91): Link per Mail senden oder
+// zum Weitergeben anzeigen. Nur Staff, nur Portal-Zugänge genau dieses Kunden.
+export async function portalPasswordResetAction(
+  clientId: string,
+  profileId: string,
+  mode: "senden" | "kopieren"
+): Promise<{ error: string } | { link?: string; sentTo?: string }> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+  const { data: client } = await supabase.from("clients").select("id").eq("id", clientId).maybeSingle()
+  if (!client) return { error: "Kunde nicht gefunden." }
+
+  const admin = createSupabaseAdminClient()
+  const { data: target } = await admin.from("profiles").select("role, client_id, email").eq("id", profileId).maybeSingle()
+  if (!target || target.role !== "client" || target.client_id !== clientId) return { error: "Portal-Zugang nicht gefunden." }
+  const email = target.email ?? (await admin.auth.admin.getUserById(profileId)).data.user?.email ?? null
+  if (!email) return { error: "Für diesen Zugang ist keine E-Mail-Adresse bekannt." }
+
+  try {
+    const link = await createPasswordResetLink(email)
+    if (mode === "kopieren") return { link }
+    await sendPasswordResetMail(email, link)
+    return { sentTo: email }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
 }
