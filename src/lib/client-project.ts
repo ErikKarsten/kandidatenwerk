@@ -24,6 +24,8 @@ export const COMMENT_KINDS = [
   { value: "termin", label: "Termin" },
   { value: "telefonat", label: "Telefonat" },
   { value: "email", label: "E-Mail" },
+  // Automatisch aus Close-Besprechungen (Paket 17, T-54).
+  { value: "gespraech", label: "Gespräch" },
 ] as const
 
 export type ProfileFieldKey =

@@ -21,6 +21,7 @@ const KIND_STYLE: Record<string, { label: string; color: string }> = {
   termin: { label: "Termin", color: "#1e56a0" },
   telefonat: { label: "Telefonat", color: "#1a9a6a" },
   email: { label: "E-Mail", color: "#8b5cf6" },
+  gespraech: { label: "Gespräch (Close)", color: "#d97706" },
   system: { label: "System", color: "#9ca3af" },
 }
 

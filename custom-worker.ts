@@ -33,7 +33,7 @@ interface ExecutionContext {
 // Muss exakt zu den Einträgen in wrangler.jsonc "triggers.crons" passen. Mehrere Routen
 // je Ausdruck laufen nacheinander (spart Cron-Trigger).
 const CRON_ROUTES: Record<string, string[]> = {
-  "*/5 * * * *": ["/api/cron/run-automations"],
+  "*/5 * * * *": ["/api/cron/run-automations", "/api/cron/close-meetings"],
   "*/30 * * * *": ["/api/cron/meta-leads-sync"],
   "0 * * * *": ["/api/cron/sync-kanzleistelle", "/api/cron/meta-campaigns-sync"],
   "0 6 * * *": ["/api/cron/task-reminders"],
