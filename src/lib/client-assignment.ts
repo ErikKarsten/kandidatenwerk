@@ -3,6 +3,16 @@ import type { Database } from "@/types/database"
 
 type Supabase = SupabaseClient<Database>
 
+// Kanzleien sehen nur vorqualifizierte Kandidaten (Paket 19, T-86): Zuordnen geht nur mit
+// Status "vorqualifiziert" (Beispiel-Leads ausgenommen).
+export const ASSIGNABLE_STATUS = "vorqualifiziert"
+export const NOT_ASSIGNABLE_MESSAGE = "Nur vorqualifizierte Kandidaten können einer Kanzlei zugeordnet werden."
+
+async function isAssignable(supabase: Supabase, candidateId: string): Promise<boolean> {
+  const { data } = await supabase.from("candidates").select("status, is_demo").eq("id", candidateId).maybeSingle()
+  return !!data && (data.is_demo || data.status === ASSIGNABLE_STATUS)
+}
+
 // Verknüpft einen Kandidaten mit einem Kunden im Portal (client_assignments), idempotent:
 // legt nur an, wenn noch keine AKTIVE Zuordnung zu genau diesem Kunden besteht - sonst
 // würden wiederholte Sync-/Import-Läufe die Zuordnungsliste unnötig aufblähen. Gleiche
@@ -16,6 +26,7 @@ export async function ensureClientAssignment(
   candidateId: string,
   clientId: string
 ): Promise<void> {
+  if (!(await isAssignable(supabase, candidateId))) throw new Error(NOT_ASSIGNABLE_MESSAGE)
   const { data: existing, error: lookupError } = await supabase
     .from("client_assignments")
     .select("id")
@@ -53,6 +64,7 @@ export async function ensureCampaignAssignment(
   if (campaign.kind !== "kanzlei" || !campaign.client_id) {
     throw new Error("Kandidaten können nur Kanzlei-Kampagnen zugeordnet werden.")
   }
+  if (!(await isAssignable(supabase, candidateId))) throw new Error(NOT_ASSIGNABLE_MESSAGE)
 
   const { data: existing, error: lookupError } = await supabase
     .from("client_assignments")

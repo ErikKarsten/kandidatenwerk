@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { sendEmail } from "@/lib/brevo-mail"
+import { emailButton, renderEmailLayout } from "@/lib/email-layout"
 
 type Supabase = SupabaseClient<Database>
 
@@ -54,20 +55,10 @@ export function buildReminderHtml(tasks: DueTask[], today: string): string {
     })
     .join("")
 
-  return `
-<div style="max-width:600px;margin:0 auto;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;font-family:-apple-system,Helvetica,Arial,sans-serif;overflow:hidden;">
-  <div style="padding:28px 28px 4px;">
-    <div style="font-size:20px;font-weight:700;color:#1e56a0;">Kandidatenwerk</div>
-    <div style="font-size:16px;font-weight:600;color:#111827;margin-top:6px;">${tasks.length === 1 ? "1 Aufgabe ist fällig" : `${tasks.length} Aufgaben sind fällig`}</div>
-  </div>
-  <div style="padding:16px 28px 8px;font-size:14px;color:#111827;">
-    <ul style="padding-left:18px;margin:0">${items}</ul>
-    <p style="margin-top:16px"><a href="${APP_BASE_URL}/dashboard/tasks" style="color:#1e56a0;text-decoration:none;font-weight:500">Alle Aufgaben ansehen</a></p>
-  </div>
-  <div style="padding:20px 28px 24px;margin-top:8px;border-top:1px solid #e5e7eb;">
-    <div style="font-size:11px;color:#9ca3af;">Automatisch generiert von Kandidatenwerk</div>
-  </div>
-</div>`.trim()
+  return renderEmailLayout({
+    heading: tasks.length === 1 ? "1 Aufgabe ist fällig" : `${tasks.length} Aufgaben sind fällig`,
+    contentHtml: `<ul style="padding-left:18px;margin:0">${items}</ul>${emailButton(`${APP_BASE_URL}/dashboard/tasks`, "Alle Aufgaben ansehen")}`,
+  })
 }
 
 export async function sendTaskReminders(supabase: Supabase): Promise<TaskRemindersResult> {

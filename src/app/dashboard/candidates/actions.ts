@@ -6,7 +6,6 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
-import { ensureClientAssignment } from "@/lib/client-assignment"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 
 export type CreateCandidateState = { error: string } | null
@@ -67,20 +66,7 @@ export async function createCandidateAction(
     console.error("Matching fehlgeschlagen für Kandidat", candidate.id, matchError)
   }
 
-  if (campaign_id) {
-    try {
-      const { data: campaignRecord } = await supabase
-        .from("campaigns")
-        .select("client_id")
-        .eq("id", campaign_id)
-        .single()
-      if (campaignRecord?.client_id) {
-        await ensureClientAssignment(supabase, candidate.id, campaignRecord.client_id)
-      }
-    } catch (assignmentError) {
-      console.error("Kunden-Zuordnung fehlgeschlagen für Kandidat", candidate.id, assignmentError)
-    }
-  }
+  // Keine automatische Kanzlei-Zuordnung beim Anlegen (Paket 19, T-86).
 
   try {
     await notifyLeadRecipients(candidate.id, `${first_name} ${last_name}`.trim())

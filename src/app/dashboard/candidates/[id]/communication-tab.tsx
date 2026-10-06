@@ -9,6 +9,8 @@ import { sendCandidateEmailAction } from "./communication-actions"
 export interface CandidateMessage {
   id: string
   channel: string
+  direction: string
+  fromAddress: string | null
   toAddress: string
   subject: string | null
   body: string
@@ -105,27 +107,43 @@ export function CommunicationTab({
             <Send size={14} />
             {pending ? "Wird gesendet…" : "Senden"}
           </button>
-          <span className="text-xs text-gray-400">Absender: info@kanzleistelle24.de mit deinem Namen – Antworten gehen an deine E-Mail-Adresse.</span>
+          <span className="text-xs text-gray-400">Absender: info@kanzleistelle24.de mit deinem Namen – Antworten erscheinen hier, du bekommst eine Kopie.</span>
         </div>
         {result && <p className="text-xs" style={{ color: result.ok ? "#1a9a6a" : "#dc2626" }}>{result.text}</p>}
       </div>
 
       <div className="flex flex-col gap-2 border-t pt-4" style={{ borderColor: "#eef2f6" }}>
-        <h3 className="text-sm font-semibold text-gray-900">Verschickt ({messages.length})</h3>
+        <h3 className="text-sm font-semibold text-gray-900">Nachrichten ({messages.length})</h3>
         {messages.length === 0 && <p className="text-sm text-gray-400">Noch keine Nachrichten.</p>}
         {messages.map((m) => (
-          <div key={m.id} className="rounded-lg border px-3 py-2" style={{ borderColor: m.status === "fehler" ? "#fca5a5" : "#dde3ea" }}>
+          <div
+            key={m.id}
+            className="rounded-lg border px-3 py-2"
+            style={{
+              borderColor: m.status === "fehler" ? "#fca5a5" : "#dde3ea",
+              backgroundColor: m.direction === "eingehend" ? "#f0f7ff" : undefined,
+              marginLeft: m.direction === "eingehend" ? 0 : 24,
+              marginRight: m.direction === "eingehend" ? 24 : 0,
+            }}
+          >
             <button type="button" onClick={() => setOpenId(openId === m.id ? null : m.id)} className="flex w-full flex-wrap items-center justify-between gap-2 text-left">
-              <span className="text-sm font-medium text-gray-900">{m.subject || "(ohne Betreff)"}</span>
+              <span className="text-sm font-medium text-gray-900">
+                {m.direction === "eingehend" && (
+                  <span className="mr-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
+                    Antwort
+                  </span>
+                )}
+                {m.subject || "(ohne Betreff)"}
+              </span>
               <span className="text-xs text-gray-500">
                 {new Date(m.createdAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}
-                {m.senderName ? ` · ${m.senderName}` : ""}
+                {m.direction === "eingehend" ? (m.fromAddress ? ` · von ${m.fromAddress}` : "") : m.senderName ? ` · ${m.senderName}` : ""}
                 {m.status === "fehler" ? " · fehlgeschlagen" : ""}
               </span>
             </button>
             {openId === m.id && (
               <div className="mt-2 border-t pt-2" style={{ borderColor: "#eef2f6" }}>
-                <p className="text-xs text-gray-500">An {m.toAddress}</p>
+                <p className="text-xs text-gray-500">{m.direction === "eingehend" ? `Von ${m.fromAddress ?? "?"}` : `An ${m.toAddress}`}</p>
                 <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">{m.body}</p>
                 {m.error && <p className="mt-1 text-xs text-red-600">{m.error}</p>}
               </div>

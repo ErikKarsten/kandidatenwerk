@@ -11,7 +11,6 @@ import { extractCleanName } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { applyFormMapping, loadFormQuestions, rememberFormKeys, resolvePlzFromAnswer } from "@/lib/lead-form-mapping"
 import { nearestPlz } from "@/lib/geocode-plz"
-import { ensureClientAssignment } from "@/lib/client-assignment"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 
@@ -117,25 +116,8 @@ export async function processMetaLead(
     // wiederholte Leads/Sync-Laeufe die Zuordnungsliste unnoetig aufblaehen - die History-
     // Notiz braucht also ebenfalls die vorherige Existenzprüfung, um nicht bei jedem Lauf
     // erneut zu schreiben.
-    if (campaign.client_id) {
-      const { data: existingAssignment } = await supabase
-        .from("client_assignments")
-        .select("id")
-        .eq("candidate_id", existingByEmail.id)
-        .eq("client_id", campaign.client_id)
-        .is("removed_at", null)
-        .maybeSingle()
-
-      if (!existingAssignment) {
-        await ensureClientAssignment(supabase, existingByEmail.id, campaign.client_id)
-
-        await supabase.from("candidate_history").insert({
-          candidate_id: existingByEmail.id,
-          type: "note",
-          content: `Erneut ueber Meta beworben, Kampagne "${campaign.title}" - neue Kanzlei-Zuordnung ergaenzt.`,
-        })
-      }
-    }
+    // Keine automatische Kanzlei-Zuordnung mehr (Paket 19, T-86): Kanzleien bekommen nur
+    // vorqualifizierte Kandidaten, und die ordnet das Team von Hand zu.
 
     return { status: "linked_existing", candidateId: existingByEmail.id }
   }
@@ -213,13 +195,6 @@ export async function processMetaLead(
     content: [`${notePrefix}Import direkt aus Meta, Kampagne „${campaign.title}“.`, locationNote].filter(Boolean).join(" "),
   })
 
-  if (campaign.client_id) {
-    try {
-      await ensureClientAssignment(supabase, inserted.id, campaign.client_id)
-    } catch (assignmentError) {
-      console.error(`Kunden-Zuordnung fehlgeschlagen für Kandidat ${inserted.id}:`, assignmentError)
-    }
-  }
 
   // Nur frische Leads melden: Wird ein Formular neu verknüpft (z.B. durch den
   // Meta-Kampagnen-Abgleich, Atlas T-38), holt der Sync auch dessen alte Leads - dafür

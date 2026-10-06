@@ -220,6 +220,8 @@ export default async function CandidateDetailPage({
     messages: (messageRows ?? []).map((m) => ({
       id: m.id,
       channel: m.channel,
+      direction: m.direction,
+      fromAddress: m.from_address,
       toAddress: m.to_address,
       subject: m.subject,
       body: m.body,

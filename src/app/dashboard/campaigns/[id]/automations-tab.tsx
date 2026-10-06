@@ -15,7 +15,7 @@ import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import {
   AUTOMATION_DELAY_OPTIONS,
   AUTOMATION_RECIPIENT_OPTIONS,
-  AUTOMATION_TRIGGER_OPTIONS,
+  CAMPAIGN_TRIGGER_OPTIONS,
   AUTOMATION_VARIABLES,
   automationRecipientLabel,
   automationTriggerLabel,
@@ -38,7 +38,7 @@ export interface Automation {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const TRIGGER_OPTIONS = AUTOMATION_TRIGGER_OPTIONS
+const TRIGGER_OPTIONS = CAMPAIGN_TRIGGER_OPTIONS
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 const DELAY_OPTIONS = AUTOMATION_DELAY_OPTIONS
 const RECIPIENT_OPTIONS = AUTOMATION_RECIPIENT_OPTIONS
@@ -215,7 +215,7 @@ export function AutomationsTab({
               )}
               {templates.length > 0 && (
                 <optgroup label="Einzelne Vorlagen">
-                  {templates.map((t) => (
+                  {templates.filter((t) => t.trigger !== "manual").map((t) => (
                     <option key={t.id} value={`tpl:${t.id}`}>{t.name}</option>
                   ))}
                 </optgroup>
@@ -356,7 +356,7 @@ export function AutomationsTab({
                       onChange={(e) => handleTemplateSelect(e.target.value)}
                     >
                       <option value="">— Vorlage auswählen —</option>
-                      {templates.map((t) => (
+                      {templates.filter((t) => t.trigger !== "manual").map((t) => (
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
                     </select>

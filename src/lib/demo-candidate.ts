@@ -36,7 +36,8 @@ export function buildDemoCandidate(target: DemoTarget) {
     last_name: "Mustermann (Beispiel)",
     email: "max.mustermann@example.com",
     phone: "0151 12345678",
-    status: "neu",
+    // Vorqualifiziert, damit er im Kundenportal erscheint (Paket 19, T-86).
+    status: "vorqualifiziert",
     source: "manual",
     is_demo: true,
     berufsbild: target.berufsbild,

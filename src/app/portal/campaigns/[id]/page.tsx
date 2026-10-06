@@ -3,6 +3,7 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { assignmentStatusLabel } from "@/lib/assignment-status"
+import { isPortalVisible } from "@/lib/portal-visibility"
 
 // Gleiche Label-Konventionen wie an den anderen Portal-Stellen (bewusst eigene Kopien,
 // siehe portal-sidebar.tsx / portal/candidates/page.tsx / portal/campaigns/page.tsx).
@@ -39,13 +40,15 @@ export default async function PortalCampaignDetailPage({
   // Inner-Join-Hint bräuchte und nirgends sonst im Code verwendet wird.
   const { data: assignments } = await supabase
     .from("client_assignments")
-    .select("id, status, candidates(id, first_name, last_name, berufsbild, plz, campaign_id)")
+    .select("id, status, campaign_id, candidates(id, first_name, last_name, berufsbild, plz, campaign_id, status, is_demo)")
     .is("removed_at", null)
     .order("created_at", { ascending: false })
 
+  // Zugeordnet über die Kanzlei-Kampagne (client_assignments.campaign_id) oder beworben
+  // über diese Kampagne; nur vorqualifizierte Kandidaten (Paket 19, T-86).
   const rows = (assignments ?? [])
     .map((a) => ({ ...a, candidates: Array.isArray(a.candidates) ? a.candidates[0] : a.candidates }))
-    .filter((a) => a.candidates?.campaign_id === id)
+    .filter((a) => (a.campaign_id === id || a.candidates?.campaign_id === id) && isPortalVisible(a.candidates))
 
   const s = CAMPAIGN_STATUS_LABEL[campaign.status] ?? CAMPAIGN_STATUS_LABEL.completed
 
