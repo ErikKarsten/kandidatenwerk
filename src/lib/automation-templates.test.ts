@@ -12,12 +12,12 @@ describe("Automatisierungs-Vorlagen", () => {
     expect(automationDelayLabel(45)).toBe("45 Sekunden")
   })
 
-  it("trennt Kampagnen-Auslöser von Zuordnung und manuellen Vorlagen", () => {
+  it("trennt Kampagnen-Auslöser von manuellen Vorlagen", () => {
     expect(isCampaignTrigger("new_lead")).toBe(true)
     expect(isCampaignTrigger("status_change")).toBe(true)
-    expect(isCampaignTrigger("client_assigned")).toBe(false)
+    expect(isCampaignTrigger("client_assigned")).toBe(true)
     expect(isCampaignTrigger("manual")).toBe(false)
-    expect(automationTriggerLabel("client_assigned", null)).toBe("Kandidat einer Kanzlei zugeordnet")
+    expect(automationTriggerLabel("client_assigned", null)).toBe("Kandidat der Kampagne zugeordnet")
   })
 })
 

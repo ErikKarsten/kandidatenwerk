@@ -1,6 +1,7 @@
 // Führt aktive Kampagnen-Automatisierungen aus (campaign_automations): prüft für
 // jede aktive Automatisierung, welche Kandidaten ihre Trigger-Bedingung erfüllen
-// (neuer Lead bzw. Status seit delay_seconds erreicht), verschickt die Mail über
+// (neuer Lead, Status seit delay_seconds erreicht oder - Kanzlei-Kampagnen - der Kampagne
+// zugeordnet), verschickt die Mail über
 // den bestehenden Brevo-Versand (sendEmail) und protokolliert den Versand doppelt:
 // - campaign_automation_runs: Dedup, verhindert Mehrfachversand bei künftigen Läufen
 // - candidate_history (type "automation"): sichtbarer Verlaufs-Eintrag beim Kandidaten
@@ -157,6 +158,14 @@ export async function runAutomations(
       console.error(`Automatisierung "${automation.name}": Kandidaten-Query fehlgeschlagen: ${candError instanceof Error ? candError.message : candError}`)
       errors++
       continue
+    }
+    // Kandidat der Kanzlei-Kampagne zugeordnet (Paket 21): nur Zuordnungen nach dem Einschalten.
+    if (automation.trigger === "client_assigned") {
+      if (campaign.kind !== "kanzlei") continue
+      candidates = candidates.filter((c) => {
+        const joined = joinedAt.get(c.id)
+        return !!joined && joined <= cutoff && joined >= activeSince
+      })
     }
     if (automation.trigger === "new_lead") {
       candidates = candidates.filter((c) => {

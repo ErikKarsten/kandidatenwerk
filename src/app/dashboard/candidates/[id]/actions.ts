@@ -7,8 +7,6 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { ensureCampaignAssignment } from "@/lib/client-assignment"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
-import { after } from "next/server"
-import { notifyClientAboutAssignment } from "@/lib/assignment-notify"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -411,9 +409,9 @@ export async function assignToCampaignAction(
   if ("error" in guard) return guard
 
   try {
-    const assignment = await ensureCampaignAssignment(supabase, candidateId, campaignId, guard.staff.userId)
-    // Neue Zuordnung: Kanzlei per Mail informieren (Paket 20, T-90), nach der Antwort.
-    if (assignment.created) after(() => notifyClientAboutAssignment(assignment.id, guard.staff.userId))
+    // Mails dazu laufen ausschließlich über die Automatisierungen der Kampagne (Auslöser
+    // "Kandidat der Kampagne zugeordnet", Paket 21).
+    await ensureCampaignAssignment(supabase, candidateId, campaignId, guard.staff.userId)
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }
