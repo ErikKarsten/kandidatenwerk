@@ -1,5 +1,6 @@
 // Projekt-Reiter beim Kunden (Paket 9, ClickUp-Ersatz): Phasen, Kommentar-Arten und
 // die Felder des Kanzleiprofils. Ohne Server-Code, auch im Browser nutzbar.
+import { missingPositionItems, type PositionLike } from "@/lib/position-profile"
 
 export const PROJECT_PHASES = [
   { value: "onboarding", label: "Onboarding", color: "#b45309" },
@@ -89,11 +90,15 @@ export interface ClientProfileValues extends Partial<Record<ProfileFieldKey, str
 // eine Stelle gehören ebenfalls dazu). Standorte sind seit Paket 16 eine eigene Liste
 // (client_locations) statt eines Textfelds; profile.standorte hält nur noch die
 // Rohangabe aus Close.
-export function missingProfileItems(profile: ClientProfileValues | null, positionCount: number, locationCount: number): string[] {
+export function missingProfileItems(profile: ClientProfileValues | null, positions: PositionLike[], locationCount: number): string[] {
   const missing = PROFILE_FIELDS.filter((f) => f.required && !(profile?.[f.key] ?? "").trim()).map((f) => f.label)
   if (locationCount === 0) missing.push("Standort(e)")
   if (!(profile?.benefits ?? []).some((b) => b.trim())) missing.push("Benefits")
-  if (positionCount === 0) missing.push("Mindestens eine gesuchte Stelle")
+  if (positions.length === 0) missing.push("Mindestens eine gesuchte Stelle")
+  // Jede Stelle braucht ein vollständiges Stellenprofil (Paket 17, T-79).
+  for (const p of positions) {
+    if (missingPositionItems(p).length > 0) missing.push(`Stelle „${(p.title ?? "").trim() || "ohne Titel"}“ unvollständig`)
+  }
   return missing
 }
 

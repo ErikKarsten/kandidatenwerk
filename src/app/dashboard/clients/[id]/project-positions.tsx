@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Copy, MapPinPlus, Pencil, Plus, Trash2 } from "lucide-react"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import type { ClientLocation } from "@/lib/client-locations"
+import { MIN_ANFORDERUNGEN, MIN_AUFGABEN, appendPoint, countPoints, missingPositionItems, snippetsFor } from "@/lib/position-profile"
 import {
   createCampaignFromPositionsAction,
   deletePositionAction,
@@ -36,13 +37,11 @@ const EMPTY: PositionInput = {
 }
 
 const TEXT_FIELDS: { key: keyof PositionInput; label: string; multiline?: boolean; placeholder?: string }[] = [
-  { key: "arbeitszeit", label: "Arbeitszeit", placeholder: "Vollzeit / Teilzeit, Stunden" },
-  { key: "berufserfahrung", label: "Berufserfahrung", placeholder: "z.B. ab 2 Jahre" },
+  { key: "arbeitszeit", label: "Arbeitszeit *", placeholder: "Vollzeit / Teilzeit, Stunden" },
+  { key: "berufserfahrung", label: "Berufserfahrung *", placeholder: "z.B. ab 2 Jahre" },
   { key: "software", label: "Software / Buchhaltungsprogramm", placeholder: "z.B. DATEV" },
-  { key: "gehalt", label: "Gehalt", placeholder: "z.B. 45.000–55.000 €" },
-  { key: "startdatum", label: "Start", placeholder: "z.B. ab sofort" },
-  { key: "aufgaben", label: "Aufgaben", multiline: true },
-  { key: "anforderungen", label: "Weitere Anforderungen", multiline: true },
+  { key: "gehalt", label: "Gehalt (intern, nicht auf Kanzleistelle24)", placeholder: "z.B. 45.000–55.000 €" },
+  { key: "startdatum", label: "Start *", placeholder: "z.B. ab sofort" },
 ]
 
 // Gesuchte Stellen des Kunden (Paket 9). Aus einer oder mehreren Stellen wird per
@@ -136,7 +135,14 @@ export function ProjectPositions({
                   .filter(Boolean)
                   .join(" · ")}
               </p>
-              {(p.aufgaben || p.anforderungen) && <p className="mt-1 line-clamp-2 text-xs text-gray-500">{[p.aufgaben, p.anforderungen].filter(Boolean).join(" · ")}</p>}
+              {(p.aufgaben || p.anforderungen) && (
+                <p className="mt-1 line-clamp-2 text-xs text-gray-500">{[p.aufgaben, p.anforderungen].filter(Boolean).join(" · ").replace(/\n+/g, " · ")}</p>
+              )}
+              {missingPositionItems(p).length > 0 && (
+                <p className="mt-1 text-xs font-medium" style={{ color: "#dc2626" }}>
+                  Fehlt fürs Stellenprofil: {missingPositionItems(p).join(", ")}
+                </p>
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                 {p.campaign_id ? (
                   <>
@@ -317,6 +323,51 @@ function LocationPicks({ locations, onPick }: { locations: ClientLocation[]; onP
   )
 }
 
+// Zeilenweise gepflegtes Feld mit Zähler und Textbausteinen je Berufsbild (Paket 17, T-79).
+function PointsField({
+  label,
+  min,
+  value,
+  snippets,
+  onChange,
+}: {
+  label: string
+  min: number
+  value: string | null
+  snippets: string[]
+  onChange: (text: string) => void
+}) {
+  const count = countPoints(value)
+  const open = snippets.filter((sn) => !(value ?? "").includes(sn))
+  return (
+    <div className="flex flex-col gap-1 sm:col-span-2">
+      <label className="flex items-center justify-between text-xs font-medium text-gray-600">
+        <span>{label} * – ein Punkt pro Zeile</span>
+        <span style={{ color: count >= min ? "#1a9a6a" : "#dc2626" }}>
+          {count}/{min}
+        </span>
+      </label>
+      <textarea className="w-full rounded-md border px-2 py-1.5 text-sm" style={{ borderColor: "#dde3ea" }} rows={Math.max(4, count + 1)} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+      {open.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          <span className="text-xs text-gray-400">Textbausteine:</span>
+          {open.map((sn) => (
+            <button
+              key={sn}
+              type="button"
+              onClick={() => onChange(appendPoint(value, sn))}
+              className="rounded-full border px-2 py-0.5 text-left text-xs text-gray-600 hover:bg-gray-50"
+              style={{ borderColor: "#dde3ea" }}
+            >
+              + {sn}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PositionForm({
   value,
   pending,
@@ -340,7 +391,7 @@ function PositionForm({
         <Field label="Bezeichnung *">
           <input className={input} style={{ borderColor: "#dde3ea" }} value={v.title} onChange={(e) => set("title", e.target.value)} placeholder="z.B. Steuerfachangestellte (m/w/d)" />
         </Field>
-        <Field label="Berufsbild">
+        <Field label="Berufsbild *">
           <select className={input} style={{ borderColor: "#dde3ea" }} value={v.berufsbild ?? ""} onChange={(e) => set("berufsbild", e.target.value)}>
             <option value="">Bitte wählen</option>
             {BERUFSBILD_OPTIONS.map((o) => (
@@ -354,7 +405,7 @@ function PositionForm({
           <LocationPicks locations={locations} onPick={(l) => setV({ ...v, plz: l.plz, ort: l.ort })} />
         </div>
         <div className="grid grid-cols-3 gap-2 sm:col-span-2">
-          <Field label="PLZ">
+          <Field label="PLZ *">
             <input className={input} style={{ borderColor: "#dde3ea" }} value={v.plz ?? ""} onChange={(e) => set("plz", e.target.value)} maxLength={5} inputMode="numeric" />
           </Field>
           <Field label="Ort">
@@ -379,6 +430,20 @@ function PositionForm({
             )}
           </Field>
         ))}
+        <PointsField
+          label="Aufgaben"
+          min={MIN_AUFGABEN}
+          value={v.aufgaben}
+          snippets={snippetsFor(v.berufsbild).aufgaben}
+          onChange={(text) => setV({ ...v, aufgaben: text })}
+        />
+        <PointsField
+          label="Anforderungen"
+          min={MIN_ANFORDERUNGEN}
+          value={v.anforderungen}
+          snippets={snippetsFor(v.berufsbild).anforderungen}
+          onChange={(text) => setV({ ...v, anforderungen: text })}
+        />
       </div>
       <div className="flex items-center gap-3">
         <button type="button" onClick={() => onSave(v)} disabled={pending} className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50" style={{ backgroundColor: "#1e56a0" }}>
