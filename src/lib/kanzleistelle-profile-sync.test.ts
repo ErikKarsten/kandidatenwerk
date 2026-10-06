@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildJobDescription, buildJobPayload, employmentType, parseSalary, workingModel } from "./kanzleistelle-profile-sync"
+import { buildBenefits, buildJobDescription, buildJobPayload, employmentType, workingModel } from "./kanzleistelle-profile-sync"
 import type { Database } from "@/types/database"
 
 type Position = Database["public"]["Tables"]["client_positions"]["Row"]
@@ -29,13 +29,6 @@ const position = {
 } as Position
 
 describe("Kanzleistelle24-Anzeige aus dem Kanzleiprofil", () => {
-  it("liest Gehaltsspannen und Monatsgehälter", () => {
-    expect(parseSalary("45.000–52.000 € brutto/Jahr")).toEqual({ min: 45000, max: 52000 })
-    expect(parseSalary("ab 3.500 € im Monat")).toEqual({ min: 42000, max: null })
-    expect(parseSalary("55k - 62k")).toEqual({ min: 55000, max: 62000 })
-    expect(parseSalary("nach Vereinbarung")).toEqual({ min: null, max: null })
-  })
-
   it("leitet Arbeitszeit und Arbeitsmodell ab", () => {
     expect(employmentType("Vollzeit oder Teilzeit")).toBe("vollzeit")
     expect(employmentType("Teilzeit 20 Std.")).toBe("teilzeit")
@@ -44,13 +37,20 @@ describe("Kanzleistelle24-Anzeige aus dem Kanzleiprofil", () => {
     expect(workingModel(null)).toBe("vor_ort")
   })
 
-  it("baut die Beschreibung aus Intro, Aufgaben, Profil und Angebot", () => {
-    const text = buildJobDescription({ intro: "Wir sind eine moderne Kanzlei.", benefits: ["Jobrad"], homeoffice: "2 Tage" }, position)
-    expect(text).toContain("🏢 Über uns\n\nWir sind eine moderne Kanzlei.")
-    expect(text).toContain("📋 Ihre Aufgaben\n\nFinanz- und Lohnbuchhaltung")
-    expect(text).toContain("Software: DATEV")
-    expect(text).toContain("✅ Jobrad")
-    expect(text).toContain("💶 Gehalt: 45.000–52.000 € brutto/Jahr")
+  it("baut die Beschreibung nur aus Über uns und Aufgaben", () => {
+    const text = buildJobDescription(
+      { intro: "Wir sind eine moderne Kanzlei.", benefits: ["Jobrad"] },
+      { ...position, aufgaben: "Finanzbuchhaltung\nLohnbuchhaltung" }
+    )
+    expect(text).toBe("🏢 Über uns\n\nWir sind eine moderne Kanzlei.\n\n📋 Ihre Aufgaben\n\n• Finanzbuchhaltung\n• Lohnbuchhaltung")
+  })
+
+  it("führt Benefits, Arbeitszeiten und Homeoffice als Benefits", () => {
+    expect(buildBenefits({ benefits: ["Jobrad", " "], arbeitszeiten: "Gleitzeit", homeoffice: "2 Tage" })).toEqual([
+      "Jobrad",
+      "Arbeitszeiten: Gleitzeit",
+      "Homeoffice: 2 Tage",
+    ])
   })
 
   it("füllt die Anzeige mit Ort, Gehalt und Firma", () => {
@@ -61,8 +61,9 @@ describe("Kanzleistelle24-Anzeige aus dem Kanzleiprofil", () => {
       company_id: "co1",
       location: "50668 Köln",
       postal_code: "50668",
-      salary_min: 45000,
-      salary_max: 52000,
+      salary_min: null,
+      salary_max: null,
+      salary_range: null,
       status: "published",
       is_active: true,
     })

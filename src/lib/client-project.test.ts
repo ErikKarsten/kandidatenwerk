@@ -3,7 +3,7 @@ import { contractEnd, missingProfileItems } from "./client-project"
 
 describe("missingProfileItems", () => {
   it("listet fehlende Pflichtangaben, Benefits und Stellen", () => {
-    expect(missingProfileItems(null, 0, 0)).toEqual([
+    expect(missingProfileItems(null, [], 0)).toEqual([
       "Kurzbeschreibung",
       "Intro zur Kanzlei",
       "Mitarbeiterzahl",
@@ -16,10 +16,27 @@ describe("missingProfileItems", () => {
     expect(
       missingProfileItems(
         { kurzbeschreibung: "a", intro: "b", mitarbeiterzahl: "10", benefits: ["Jobrad"] },
-        1,
+        [
+          {
+            title: "SFA",
+            berufsbild: "steuerfachangestellte",
+            plz: "50668",
+            arbeitszeit: "Vollzeit",
+            berufserfahrung: "ab 2 Jahre",
+            startdatum: "ab sofort",
+            aufgaben: "a\nb\nc\nd",
+            anforderungen: "x\ny\nz",
+          },
+        ],
         1
       )
     ).toEqual([])
+  })
+})
+
+describe("missingProfileItems mit Stellen", () => {
+  it("meldet unvollständige Stellen", () => {
+    expect(missingProfileItems(null, [{ title: "BiBu", aufgaben: "a" }], 1)).toContain("Stelle „BiBu“ unvollständig")
   })
 })
 

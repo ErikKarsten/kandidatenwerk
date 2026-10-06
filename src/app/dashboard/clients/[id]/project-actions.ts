@@ -138,12 +138,12 @@ export async function finalizeClientProfileAction(clientId: string, finalize: bo
   const ctx = await staff()
   if ("error" in ctx) return ctx
   if (finalize) {
-    const [{ data: profile }, { count }, { count: locationCount }] = await Promise.all([
+    const [{ data: profile }, { data: positionRows }, { count: locationCount }] = await Promise.all([
       ctx.supabase.from("client_profiles").select("*").eq("client_id", clientId).maybeSingle(),
-      ctx.supabase.from("client_positions").select("id", { count: "exact", head: true }).eq("client_id", clientId),
+      ctx.supabase.from("client_positions").select("title, berufsbild, plz, arbeitszeit, berufserfahrung, startdatum, aufgaben, anforderungen").eq("client_id", clientId),
       ctx.supabase.from("client_locations").select("id", { count: "exact", head: true }).eq("client_id", clientId),
     ])
-    const missing = missingProfileItems(profile as ClientProfileValues | null, count ?? 0, locationCount ?? 0)
+    const missing = missingProfileItems(profile as ClientProfileValues | null, positionRows ?? [], locationCount ?? 0)
     if (missing.length > 0) return { error: `Noch offen: ${missing.join(", ")}` }
   }
   const { error } = await ctx.supabase

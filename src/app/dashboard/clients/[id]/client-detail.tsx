@@ -22,7 +22,7 @@ import { LocationsCard } from "./locations-card"
 import type { ProjectComment } from "./project-comments"
 import { PROJECT_PHASES } from "@/lib/client-project"
 import { PortalAccessSection, type PortalUser } from "./portal-access-section"
-import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
+import type { ClientFileItem } from "./client-files-tab"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import type { DashboardKpis } from "@/lib/kpis"
 import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
@@ -160,7 +160,7 @@ export function ClientDetail({
   initialTab,
 }: ClientDetailProps) {
   const router = useRouter()
-  const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "dateien" | "projekt" | "aufgaben">(initialTab ?? "kampagnen")
+  const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "projekt" | "aufgaben">(initialTab ?? "kampagnen")
   const [editMode, setEditMode] = useState(false)
   const [displayLogoUrl, setDisplayLogoUrl] = useState(client.logo_url)
 
@@ -460,9 +460,6 @@ export function ClientDetail({
           <TabButton active={tab === "stammdaten"} onClick={() => setTab("stammdaten")}>
             Stammdaten
           </TabButton>
-          <TabButton active={tab === "dateien"} onClick={() => setTab("dateien")}>
-            Dateien ({files.length})
-          </TabButton>
           <TabButton active={tab === "projekt"} onClick={() => setTab("projekt")}>
             Projekt
             <span
@@ -490,6 +487,7 @@ export function ClientDetail({
               positions={project.positions}
               locations={project.locations}
               kanzleistelle={project.kanzleistelle}
+              files={files}
               campaigns={kanzleiCampaigns.map((c) => ({ id: c.id, title: c.title }))}
               team={project.team}
             />
@@ -525,9 +523,6 @@ export function ClientDetail({
               kanzleistelle={project.kanzleistelle}
               onLogoUploaded={(url) => setDisplayLogoUrl(url)}
             />
-          )}
-          {tab === "dateien" && (
-            <ClientFilesTab clientId={client.id} files={files} />
           )}
         </div>
       </div>

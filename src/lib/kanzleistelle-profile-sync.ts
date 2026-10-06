@@ -1,9 +1,10 @@
 // Kunde und gesuchte Stellen aus dem Kanzleiprofil zu Kanzleistelle24 (Paket 16, T-52).
 //
 // Die Firma bekommt das "Intro zur Kanzlei" als Beschreibung, jede gesuchte Stelle wird
-// eine Stellenanzeige mit festem Aufbau (Über uns = Intro, Ihre Aufgaben, Ihr Profil,
-// Das bieten wir). Erstes Veröffentlichen per Knopf (nur bei abgeschlossenem Profil),
-// danach überträgt syncKanzleistelleIfPublished Änderungen automatisch. Die alte,
+// eine Stellenanzeige: Beschreibung = Über uns (Intro) + Ihre Aufgaben; Anforderungen und
+// Benefits (inkl. Arbeitszeiten/Homeoffice) in den eigenen Feldern von Kanzleistelle24.
+// Gehalt wird nie übertragen (Entscheidung 06.10.2026). Erstes Veröffentlichen per Knopf
+// (nur bei abgeschlossenem Profil), danach überträgt syncKanzleistelleIfPublished Änderungen automatisch. Die alte,
 // kampagnenbasierte Veröffentlichung (sync-kanzleistelle-jobs.ts) bleibt für Bestände.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
@@ -23,19 +24,6 @@ function kandidatenwerk(): Db {
 
 const t = (v: string | null | undefined) => (v ?? "").trim()
 
-// "45.000–52.000 € brutto/Jahr" -> 45000/52000; "ab 3.500 € im Monat" -> 42000 (x12).
-export function parseSalary(text: string | null | undefined): { min: number | null; max: number | null } {
-  const raw = t(text)
-  if (!raw) return { min: null, max: null }
-  const numbers = [...raw.matchAll(/(\d{1,3}(?:[.\s]\d{3})+|\d+)(?:,\d+)?\s*(k|tsd)?/gi)]
-    .map((m) => Number(m[1].replace(/[.\s]/g, "")) * (m[2] ? 1000 : 1))
-    .filter((n) => n >= 1000)
-  if (numbers.length === 0) return { min: null, max: null }
-  const monthly = /monat|mtl/i.test(raw) && Math.max(...numbers) < 15000
-  const values = numbers.map((n) => (monthly ? n * 12 : n))
-  return { min: Math.min(...values), max: values.length > 1 ? Math.max(...values) : null }
-}
-
 export function employmentType(arbeitszeit: string | null | undefined): string {
   const a = t(arbeitszeit).toLowerCase()
   return a.includes("teilzeit") && !a.includes("vollzeit") ? "teilzeit" : "vollzeit"
@@ -52,22 +40,25 @@ function section(title: string, body: string): string | null {
   return body ? `${title}\n\n${body}` : null
 }
 
+// Aufgaben als Aufzählung, wenn sie zeilenweise gepflegt sind.
+function asBullets(text: string): string {
+  const lines = text.split(/\n+/).map((l) => l.replace(/^[-•*✅]\s*/, "").trim()).filter(Boolean)
+  return lines.length > 1 ? lines.map((l) => `• ${l}`).join("\n") : text
+}
+
 export function buildJobDescription(profile: Partial<Profile> | null, position: Partial<Position>): string {
-  const benefits = (profile?.benefits ?? []).filter((b) => t(b))
-  const offer = [
-    ...benefits.map((b) => `✅ ${t(b)}`),
-    t(profile?.arbeitszeiten) && `🕒 Arbeitszeiten: ${t(profile?.arbeitszeiten)}`,
-    t(profile?.homeoffice) && `🏠 Homeoffice: ${t(profile?.homeoffice)}`,
-    t(position.gehalt) && `💶 Gehalt: ${t(position.gehalt)}`,
-  ].filter(Boolean)
-  return [
-    section("🏢 Über uns", t(profile?.intro)),
-    section("📋 Ihre Aufgaben", t(position.aufgaben)),
-    section("🎯 Ihr Profil", buildRequirements(position)),
-    section("✨ Das bieten wir", offer.join("\n")),
-  ]
+  return [section("🏢 Über uns", t(profile?.intro)), section("📋 Ihre Aufgaben", asBullets(t(position.aufgaben)))]
     .filter(Boolean)
     .join("\n\n")
+}
+
+// "Das bieten wir" steht als Benefits-Liste bei Kanzleistelle24 (nicht im Text).
+export function buildBenefits(profile: Partial<Profile> | null): string[] {
+  return [
+    ...(profile?.benefits ?? []).map((b) => t(b)).filter(Boolean),
+    t(profile?.arbeitszeiten) && `Arbeitszeiten: ${t(profile?.arbeitszeiten)}`,
+    t(profile?.homeoffice) && `Homeoffice: ${t(profile?.homeoffice)}`,
+  ].filter((b): b is string => !!b)
 }
 
 export function buildRequirements(position: Partial<Position>): string {
@@ -86,7 +77,6 @@ export function buildJobPayload(
   position: Position,
   companyId: string
 ): Record<string, unknown> {
-  const salary = parseSalary(position.gehalt)
   return {
     title: position.title,
     company: client.name,
@@ -98,12 +88,13 @@ export function buildJobPayload(
     longitude: position.lng,
     employment_type: employmentType(position.arbeitszeit),
     working_model: workingModel(profile?.homeoffice),
-    salary_min: salary.min,
-    salary_max: salary.max,
-    salary_range: t(position.gehalt) || null,
+    // Gehalt nie übertragen - explizit leeren, falls es früher schon drin war.
+    salary_min: null,
+    salary_max: null,
+    salary_range: null,
     description: buildJobDescription(profile, position),
     requirements: buildRequirements(position) || null,
-    benefits: (profile?.benefits ?? []).filter((b) => t(b)),
+    benefits: buildBenefits(profile),
     is_active: true,
     status: "published",
     updated_at: new Date().toISOString(),

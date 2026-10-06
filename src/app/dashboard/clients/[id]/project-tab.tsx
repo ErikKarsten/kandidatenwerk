@@ -9,6 +9,7 @@ import { ProjectPositions, type ClientPosition } from "./project-positions"
 import { LocationsCard } from "./locations-card"
 import type { ClientLocation } from "@/lib/client-locations"
 import { KanzleistelleCard, type KanzleistelleStatus } from "./kanzleistelle-card"
+import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
 
 export interface ProjectMeta {
   project_phase: string
@@ -36,6 +37,7 @@ export function ProjectTab({
   positions,
   locations,
   kanzleistelle,
+  files,
   campaigns,
   team,
 }: {
@@ -45,10 +47,11 @@ export function ProjectTab({
   positions: ClientPosition[]
   locations: ClientLocation[]
   kanzleistelle: KanzleistelleStatus
+  files: ClientFileItem[]
   campaigns: { id: string; title: string }[]
   team: { id: string; full_name: string | null }[]
 }) {
-  const missing = missingProfileItems(profile, positions.length, locations.length)
+  const missing = missingProfileItems(profile, positions, locations.length)
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -61,6 +64,11 @@ export function ProjectTab({
         <LocationsCard clientId={clientId} locations={locations} closeHint={profile?.standorte} />
       </div>
       <ProjectPositions clientId={clientId} positions={positions} campaigns={campaigns} locations={locations} />
+      {/* Dateien des Kunden (bisher eigener Reiter, seit Paket 17 im Projekt). */}
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold text-gray-900">Dateien ({files.length})</h3>
+        <ClientFilesTab clientId={clientId} files={files} />
+      </div>
     </div>
   )
 }
