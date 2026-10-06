@@ -8,6 +8,8 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { PROFILE_FIELDS } from "@/lib/client-project"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { createDemoCandidateForClient } from "@/lib/demo-candidate"
+import { ensureClientLocation, parseLocationsFromText } from "@/lib/client-locations"
+import { syncKanzleistelleIfPublished } from "@/lib/kanzleistelle-profile-sync"
 import type { Database } from "@/types/database"
 
 export interface CloseWebhookPayload {
@@ -296,6 +298,8 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
       filled.push(f.label)
     }
   }
+  // Rohangabe der Standorte aus Close (wird im Kanzleiprofil als Hinweis gezeigt).
+  if (incoming.standorte && !text(profile?.standorte)) profileValues.standorte = incoming.standorte
   const benefits = splitBenefits(payload.benefits)
   if (benefits.length > 0 && !((profile?.benefits as string[] | null) ?? []).length) {
     profileValues.benefits = benefits
@@ -305,6 +309,19 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
     const { error } = await db.from("client_profiles").upsert({ client_id: clientId, ...profileValues, updated_at: new Date().toISOString() }, { onConflict: "client_id" })
     if (error) throw new Error(error.message)
   }
+
+  // 3b. Standorte (Paket 16, T-75): Hauptadresse aus Close zuerst (wird Hauptstandort,
+  // falls der Kunde noch keinen hat), dann alle weiteren PLZ aus dem Standorte-Text.
+  const before = (await db.from("client_locations").select("plz").eq("client_id", clientId)).data?.length ?? 0
+  const closeLocations = [
+    ...(plz ? [{ plz, ort: text(payload.ort), strasse: text(payload.strasse) }] : []),
+    ...parseLocationsFromText(text(payload.standorte)),
+  ]
+  for (const loc of closeLocations) {
+    await ensureClientLocation(db as unknown as SupabaseClient<Database>, clientId, loc)
+  }
+  const after = (await db.from("client_locations").select("plz").eq("client_id", clientId)).data?.length ?? 0
+  if (after > before) filled.push(`${after - before} Standort(e)`)
 
   // 4. Ansprechpartner als Kontakt (falls E-Mail noch nicht vorhanden).
   const block = text(payload.ansprechpartner_name) ? parseContactBlock(text(payload.ansprechpartner_name)!) : null
@@ -378,6 +395,9 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
     kind: "system",
     content: `${intro}${filled.length > 0 ? ` Übernommen: ${filled.join(", ")}.` : " Keine neuen Angaben."}`,
   })
+
+  // Schon auf Kanzleistelle24 veröffentlicht? Dann neue Angaben dorthin übertragen (Paket 16).
+  await syncKanzleistelleIfPublished(clientId)
 
   return { clientId, outcome, filled }
 }

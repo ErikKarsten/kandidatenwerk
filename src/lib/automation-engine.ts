@@ -9,14 +9,27 @@ export interface TemplateVars {
   Kundenname: string
   Email: string
   Telefon: string
+  Bewerberlink: string
+}
+
+const APP_BASE_URL = "https://kandidatenwerk.kanzleistelle24.de"
+
+// Direktlink auf den Kandidaten im Kundenportal (Paket 16, T-76, Variable #Bewerberlink).
+export function candidatePortalLink(candidateId: string): string {
+  return `${APP_BASE_URL}/portal/candidates/${candidateId}`
+}
+
+export function usesCandidateLink(automation: { subject: string; body_html: string }): boolean {
+  return `${automation.subject}\n${automation.body_html}`.includes("#Bewerberlink")
 }
 
 // Ersetzt die in automations-tab.tsx dokumentierten Platzhalter (#Kandidatenname,
-// #Kampagnenname, #Kundenname, #Email, #Telefon) in Betreff/Text. Unbekannte
+// #Kampagnenname, #Kundenname, #Email, #Telefon, #Bewerberlink) in Betreff/Text. Unbekannte
 // #Platzhalter (Tippfehler etc.) bleiben absichtlich unverändert stehen statt
 // stillschweigend zu leerem String zu werden - fällt beim Testen eher auf.
 export function substituteTemplateVars(text: string, vars: TemplateVars): string {
   return text
+    .replaceAll("#Bewerberlink", vars.Bewerberlink)
     .replaceAll("#Kandidatenname", vars.Kandidatenname)
     .replaceAll("#Kampagnenname", vars.Kampagnenname)
     .replaceAll("#Kundenname", vars.Kundenname)
@@ -36,13 +49,20 @@ function textToHtmlParagraphs(text: string): string {
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter((paragraph) => paragraph !== "")
-    .map((paragraph) => `<p style="margin:0 0 14px;">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .map((paragraph) => `<p style="margin:0 0 14px;">${linkify(escapeHtml(paragraph)).replace(/\n/g, "<br>")}</p>`)
     .join("")
 }
 
-// Verpackt den fertig durch substituteTemplateVars ersetzten Mailtext in dieselbe
-// gebrandete Kartenvorlage wie autoForwardCandidateIfEnabled (auto-forward-candidate.ts)
-// - weiße Karte, blauer "Kandidatenwerk"-Header, dezente Fußzeile. Der Editor/die
+// Links klickbar machen; der Bewerberlink erscheint als "Bewerberprofil öffnen".
+function linkify(html: string): string {
+  return html.replace(/https:\/\/[^\s<]+/g, (url) => {
+    const label = url.startsWith(`${APP_BASE_URL}/portal/candidates/`) ? "Bewerberprofil öffnen" : url
+    return `<a href="${url}" style="color:#1e56a0;font-weight:600;">${label}</a>`
+  })
+}
+
+// Verpackt den fertig durch substituteTemplateVars ersetzten Mailtext in die gebrandete
+// Kartenvorlage - weiße Karte, blauer "Kandidatenwerk"-Header, dezente Fußzeile. Der Editor/die
 // Texteingabe in automations-tab.tsx bleibt reiner Fließtext, nur der Versand hier
 // rendert Absätze/Zeilenumbrüche jetzt als HTML statt sie 1:1 unformatiert an Brevo
 // weiterzureichen.
@@ -63,10 +83,8 @@ export function wrapAutomationEmailHtml(bodyText: string): string {
 }
 
 // Empfänger-Auflösung für die 3 Recipient-Optionen aus automations-tab.tsx.
-// "client" folgt demselben Muster wie autoForwardCandidateIfEnabled
-// (auto-forward-candidate.ts): bevorzugt Portal-Login-Adressen des Kunden, sonst
-// clients.contact_email ("primärer Ansprechpartner", siehe UI-Label) - bewusst
-// dieselbe Logik, damit Kunden-Mails an derselben Adresse landen.
+// "client": bevorzugt Portal-Login-Adressen des Kunden, sonst clients.contact_email
+// ("primärer Ansprechpartner", siehe UI-Label).
 export async function resolveAutomationRecipients(
   supabase: Supabase,
   recipient: string,

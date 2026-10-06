@@ -6,6 +6,9 @@ import { CheckCircle2, AlertTriangle, Plus, X } from "lucide-react"
 import { PROFILE_FIELDS, PROFILE_GROUPS, PROJECT_PHASES, contractEnd, missingProfileItems, type ClientProfileValues } from "@/lib/client-project"
 import { finalizeClientProfileAction, saveClientProfileAction, updateProjectMetaAction } from "./project-actions"
 import { ProjectPositions, type ClientPosition } from "./project-positions"
+import { LocationsCard } from "./locations-card"
+import type { ClientLocation } from "@/lib/client-locations"
+import { KanzleistelleCard, type KanzleistelleStatus } from "./kanzleistelle-card"
 
 export interface ProjectMeta {
   project_phase: string
@@ -31,6 +34,8 @@ export function ProjectTab({
   meta,
   profile,
   positions,
+  locations,
+  kanzleistelle,
   campaigns,
   team,
 }: {
@@ -38,17 +43,24 @@ export function ProjectTab({
   meta: ProjectMeta
   profile: ClientProfileData | null
   positions: ClientPosition[]
+  locations: ClientLocation[]
+  kanzleistelle: KanzleistelleStatus
   campaigns: { id: string; title: string }[]
   team: { id: string; full_name: string | null }[]
 }) {
-  const missing = missingProfileItems(profile, positions.length)
+  const missing = missingProfileItems(profile, positions.length, locations.length)
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <OnboardingBanner clientId={clientId} profile={profile} missing={missing} />
+      <KanzleistelleCard clientId={clientId} status={kanzleistelle} />
       <ProjectMetaCard clientId={clientId} meta={meta} team={team} />
       <ProfileCard clientId={clientId} profile={profile} missing={missing} />
-      <ProjectPositions clientId={clientId} positions={positions} campaigns={campaigns} />
+      {/* Standorte als eigene Liste (Paket 16, T-75) - gleiche Liste wie in den Stammdaten. */}
+      <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#dde3ea" }}>
+        <LocationsCard clientId={clientId} locations={locations} closeHint={profile?.standorte} />
+      </div>
+      <ProjectPositions clientId={clientId} positions={positions} campaigns={campaigns} locations={locations} />
     </div>
   )
 }

@@ -25,7 +25,7 @@ export const AUTOMATION_RECIPIENT_OPTIONS = [
   { value: "all_contacts", label: "Alle Kunden-Ansprechpartner" },
 ]
 
-export const AUTOMATION_VARIABLES = ["#Kandidatenname", "#Kampagnenname", "#Kundenname", "#Email", "#Telefon"]
+export const AUTOMATION_VARIABLES = ["#Kandidatenname", "#Kampagnenname", "#Kundenname", "#Email", "#Telefon", "#Bewerberlink"]
 
 export function automationTriggerLabel(trigger: string, triggerStatus: string | null): string {
   if (trigger === "new_lead") return "Neuer Lead"

@@ -174,6 +174,7 @@ export type Database = {
           sort_order: number
           created_at: string
           updated_at: string
+          kanzleistelle_job_id: string | null
         }
         Insert: {
           id?: string
@@ -196,6 +197,7 @@ export type Database = {
           sort_order?: number
           created_at?: string
           updated_at?: string
+          kanzleistelle_job_id?: string | null
         }
         Update: {
           id?: string
@@ -218,6 +220,7 @@ export type Database = {
           sort_order?: number
           created_at?: string
           updated_at?: string
+          kanzleistelle_job_id?: string | null
         }
         Relationships: [
           {
@@ -493,6 +496,8 @@ export type Database = {
           close_url: string | null
           close_status: string | null
           close_status_at: string | null
+          kanzleistelle_synced_at: string | null
+          kanzleistelle_sync_error: string | null
         }
         Insert: {
           id?: string
@@ -521,6 +526,8 @@ export type Database = {
           close_url?: string | null
           close_status?: string | null
           close_status_at?: string | null
+          kanzleistelle_synced_at?: string | null
+          kanzleistelle_sync_error?: string | null
         }
         Update: {
           id?: string
@@ -549,6 +556,8 @@ export type Database = {
           close_url?: string | null
           close_status?: string | null
           close_status_at?: string | null
+          kanzleistelle_synced_at?: string | null
+          kanzleistelle_sync_error?: string | null
         }
         Relationships: [
           {
@@ -1039,6 +1048,50 @@ export type Database = {
           profile_finalized?: boolean | null
         }
         Relationships: []
+      }
+      client_locations: {
+        Row: {
+          id: string
+          client_id: string
+          strasse: string | null
+          plz: string
+          ort: string | null
+          lat: number | null
+          lng: number | null
+          is_primary: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          strasse?: string | null
+          plz: string
+          ort?: string | null
+          lat?: number | null
+          lng?: number | null
+          is_primary?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          strasse?: string | null
+          plz?: string
+          ort?: string | null
+          lat?: number | null
+          lng?: number | null
+          is_primary?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_locations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       automation_templates: {
         Row: {

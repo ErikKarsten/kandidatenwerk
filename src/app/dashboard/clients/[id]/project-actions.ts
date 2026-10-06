@@ -10,6 +10,7 @@ import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { sendEmail } from "@/lib/brevo-mail"
 import { closeLeadUrl } from "@/lib/close-webhook"
 import { notifyTaskAssigned } from "@/lib/task-notify"
+import { ensureClientLocation } from "@/lib/client-locations"
 import {
   CAMPAIGN_CHECK_TASK,
   PROFILE_FIELDS,
@@ -19,6 +20,9 @@ import {
   type ClientProfileValues,
 } from "@/lib/client-project"
 import { applyDefaultTemplateSet } from "@/lib/automation-templates"
+import { after } from "next/server"
+import { scheduleKanzleistelleSync } from "@/lib/kanzleistelle-auto-sync"
+import { deactivateKanzleistelleJob } from "@/lib/kanzleistelle-profile-sync"
 
 type Result = { error: string } | null
 type Supabase = Awaited<ReturnType<typeof createSupabaseServerClient>>
@@ -125,6 +129,7 @@ export async function saveClientProfileAction(clientId: string, values: ClientPr
   row.benefits = (values.benefits ?? []).map((b) => b.trim()).filter(Boolean)
   const { error } = await ctx.supabase.from("client_profiles").upsert(row as never, { onConflict: "client_id" })
   if (error) return { error: error.message }
+  scheduleKanzleistelleSync(clientId)
   revalidateClient(clientId)
   return null
 }
@@ -133,11 +138,12 @@ export async function finalizeClientProfileAction(clientId: string, finalize: bo
   const ctx = await staff()
   if ("error" in ctx) return ctx
   if (finalize) {
-    const [{ data: profile }, { count }] = await Promise.all([
+    const [{ data: profile }, { count }, { count: locationCount }] = await Promise.all([
       ctx.supabase.from("client_profiles").select("*").eq("client_id", clientId).maybeSingle(),
       ctx.supabase.from("client_positions").select("id", { count: "exact", head: true }).eq("client_id", clientId),
+      ctx.supabase.from("client_locations").select("id", { count: "exact", head: true }).eq("client_id", clientId),
     ])
-    const missing = missingProfileItems(profile as ClientProfileValues | null, count ?? 0)
+    const missing = missingProfileItems(profile as ClientProfileValues | null, count ?? 0, locationCount ?? 0)
     if (missing.length > 0) return { error: `Noch offen: ${missing.join(", ")}` }
   }
   const { error } = await ctx.supabase
@@ -153,6 +159,7 @@ export async function finalizeClientProfileAction(clientId: string, finalize: bo
     kind: "system",
     content: finalize ? "Kanzleiprofil abgeschlossen." : "Kanzleiprofil wieder zur Bearbeitung geöffnet.",
   })
+  if (finalize) scheduleKanzleistelleSync(clientId)
   revalidateClient(clientId)
   return null
 }
@@ -205,6 +212,10 @@ export async function savePositionAction(clientId: string, input: PositionInput)
     ? await ctx.supabase.from("client_positions").update(row).eq("id", input.id).eq("client_id", clientId)
     : await ctx.supabase.from("client_positions").insert(row)
   if (error) return { error: error.message }
+  // Neue PLZ -> weiterer Standort des Kunden (Paket 16, T-75), damit Karte und
+  // Stammdaten stimmen.
+  if (plz) await ensureClientLocation(ctx.supabase, clientId, { plz, ort: row.ort })
+  scheduleKanzleistelleSync(clientId)
   revalidateClient(clientId)
   return null
 }
@@ -234,6 +245,8 @@ export async function duplicatePositionAction(
   void _k
   const { error } = await ctx.supabase.from("client_positions").insert({ ...rest, ...place, campaign_id: null })
   if (error) return { error: error.message }
+  if (place.plz) await ensureClientLocation(ctx.supabase, clientId, { plz: place.plz, ort: place.ort })
+  scheduleKanzleistelleSync(clientId)
   revalidateClient(clientId)
   return null
 }
@@ -241,8 +254,19 @@ export async function duplicatePositionAction(
 export async function deletePositionAction(clientId: string, positionId: string): Promise<Result> {
   const ctx = await staff()
   if ("error" in ctx) return ctx
-  const { error } = await ctx.supabase.from("client_positions").delete().eq("id", positionId).eq("client_id", clientId)
+  const { data: removed, error } = await ctx.supabase
+    .from("client_positions")
+    .delete()
+    .eq("id", positionId)
+    .eq("client_id", clientId)
+    .select("kanzleistelle_job_id")
+    .maybeSingle()
   if (error) return { error: error.message }
+  // Anzeige auf Kanzleistelle24 deaktivieren (Paket 16, T-52).
+  if (removed?.kanzleistelle_job_id) {
+    const jobId = removed.kanzleistelle_job_id
+    after(() => deactivateKanzleistelleJob(jobId))
+  }
   revalidateClient(clientId)
   return null
 }

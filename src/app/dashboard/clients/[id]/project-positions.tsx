@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Copy, MapPinPlus, Pencil, Plus, Trash2 } from "lucide-react"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import type { ClientLocation } from "@/lib/client-locations"
 import {
   createCampaignFromPositionsAction,
   deletePositionAction,
@@ -50,10 +51,12 @@ export function ProjectPositions({
   clientId,
   positions,
   campaigns,
+  locations,
 }: {
   clientId: string
   positions: ClientPosition[]
   campaigns: { id: string; title: string }[]
+  locations: ClientLocation[]
 }) {
   const router = useRouter()
   const [editing, setEditing] = useState<PositionInput | null>(null)
@@ -91,6 +94,7 @@ export function ProjectPositions({
 
       {editing && (
         <PositionForm
+          locations={locations}
           value={editing}
           pending={pending}
           onCancel={() => setEditing(null)}
@@ -200,6 +204,10 @@ export function ProjectPositions({
           {locationFor === p.id && (
             <div className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3" style={{ borderColor: "#eef2f6" }}>
               <span className="w-full text-xs text-gray-500">Gleiche Stelle an einem weiteren Standort suchen:</span>
+              <LocationPicks
+                locations={locations.filter((l) => l.plz !== p.plz)}
+                onPick={(l) => setNewLocation({ ...newLocation, plz: l.plz, ort: l.ort ?? "" })}
+              />
               <input
                 value={newLocation.plz}
                 onChange={(e) => setNewLocation({ ...newLocation, plz: e.target.value })}
@@ -287,7 +295,41 @@ export function ProjectPositions({
   )
 }
 
-function PositionForm({ value, pending, onSave, onCancel }: { value: PositionInput; pending: boolean; onSave: (v: PositionInput) => void; onCancel: () => void }) {
+// Standorte des Kunden als Schnellauswahl (Paket 16, T-75). Eine neue PLZ in einer Stelle
+// legt beim Speichern automatisch einen weiteren Standort an.
+function LocationPicks({ locations, onPick }: { locations: ClientLocation[]; onPick: (l: ClientLocation) => void }) {
+  if (locations.length === 0) return null
+  return (
+    <div className="flex w-full flex-wrap items-center gap-1.5">
+      <span className="text-xs text-gray-500">Standort übernehmen:</span>
+      {locations.map((l) => (
+        <button
+          key={l.id}
+          type="button"
+          onClick={() => onPick(l)}
+          className="rounded-full border px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
+          style={{ borderColor: "#dde3ea" }}
+        >
+          {l.plz} {l.ort ?? ""}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function PositionForm({
+  value,
+  pending,
+  onSave,
+  onCancel,
+  locations,
+}: {
+  value: PositionInput
+  pending: boolean
+  onSave: (v: PositionInput) => void
+  onCancel: () => void
+  locations: ClientLocation[]
+}) {
   const [v, setV] = useState<PositionInput>(value)
   const input = "w-full rounded-md border px-2 py-1.5 text-sm"
   const set = (key: keyof PositionInput, val: string) => setV({ ...v, [key]: val })
@@ -308,6 +350,9 @@ function PositionForm({ value, pending, onSave, onCancel }: { value: PositionInp
             ))}
           </select>
         </Field>
+        <div className="sm:col-span-2">
+          <LocationPicks locations={locations} onPick={(l) => setV({ ...v, plz: l.plz, ort: l.ort })} />
+        </div>
         <div className="grid grid-cols-3 gap-2 sm:col-span-2">
           <Field label="PLZ">
             <input className={input} style={{ borderColor: "#dde3ea" }} value={v.plz ?? ""} onChange={(e) => set("plz", e.target.value)} maxLength={5} inputMode="numeric" />
