@@ -30,6 +30,8 @@ import {
 } from "./actions"
 import { ProfileFieldsEditor, SnippetsEditor } from "./profile-fields-tab"
 import type { ProfileFieldConfig } from "@/lib/profile-field-config"
+import { AgencyLogoCard, ConfirmationSettings } from "./agency-settings-ui"
+import type { AgencySettings } from "./agency-settings-actions"
 
 const MIN_PASSWORD_LENGTH = 8
 
@@ -47,6 +49,7 @@ interface EinstellungenDetailProps {
   agencyId: string | null
   automationTemplates: { templates: AutomationTemplate[]; sets: AutomationTemplateSet[] }
   profileFieldConfig: ProfileFieldConfig
+  agencySettings: AgencySettings
   leadNotificationRecipientIds: string[]
   customFieldDefinitions: CustomFieldDefinition[]
   customFieldReviewQueue: CustomFieldReviewQueueEntry[]
@@ -61,7 +64,7 @@ interface EinstellungenDetailProps {
 // Innerhalb eines Reiters sind die Bereiche aufklappbar.
 type Tab = "konto" | "team" | "automatisierung" | "felder" | "leadanbindung"
 
-export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, automationTemplates, profileFieldConfig, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms, leadSyncWarnings }: EinstellungenDetailProps) {
+export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, automationTemplates, profileFieldConfig, agencySettings, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms, leadSyncWarnings }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
   const isAdmin = ownProfile.role === "agency_admin"
   const activeFields = customFieldDefinitions.filter((f) => f.active)
@@ -88,6 +91,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
             <div className="flex flex-col gap-4">
               <KontoTab ownProfile={ownProfile} />
               <AgenturTab agencyName={agencyName} />
+              <AgencyLogoCard logoUrl={agencySettings.logoUrl} isAdmin={isAdmin} />
             </div>
           )}
           {tab === "team" && <TeamTab team={team} ownProfileId={ownProfile.id} />}
@@ -96,7 +100,14 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
               <Section title="E-Mail-Vorlagen und Vorlagensets" meta={`${automationTemplates.templates.length} Vorlagen, ${automationTemplates.sets.length} Sets`} defaultOpen>
                 <AutomationTemplatesTab templates={automationTemplates.templates} sets={automationTemplates.sets} />
               </Section>
-              <Section title="Benachrichtigung bei neuen Leads" meta={`${leadNotificationRecipientIds.length} Empfänger`}>
+              <Section
+                title="Eingangsbestätigung an Kandidaten"
+                meta={agencySettings.confirmationActive ? "eingeschaltet" : "aus"}
+                defaultOpen={!agencySettings.confirmationActive}
+              >
+                <ConfirmationSettings settings={agencySettings} templates={automationTemplates.templates} isAdmin={isAdmin} />
+              </Section>
+              <Section title="Benachrichtigung bei neuen Leads (intern ans Team)" meta={`${leadNotificationRecipientIds.length} Empfänger`}>
                 <div className="max-w-lg">
                   <AutomatisierungTab agencyId={agencyId} team={team} initialRecipientIds={leadNotificationRecipientIds} />
                 </div>

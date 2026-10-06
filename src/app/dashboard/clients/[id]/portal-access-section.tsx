@@ -8,7 +8,8 @@ import { inviteClientPortalUserAction, portalPasswordResetAction, removeClientPo
 export interface PortalUser {
   id: string
   email: string | null
-  status: "eingeladen" | "aktiv"
+  // angelegt = still angelegt (z.B. als Ansprechpartner), Einladung noch nicht verschickt.
+  status: "eingeladen" | "aktiv" | "angelegt"
 }
 
 const inputClass =
@@ -133,12 +134,12 @@ export function PortalAccessSection({
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">{user.email}</p>
             <p className="text-xs mt-0.5" style={{ color: user.status === "aktiv" ? "#1a9a6a" : "#9ca3af" }}>
-              {user.status === "aktiv" ? "Aktiv" : "Eingeladen, noch kein Login"}
+              {user.status === "aktiv" ? "Aktiv" : user.status === "eingeladen" ? "Eingeladen, noch kein Login" : "Angelegt, Einladung noch nicht verschickt"}
             </p>
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            <PasswordResetButtons clientId={clientId} profileId={user.id} />
+            <PasswordResetButtons clientId={clientId} profileId={user.id} active={user.status === "aktiv"} />
             {deleteConfirmId === user.id ? (
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-gray-500">Entfernen?</span>
@@ -176,7 +177,8 @@ export function PortalAccessSection({
 }
 
 // Passwort zurücksetzen (Paket 20, T-91): Link per Mail an den Zugang oder zum Kopieren.
-function PasswordResetButtons({ clientId, profileId }: { clientId: string; profileId: string }) {
+function PasswordResetButtons({ clientId, profileId, active }: { clientId: string; profileId: string; active: boolean }) {
+  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const [link, setLink] = useState<string | null>(null)
@@ -196,7 +198,8 @@ function PasswordResetButtons({ clientId, profileId }: { clientId: string; profi
           setMessage({ ok: true, text: "Link erzeugt – bitte unten kopieren." })
         }
       } else {
-        setMessage({ ok: true, text: `Link an ${result.sentTo} geschickt.` })
+        setMessage({ ok: true, text: `${result.kind === "einladung" ? "Einladung" : "Passwort-Link"} an ${result.sentTo} geschickt.` })
+        router.refresh()
       }
     })
   }
@@ -205,7 +208,7 @@ function PasswordResetButtons({ clientId, profileId }: { clientId: string; profi
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-1">
         <button type="button" onClick={() => run("senden")} disabled={pending} className="rounded border px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "#dde3ea" }}>
-          {pending ? "…" : "Passwort-Link senden"}
+          {pending ? "…" : active ? "Passwort-Link senden" : "Einladung senden"}
         </button>
         <button type="button" onClick={() => run("kopieren")} disabled={pending} className="rounded border px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "#dde3ea" }}>
           Link kopieren

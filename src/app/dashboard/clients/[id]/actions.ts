@@ -6,7 +6,8 @@ import { requireStaffUser } from "@/lib/auth-guards"
 import { publishClientProfileToKanzleistelle } from "@/lib/kanzleistelle-profile-sync"
 import { scheduleKanzleistelleSync } from "@/lib/kanzleistelle-auto-sync"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { createPasswordResetLink, sendPasswordResetMail } from "@/lib/password-reset"
+import { createPasswordResetLink } from "@/lib/password-reset"
+import { ensurePortalAccess, sendPortalInvite } from "@/lib/portal-access"
 
 // Server Actions verlassen sich nach dem Security-Review vom 09.09.2026 nicht mehr
 // ausschliesslich auf RLS als einzige Schutzschicht - requireStaffUser() (src/lib/auth-guards.ts)
@@ -224,6 +225,8 @@ export async function createContactAction(
   })
 
   if (error) return { error: error.message }
+  // Ansprechpartner = Portal-Zugang (Paket 23, T-95), still angelegt - Einladung per Knopf.
+  await ensurePortalAccess(clientId, data.email)
   revalidatePath(`/dashboard/clients/${clientId}`)
   return null
 }
@@ -251,6 +254,8 @@ export async function updateContactAction(
     .eq("id", contactId)
 
   if (error) return { error: error.message }
+  // Neue E-Mail-Adresse -> ebenfalls Portal-Zugang (Paket 23, T-95), still.
+  await ensurePortalAccess(clientId, data.email)
   revalidatePath(`/dashboard/clients/${clientId}`)
   return null
 }
@@ -347,75 +352,23 @@ export async function inviteClientPortalUserAction(
   const trimmedEmail = email.trim()
   if (!trimmedEmail) return { error: "E-Mail-Adresse ist ein Pflichtfeld." }
 
-  // Ohne diesen Check konnte jeder, der die Action-ID kennt (steht im ausgelieferten
-  // JS), sich selbst einen Portal-Zugang zu einem beliebigen Kunden anlegen
-  // (Security-Review 02.10.2026). Der Kunde wird über die RLS-Session nachgeschlagen,
-  // damit nur Kunden der eigenen Agentur infrage kommen.
+  // Nur Staff, und der Kunde wird über die RLS-Session nachgeschlagen, damit nur Kunden der
+  // eigenen Agentur infrage kommen (Security-Review 02.10.2026).
   const supabase = await createSupabaseServerClient()
   const staffError = await requireStaffUser(supabase)
   if (staffError) return staffError
-
   const { data: client } = await supabase.from("clients").select("id").eq("id", clientId).maybeSingle()
   if (!client) return { error: "Kunde nicht gefunden." }
 
-  const admin = createSupabaseAdminClient()
-
-  // Vorab prüfen, ob diese E-Mail bereits als Portal-Zugang existiert (unabhängig vom
-  // Kunden) - Supabase Auth's inviteUserByEmail() ist pro E-Mail idempotent: ein
-  // zweiter Aufruf für eine schon bestehende (auch nur eingeladene, unbestätigte)
-  // E-Mail legt KEINEN neuen Auth-User an, sondern liefert die ID des bestehenden
-  // zurück und verschickt trotzdem einen neuen, echten Einladungslink dafür. Der
-  // anschließende profiles-Insert würde dann am Primary-Key scheitern (die ID hat ja
-  // schon eine profiles-Zeile vom ersten Zugang), und der Cleanup-Pfad unten würde
-  // diesen BESTEHENDEN Auth-User wieder löschen - nicht nur die neue Einladung wäre
-  // damit tot, der schon funktionierende erste Portal-Zugang würde rückwirkend
-  // zerstört (siehe Diagnose vom 21.09.2026, live reproduziert). Deshalb hier vorher
-  // abfangen, bevor überhaupt eine E-Mail verschickt wird.
-  const { data: existingProfile } = await admin
-    .from("profiles")
-    .select("id, client_id")
-    .eq("email", trimmedEmail)
-    .maybeSingle()
-
-  if (existingProfile) {
-    return {
-      error: `Diese E-Mail-Adresse ist bereits als Portal-Zugang hinterlegt (Kunde-ID ${existingProfile.client_id}). Bitte dort entfernen, bevor sie hier erneut eingeladen wird.`,
-    }
+  // Seit Paket 23 eigene Einladungs-Mail im einheitlichen Layout (mit Logo) statt der
+  // Supabase-Standardmail; der Zugang selbst entsteht wie bei Ansprechpartnern.
+  const access = await ensurePortalAccess(clientId, trimmedEmail)
+  if ("error" in access) return { error: access.error }
+  try {
+    await sendPortalInvite(access.profileId, trimmedEmail.toLowerCase())
+  } catch (err) {
+    return { error: `Zugang angelegt, Einladung aber nicht verschickt: ${err instanceof Error ? err.message : err}` }
   }
-
-  // agency_id bewusst NICHT setzen (bleibt NULL) - mehrere "eigene Agentur"-RLS-Policies
-  // (clients, candidates, client_contacts, client_files, campaign_automations, profiles,
-  // Storage-Buckets) gehen davon aus, dass Portal-Kunden agency_id = NULL haben, sonst
-  // sehen sie systemweit alle Daten aller Agenturen statt nur ihre eigenen (Sicherheits-
-  // vorfall vom 22.09.2026, live bestätigt - siehe 20260922000003_revert_client_portal_agency_id.sql).
-  // Ein früherer Fix hatte hier agency_id vom Kunden übernommen, um ein internes Anzeige-
-  // Problem zu lösen (Staff sah den Portal-Zugang in der eigenen Liste nicht) - das war
-  // die falsche Abwägung. Der dauerhafte, sichere Fix für das Anzeige-Problem (Staff-
-  // Sichtbarkeit ohne geteilte agency_id, z.B. Rollenprüfung in der Policy) folgt separat.
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
-    redirectTo: "https://kandidatenwerk.kanzleistelle24.de/set-password",
-  })
-
-  if (error) return { error: error.message }
-  if (!data.user) return { error: "Einladung konnte nicht erstellt werden." }
-
-  const { error: profileError } = await admin.from("profiles").insert({
-    id: data.user.id,
-    role: "client",
-    client_id: clientId,
-    agency_id: null,
-    email: trimmedEmail,
-  })
-
-  // Profil-Insert fehlgeschlagen (z.B. Constraint-Fehler) - den bereits eingeladenen
-  // Auth-User wieder entfernen, damit kein verwaister Login ohne Profil zurueckbleibt,
-  // der bei einem erneuten Einladungsversuch mit derselben Adresse einen verwirrenden
-  // "schon eingeladen"-Fehler werfen wuerde.
-  if (profileError) {
-    await admin.auth.admin.deleteUser(data.user.id)
-    return { error: profileError.message }
-  }
-
   revalidatePath(`/dashboard/clients/${clientId}`)
   return null
 }
@@ -461,7 +414,7 @@ export async function portalPasswordResetAction(
   clientId: string,
   profileId: string,
   mode: "senden" | "kopieren"
-): Promise<{ error: string } | { link?: string; sentTo?: string }> {
+): Promise<{ error: string } | { link?: string; sentTo?: string; kind?: "einladung" | "passwort" }> {
   const supabase = await createSupabaseServerClient()
   const staffError = await requireStaffUser(supabase)
   if (staffError) return staffError
@@ -475,10 +428,30 @@ export async function portalPasswordResetAction(
   if (!email) return { error: "Für diesen Zugang ist keine E-Mail-Adresse bekannt." }
 
   try {
-    const link = await createPasswordResetLink(email)
-    if (mode === "kopieren") return { link }
-    await sendPasswordResetMail(email, link)
-    return { sentTo: email }
+    if (mode === "kopieren") return { link: await createPasswordResetLink(email) }
+    // Noch nie angemeldet -> Einladung, sonst Passwort-Link (Paket 23).
+    const kind = await sendPortalInvite(profileId, email)
+    return { sentTo: email, kind }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+// Ansprechpartner einladen (Paket 23, T-95): legt den Portal-Zugang an, falls noch nicht
+// vorhanden, und schickt die Einladung bzw. - wenn schon aktiv - einen Passwort-Link.
+export async function inviteContactAction(clientId: string, contactId: string): Promise<{ error: string } | { sent: "einladung" | "passwort"; email: string }> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+  const { data: contact } = await supabase.from("client_contacts").select("email").eq("id", contactId).eq("client_id", clientId).maybeSingle()
+  const email = contact?.email?.trim().toLowerCase()
+  if (!email) return { error: "Für diesen Ansprechpartner ist keine E-Mail-Adresse hinterlegt." }
+  const access = await ensurePortalAccess(clientId, email)
+  if ("error" in access) return { error: access.error }
+  try {
+    const sent = await sendPortalInvite(access.profileId, email)
+    revalidatePath(`/dashboard/clients/${clientId}`)
+    return { sent, email }
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }

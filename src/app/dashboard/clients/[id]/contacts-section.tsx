@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Pencil, Trash2 } from "lucide-react"
-import { createContactAction, updateContactAction, deleteContactAction } from "./actions"
+import { createContactAction, updateContactAction, deleteContactAction, inviteContactAction } from "./actions"
+import type { PortalUser } from "./portal-access-section"
 
 export interface Contact {
   id: string
@@ -72,9 +73,11 @@ function ContactFormFields({
 export function ContactsSection({
   clientId,
   contacts,
+  portalUsers,
 }: {
   clientId: string
   contacts: Contact[]
+  portalUsers: PortalUser[]
 }) {
   const router = useRouter()
 
@@ -242,6 +245,13 @@ export function ContactsSection({
                     {[contact.role, contact.phone].filter(Boolean).join(" · ")}
                   </p>
                 )}
+                {contact.email && (
+                  <ContactPortalStatus
+                    clientId={clientId}
+                    contactId={contact.id}
+                    user={portalUsers.find((u) => (u.email ?? "").toLowerCase() === contact.email!.trim().toLowerCase()) ?? null}
+                  />
+                )}
               </div>
 
               <div className="flex items-center gap-1 shrink-0">
@@ -288,6 +298,40 @@ export function ContactsSection({
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+// Ansprechpartner = Portal-Zugang (Paket 23, T-95): Status und Einladung per Knopf.
+function ContactPortalStatus({ clientId, contactId, user }: { clientId: string; contactId: string; user: PortalUser | null }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const status = !user ? "Kein Portal-Zugang" : user.status === "aktiv" ? "Portal: aktiv" : user.status === "eingeladen" ? "Portal: eingeladen" : "Portal: angelegt, nicht eingeladen"
+  const label = !user ? "Zugang anlegen & einladen" : user.status === "aktiv" ? "Passwort-Link senden" : "Einladung senden"
+
+  function invite() {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await inviteContactAction(clientId, contactId)
+      if ("error" in result) return setMessage({ ok: false, text: result.error })
+      setMessage({ ok: true, text: `${result.sent === "einladung" ? "Einladung" : "Passwort-Link"} an ${result.email} geschickt.` })
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2">
+      <span
+        className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+        style={user?.status === "aktiv" ? { backgroundColor: "#1a9a6a18", color: "#1a9a6a" } : { backgroundColor: "#9ca3af18", color: "#6b7280" }}
+      >
+        {status}
+      </span>
+      <button type="button" onClick={invite} disabled={pending} className="text-xs font-medium hover:underline disabled:opacity-50" style={{ color: "#1e56a0" }}>
+        {pending ? "…" : label}
+      </button>
+      {message && <span className="text-xs" style={{ color: message.ok ? "#1a9a6a" : "#dc2626" }}>{message.text}</span>}
     </div>
   )
 }

@@ -681,6 +681,7 @@ export type Database = {
           email: string | null
           phone: string | null
           avatar_path: string | null
+          portal_invited_at: string | null
         }
         Insert: {
           id: string
@@ -692,6 +693,7 @@ export type Database = {
           email?: string | null
           phone?: string | null
           avatar_path?: string | null
+          portal_invited_at?: string | null
         }
         Update: {
           id?: string
@@ -703,6 +705,7 @@ export type Database = {
           email?: string | null
           phone?: string | null
           avatar_path?: string | null
+          portal_invited_at?: string | null
         }
         Relationships: [
           {
@@ -1227,6 +1230,51 @@ export type Database = {
           kind?: string
           text?: string
           sort_order?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      agency_settings: {
+        Row: {
+          agency_id: string
+          logo_url: string | null
+          confirmation_active: boolean
+          confirmation_template_id: string | null
+          confirmation_active_since: string | null
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          logo_url?: string | null
+          confirmation_active?: boolean
+          confirmation_template_id?: string | null
+          confirmation_active_since?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          logo_url?: string | null
+          confirmation_active?: boolean
+          confirmation_template_id?: string | null
+          confirmation_active_since?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      candidate_mail_runs: {
+        Row: {
+          kind: string
+          candidate_id: string
+          created_at: string
+        }
+        Insert: {
+          kind: string
+          candidate_id: string
+          created_at?: string
+        }
+        Update: {
+          kind?: string
+          candidate_id?: string
           created_at?: string
         }
         Relationships: []

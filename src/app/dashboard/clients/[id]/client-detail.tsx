@@ -1036,7 +1036,7 @@ function StammdatenTab({
       </div>
 
       <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
-        <ContactsSection clientId={client.id} contacts={contacts} />
+        <ContactsSection clientId={client.id} contacts={contacts} portalUsers={portalUsers} />
       </div>
 
       <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
