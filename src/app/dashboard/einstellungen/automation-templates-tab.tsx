@@ -20,6 +20,7 @@ import {
   automationDelayLabel,
   automationRecipientLabel,
   automationTriggerLabel,
+  isCampaignTrigger,
 } from "@/lib/automation-templates"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 
@@ -89,7 +90,8 @@ function TemplatesCard({ templates }: { templates: AutomationTemplate[] }) {
           <h2 className="text-sm font-semibold text-gray-900">E-Mail-Vorlagen</h2>
           <p className="text-xs text-gray-500">
             Alle Mails, die Kandidatenwerk verschickt: als Automatisierung in Kampagnen und – bei Empfänger „Kandidat“ – im Reiter „Kommunikation“ beim
-            Kandidaten. „Nur manuell“ geht nie automatisch raus.
+            Kandidaten. „Kandidat einer Kanzlei zugeordnet“ geht bei jeder neuen Zuordnung an die Kanzlei (mit #Bewerberlink), „Nur manuell“ nie
+            automatisch.
           </p>
         </div>
         <button
@@ -145,7 +147,13 @@ function TemplatesCard({ templates }: { templates: AutomationTemplate[] }) {
               </Field>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Auslöser">
-                  <select className={inputClass} style={inputStyle} value={editing.form.trigger} onChange={(e) => set({ trigger: e.target.value, trigger_status: null, ...(e.target.value === "manual" ? { recipient: "candidate" } : {}) })}>
+                  <select className={inputClass} style={inputStyle} value={editing.form.trigger} onChange={(e) =>
+                      set({
+                        trigger: e.target.value,
+                        trigger_status: null,
+                        ...(e.target.value === "manual" ? { recipient: "candidate" } : e.target.value === "client_assigned" ? { recipient: "client" } : {}),
+                      })
+                    }>
                     {AUTOMATION_TRIGGER_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
@@ -161,7 +169,7 @@ function TemplatesCard({ templates }: { templates: AutomationTemplate[] }) {
                     </select>
                   </Field>
                 )}
-                {editing.form.trigger !== "manual" && (
+                {isCampaignTrigger(editing.form.trigger) && (
                 <Field label="Verzögerung">
                   <select className={inputClass} style={inputStyle} value={editing.form.delay_seconds} onChange={(e) => set({ delay_seconds: Number(e.target.value) })}>
                     {AUTOMATION_DELAY_OPTIONS.map((o) => (
@@ -292,7 +300,7 @@ function SetsCard({ templates, sets }: { templates: AutomationTemplate[]; sets: 
           </Field>
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-gray-600">Vorlagen im Set</span>
-            {templates.filter((t) => t.trigger !== "manual").map((t) => (
+            {templates.filter((t) => isCampaignTrigger(t.trigger)).map((t) => (
               <label key={t.id} className="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   type="checkbox"

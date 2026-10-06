@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Trash2 } from "lucide-react"
-import { inviteClientPortalUserAction, removeClientPortalUserAction } from "./actions"
+import { inviteClientPortalUserAction, portalPasswordResetAction, removeClientPortalUserAction } from "./actions"
 
 export interface PortalUser {
   id: string
@@ -127,7 +127,7 @@ export function PortalAccessSection({
       {portalUsers.map((user) => (
         <div
           key={user.id}
-          className="flex items-center gap-3 rounded-lg border p-3"
+          className="flex flex-wrap items-center gap-3 rounded-lg border p-3"
           style={{ borderColor: "#dde3ea" }}
         >
           <div className="flex-1 min-w-0">
@@ -138,6 +138,7 @@ export function PortalAccessSection({
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            <PasswordResetButtons clientId={clientId} profileId={user.id} />
             {deleteConfirmId === user.id ? (
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-gray-500">Entfernen?</span>
@@ -170,6 +171,48 @@ export function PortalAccessSection({
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// Passwort zurücksetzen (Paket 20, T-91): Link per Mail an den Zugang oder zum Kopieren.
+function PasswordResetButtons({ clientId, profileId }: { clientId: string; profileId: string }) {
+  const [pending, startTransition] = useTransition()
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [link, setLink] = useState<string | null>(null)
+
+  function run(mode: "senden" | "kopieren") {
+    setMessage(null)
+    setLink(null)
+    startTransition(async () => {
+      const result = await portalPasswordResetAction(clientId, profileId, mode)
+      if ("error" in result) return setMessage({ ok: false, text: result.error })
+      if (result.link) {
+        setLink(result.link)
+        try {
+          await navigator.clipboard.writeText(result.link)
+          setMessage({ ok: true, text: "Link kopiert – zeitlich begrenzt gültig." })
+        } catch {
+          setMessage({ ok: true, text: "Link erzeugt – bitte unten kopieren." })
+        }
+      } else {
+        setMessage({ ok: true, text: `Link an ${result.sentTo} geschickt.` })
+      }
+    })
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-1">
+        <button type="button" onClick={() => run("senden")} disabled={pending} className="rounded border px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "#dde3ea" }}>
+          {pending ? "…" : "Passwort-Link senden"}
+        </button>
+        <button type="button" onClick={() => run("kopieren")} disabled={pending} className="rounded border px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "#dde3ea" }}>
+          Link kopieren
+        </button>
+      </div>
+      {message && <span className="text-xs" style={{ color: message.ok ? "#1a9a6a" : "#dc2626" }}>{message.text}</span>}
+      {link && <input readOnly value={link} onFocus={(e) => e.target.select()} className="w-64 rounded border px-2 py-0.5 text-[11px] text-gray-600" style={{ borderColor: "#dde3ea" }} />}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { automationDelayLabel, automationRecipientLabel, automationTriggerLabel } from "./automation-templates"
+import { automationDelayLabel, automationRecipientLabel, automationTriggerLabel, isCampaignTrigger } from "./automation-templates"
 import { ASSIGNMENT_STATUS_OPTIONS, PORTAL_ASSIGNMENT_STATUS_VALUES, assignmentStatusLabel } from "./assignment-status"
 import { CANDIDATE_STATUS_OPTIONS } from "./candidate-status"
 
@@ -10,6 +10,14 @@ describe("Automatisierungs-Vorlagen", () => {
     expect(automationRecipientLabel("client")).toBe("Kunde (primärer Ansprechpartner)")
     expect(automationDelayLabel(3600)).toBe("1 Stunde")
     expect(automationDelayLabel(45)).toBe("45 Sekunden")
+  })
+
+  it("trennt Kampagnen-Auslöser von Zuordnung und manuellen Vorlagen", () => {
+    expect(isCampaignTrigger("new_lead")).toBe(true)
+    expect(isCampaignTrigger("status_change")).toBe(true)
+    expect(isCampaignTrigger("client_assigned")).toBe(false)
+    expect(isCampaignTrigger("manual")).toBe(false)
+    expect(automationTriggerLabel("client_assigned", null)).toBe("Kandidat einer Kanzlei zugeordnet")
   })
 })
 

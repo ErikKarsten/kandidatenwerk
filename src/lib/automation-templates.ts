@@ -8,12 +8,18 @@ import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 export const AUTOMATION_TRIGGER_OPTIONS = [
   { value: "new_lead", label: "Neuer Lead" },
   { value: "status_change", label: "Statusänderung" },
+  // Geht an die Kanzlei, sobald ihr ein Kandidat zugeordnet wird - unabhängig von Kampagnen
+  // (Paket 20, T-90).
+  { value: "client_assigned", label: "Kandidat einer Kanzlei zugeordnet" },
   // Nur im Reiter "Kommunikation" beim Kandidaten nutzbar, nie automatisch (Paket 19, T-88).
   { value: "manual", label: "Nur manuell (Kommunikation)" },
 ]
 
-// Auslöser, die in Kampagnen als Automatisierung laufen (alles außer "manual").
-export const CAMPAIGN_TRIGGER_OPTIONS = AUTOMATION_TRIGGER_OPTIONS.filter((o) => o.value !== "manual")
+// Auslöser, die in Kampagnen als Automatisierung laufen.
+export function isCampaignTrigger(trigger: string): boolean {
+  return trigger === "new_lead" || trigger === "status_change"
+}
+export const CAMPAIGN_TRIGGER_OPTIONS = AUTOMATION_TRIGGER_OPTIONS.filter((o) => isCampaignTrigger(o.value))
 
 export const AUTOMATION_DELAY_OPTIONS = [
   { value: 10, label: "10 Sekunden" },
@@ -35,6 +41,7 @@ export const AUTOMATION_VARIABLES = ["#Kandidatenname", "#Kampagnenname", "#Kund
 export function automationTriggerLabel(trigger: string, triggerStatus: string | null): string {
   if (trigger === "new_lead") return "Neuer Lead"
   if (trigger === "manual") return "Nur manuell (Kommunikation)"
+  if (trigger === "client_assigned") return "Kandidat einer Kanzlei zugeordnet"
   const status = CANDIDATE_STATUS_OPTIONS.find((s) => s.value === triggerStatus)?.label ?? triggerStatus ?? "–"
   return `Statusänderung → ${status}`
 }
@@ -61,7 +68,7 @@ export async function applyTemplatesToCampaign(db: Db, campaignId: string, templ
   const already = new Set((existing ?? []).map((e) => e.template_id))
   const rows = (templates ?? [])
     // Manuelle Vorlagen (Kommunikation) werden nie zu Automatisierungen.
-    .filter((t) => !already.has(t.id) && t.trigger !== "manual")
+    .filter((t) => !already.has(t.id) && isCampaignTrigger(t.trigger))
     .map((t) => ({
       campaign_id: campaignId,
       template_id: t.id,

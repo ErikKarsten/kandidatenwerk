@@ -19,6 +19,7 @@ import {
   AUTOMATION_VARIABLES,
   automationRecipientLabel,
   automationTriggerLabel,
+  isCampaignTrigger,
 } from "@/lib/automation-templates"
 import type { AutomationTemplate, AutomationTemplateSet } from "../../einstellungen/automation-template-actions"
 
@@ -215,7 +216,7 @@ export function AutomationsTab({
               )}
               {templates.length > 0 && (
                 <optgroup label="Einzelne Vorlagen">
-                  {templates.filter((t) => t.trigger !== "manual").map((t) => (
+                  {templates.filter((t) => isCampaignTrigger(t.trigger)).map((t) => (
                     <option key={t.id} value={`tpl:${t.id}`}>{t.name}</option>
                   ))}
                 </optgroup>
@@ -356,7 +357,7 @@ export function AutomationsTab({
                       onChange={(e) => handleTemplateSelect(e.target.value)}
                     >
                       <option value="">— Vorlage auswählen —</option>
-                      {templates.filter((t) => t.trigger !== "manual").map((t) => (
+                      {templates.filter((t) => isCampaignTrigger(t.trigger)).map((t) => (
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
                     </select>
