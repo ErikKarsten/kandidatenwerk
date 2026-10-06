@@ -1,6 +1,6 @@
 // Projekt-Reiter beim Kunden (Paket 9, ClickUp-Ersatz): Phasen, Kommentar-Arten und
 // die Felder des Kanzleiprofils. Ohne Server-Code, auch im Browser nutzbar.
-import { missingPositionItems, type PositionLike } from "@/lib/position-profile"
+import { missingPositionItems, type PositionFieldRule, type PositionLike } from "@/lib/position-profile"
 
 export const PROJECT_PHASES = [
   { value: "onboarding", label: "Onboarding", color: "#b45309" },
@@ -86,20 +86,36 @@ export const PROFILE_FIELDS: {
 
 export interface ClientProfileValues extends Partial<Record<ProfileFieldKey, string | null>> {
   benefits?: string[] | null
+  // Werte eigener Felder (Paket 18, T-80).
+  extra?: Record<string, string> | null
 }
 
 // Fehlende Pflichtangaben für "Profil abschließen" (Benefits, mind. ein Standort und mind.
 // eine Stelle gehören ebenfalls dazu). Standorte sind seit Paket 16 eine eigene Liste
 // (client_locations) statt eines Textfelds; profile.standorte hält nur noch die
 // Rohangabe aus Close.
-export function missingProfileItems(profile: ClientProfileValues | null, positions: PositionLike[], locationCount: number): string[] {
-  const missing = PROFILE_FIELDS.filter((f) => f.required && !(profile?.[f.key] ?? "").trim()).map((f) => f.label)
+export function missingProfileItems(
+  profile: ClientProfileValues | null,
+  positions: PositionLike[],
+  locationCount: number,
+  // Eingestellte Felder (Paket 18, T-80); ohne Angabe die eingebauten Standards.
+  fields?: { kanzlei?: { key: string; label: string; required: boolean; custom: boolean }[]; stelle?: PositionFieldRule[] }
+): string[] {
+  const kanzlei = fields?.kanzlei ?? PROFILE_FIELDS.map((f) => ({ key: f.key, label: f.label, required: !!f.required, custom: false }))
+  const extra = (profile?.extra ?? {}) as Record<string, unknown>
+  const missing = kanzlei
+    .filter((f) => {
+      if (!f.required) return false
+      const v = f.custom ? extra[f.key] : profile?.[f.key as ProfileFieldKey]
+      return !(typeof v === "string" && v.trim())
+    })
+    .map((f) => f.label)
   if (locationCount === 0) missing.push("Standort(e)")
   if (!(profile?.benefits ?? []).some((b) => b.trim())) missing.push("Benefits")
   if (positions.length === 0) missing.push("Mindestens eine gesuchte Stelle")
   // Jede Stelle braucht ein vollständiges Stellenprofil (Paket 17, T-79).
   for (const p of positions) {
-    if (missingPositionItems(p).length > 0) missing.push(`Stelle „${(p.title ?? "").trim() || "ohne Titel"}“ unvollständig`)
+    if (missingPositionItems(p, fields?.stelle).length > 0) missing.push(`Stelle „${(p.title ?? "").trim() || "ohne Titel"}“ unvollständig`)
   }
   return missing
 }

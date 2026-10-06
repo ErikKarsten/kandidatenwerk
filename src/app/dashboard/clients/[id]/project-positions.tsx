@@ -6,7 +6,8 @@ import Link from "next/link"
 import { Copy, MapPinPlus, Pencil, Plus, Trash2 } from "lucide-react"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import type { ClientLocation } from "@/lib/client-locations"
-import { MIN_ANFORDERUNGEN, MIN_AUFGABEN, appendPoint, countPoints, missingPositionItems, snippetsFor } from "@/lib/position-profile"
+import { MIN_ANFORDERUNGEN, MIN_AUFGABEN, appendPoint, countPoints, missingPositionItems } from "@/lib/position-profile"
+import { fieldValue, snippetsFor, type PositionSnippet, type ResolvedField } from "@/lib/profile-fields"
 import {
   createCampaignFromPositionsAction,
   deletePositionAction,
@@ -36,14 +37,6 @@ const EMPTY: PositionInput = {
   aufgaben: null,
 }
 
-const TEXT_FIELDS: { key: keyof PositionInput; label: string; multiline?: boolean; placeholder?: string }[] = [
-  { key: "arbeitszeit", label: "Arbeitszeit *", placeholder: "Vollzeit / Teilzeit, Stunden" },
-  { key: "berufserfahrung", label: "Berufserfahrung *", placeholder: "z.B. ab 2 Jahre" },
-  { key: "software", label: "Software / Buchhaltungsprogramm", placeholder: "z.B. DATEV" },
-  { key: "gehalt", label: "Gehalt (intern, nicht auf Kanzleistelle24)", placeholder: "z.B. 45.000–55.000 €" },
-  { key: "startdatum", label: "Start *", placeholder: "z.B. ab sofort" },
-]
-
 // Gesuchte Stellen des Kunden (Paket 9). Aus einer oder mehreren Stellen wird per
 // Knopf eine Kanzlei-Kampagne; alternativ mit einer bestehenden verknüpfen.
 export function ProjectPositions({
@@ -51,11 +44,16 @@ export function ProjectPositions({
   positions,
   campaigns,
   locations,
+  fields,
+  snippets,
 }: {
   clientId: string
   positions: ClientPosition[]
   campaigns: { id: string; title: string }[]
   locations: ClientLocation[]
+  // Eingestellte Felder und Textbausteine (Paket 18, T-80).
+  fields: ResolvedField[]
+  snippets: PositionSnippet[]
 }) {
   const router = useRouter()
   const [editing, setEditing] = useState<PositionInput | null>(null)
@@ -94,6 +92,8 @@ export function ProjectPositions({
       {editing && (
         <PositionForm
           locations={locations}
+          fields={fields}
+          snippets={snippets}
           value={editing}
           pending={pending}
           onCancel={() => setEditing(null)}
@@ -138,9 +138,9 @@ export function ProjectPositions({
               {(p.aufgaben || p.anforderungen) && (
                 <p className="mt-1 line-clamp-2 text-xs text-gray-500">{[p.aufgaben, p.anforderungen].filter(Boolean).join(" · ").replace(/\n+/g, " · ")}</p>
               )}
-              {missingPositionItems(p).length > 0 && (
+              {missingPositionItems(p, fields).length > 0 && (
                 <p className="mt-1 text-xs font-medium" style={{ color: "#dc2626" }}>
-                  Fehlt fürs Stellenprofil: {missingPositionItems(p).join(", ")}
+                  Fehlt fürs Stellenprofil: {missingPositionItems(p, fields).join(", ")}
                 </p>
               )}
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
@@ -342,9 +342,12 @@ function PointsField({
   return (
     <div className="flex flex-col gap-1 sm:col-span-2">
       <label className="flex items-center justify-between text-xs font-medium text-gray-600">
-        <span>{label} * – ein Punkt pro Zeile</span>
+        <span>
+          {label}
+          {min > 0 ? " *" : ""} – ein Punkt pro Zeile
+        </span>
         <span style={{ color: count >= min ? "#1a9a6a" : "#dc2626" }}>
-          {count}/{min}
+          {min > 0 ? `${count}/${min}` : count}
         </span>
       </label>
       <textarea className="w-full rounded-md border px-2 py-1.5 text-sm" style={{ borderColor: "#dde3ea" }} rows={Math.max(4, count + 1)} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
@@ -374,12 +377,16 @@ function PositionForm({
   onSave,
   onCancel,
   locations,
+  fields,
+  snippets,
 }: {
   value: PositionInput
   pending: boolean
   onSave: (v: PositionInput) => void
   onCancel: () => void
   locations: ClientLocation[]
+  fields: ResolvedField[]
+  snippets: PositionSnippet[]
 }) {
   const [v, setV] = useState<PositionInput>(value)
   const input = "w-full rounded-md border px-2 py-1.5 text-sm"
@@ -421,29 +428,34 @@ function PositionForm({
             />
           </Field>
         </div>
-        {TEXT_FIELDS.map((f) => (
-          <Field key={f.key} label={f.label} wide={f.multiline}>
-            {f.multiline ? (
-              <textarea className={input} style={{ borderColor: "#dde3ea" }} rows={3} value={(v[f.key] as string | null) ?? ""} onChange={(e) => set(f.key, e.target.value)} />
-            ) : (
-              <input className={input} style={{ borderColor: "#dde3ea" }} value={(v[f.key] as string | null) ?? ""} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} />
-            )}
-          </Field>
-        ))}
-        <PointsField
-          label="Aufgaben"
-          min={MIN_AUFGABEN}
-          value={v.aufgaben}
-          snippets={snippetsFor(v.berufsbild).aufgaben}
-          onChange={(text) => setV({ ...v, aufgaben: text })}
-        />
-        <PointsField
-          label="Anforderungen"
-          min={MIN_ANFORDERUNGEN}
-          value={v.anforderungen}
-          snippets={snippetsFor(v.berufsbild).anforderungen}
-          onChange={(text) => setV({ ...v, anforderungen: text })}
-        />
+        {fields
+          .filter((f) => f.key !== "aufgaben" && f.key !== "anforderungen")
+          .map((f) => {
+            const value = fieldValue(v, f)
+            const change = (text: string) =>
+              setV(f.custom ? { ...v, extra: { ...(v.extra ?? {}), [f.key]: text } } : { ...v, [f.key]: text })
+            return (
+              <Field key={f.key} label={`${f.label}${f.required ? " *" : ""}`} wide={f.multiline}>
+                {f.multiline ? (
+                  <textarea className={input} style={{ borderColor: "#dde3ea" }} rows={3} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
+                ) : (
+                  <input className={input} style={{ borderColor: "#dde3ea" }} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
+                )}
+              </Field>
+            )
+          })}
+        {fields
+          .filter((f) => f.key === "aufgaben" || f.key === "anforderungen")
+          .map((f) => (
+            <PointsField
+              key={f.key}
+              label={f.label}
+              min={f.required ? (f.key === "aufgaben" ? MIN_AUFGABEN : MIN_ANFORDERUNGEN) : 0}
+              value={f.key === "aufgaben" ? v.aufgaben : v.anforderungen}
+              snippets={snippetsFor(snippets, v.berufsbild)[f.key as "aufgaben" | "anforderungen"]}
+              onChange={(text) => setV({ ...v, [f.key]: text })}
+            />
+          ))}
       </div>
       <div className="flex items-center gap-3">
         <button type="button" onClick={() => onSave(v)} disabled={pending} className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50" style={{ backgroundColor: "#1e56a0" }}>

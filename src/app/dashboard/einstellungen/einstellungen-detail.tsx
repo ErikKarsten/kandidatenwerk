@@ -28,6 +28,8 @@ import {
   type CustomFieldDefinition,
   type CustomFieldReviewQueueEntry,
 } from "./actions"
+import { ProfileFieldsEditor, SnippetsEditor } from "./profile-fields-tab"
+import type { ProfileFieldConfig } from "@/lib/profile-field-config"
 
 const MIN_PASSWORD_LENGTH = 8
 
@@ -44,6 +46,7 @@ interface EinstellungenDetailProps {
   team: TeamMember[]
   agencyId: string | null
   automationTemplates: { templates: AutomationTemplate[]; sets: AutomationTemplateSet[] }
+  profileFieldConfig: ProfileFieldConfig
   leadNotificationRecipientIds: string[]
   customFieldDefinitions: CustomFieldDefinition[]
   customFieldReviewQueue: CustomFieldReviewQueueEntry[]
@@ -58,7 +61,7 @@ interface EinstellungenDetailProps {
 // Innerhalb eines Reiters sind die Bereiche aufklappbar.
 type Tab = "konto" | "team" | "automatisierung" | "felder" | "leadanbindung"
 
-export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, automationTemplates, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms, leadSyncWarnings }: EinstellungenDetailProps) {
+export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, automationTemplates, profileFieldConfig, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms, leadSyncWarnings }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
   const isAdmin = ownProfile.role === "agency_admin"
   const activeFields = customFieldDefinitions.filter((f) => f.active)
@@ -102,13 +105,23 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
           )}
           {tab === "felder" && agencyId && (
             <div className="flex flex-col gap-3">
-              <Section title="Felder" meta={`${activeFields.length} aktiv`} defaultOpen>
+              <Section title="Kandidatenfelder" meta={`${activeFields.length} aktiv`} defaultOpen>
                 <div className="max-w-lg">
                   <ZusatzfelderTab agencyId={agencyId} isAgencyAdmin={isAdmin} fields={customFieldDefinitions} reviewQueue={customFieldReviewQueue} />
                 </div>
               </Section>
               <Section title="Feld-Vorlagen" meta={`${fieldTemplates.length} Vorlagen`}>
                 <FieldTemplatesTab templates={fieldTemplates} fields={activeFields.filter((f) => f.section !== "stammdaten")} isAdmin={isAdmin} />
+              </Section>
+              {/* Kanzleiprofil, Stellenprofil und Textbausteine (Paket 18, T-80). */}
+              <Section title="Kanzleiprofil" meta="Felder beim Kunden">
+                <ProfileFieldsEditor scope="kanzlei" settings={profileFieldConfig.settings} />
+              </Section>
+              <Section title="Stellenprofil" meta="Felder je gesuchter Stelle">
+                <ProfileFieldsEditor scope="stelle" settings={profileFieldConfig.settings} />
+              </Section>
+              <Section title="Textbausteine für Stellen" meta={`${profileFieldConfig.snippets.length} Bausteine`}>
+                <SnippetsEditor snippets={profileFieldConfig.snippets} />
               </Section>
             </div>
           )}

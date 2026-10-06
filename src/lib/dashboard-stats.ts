@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { metaGraphFetch } from "@/lib/meta-ads-client"
+import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 
 // Auswertung nach Zeitraum für das Dashboard: eingegangene Bewerbungen (Kandidatenwerk)
 // sowie Werbeausgaben und Leads laut Meta-Werbekonto (Insights-API, 1-2 Aufrufe je
@@ -135,7 +136,9 @@ export async function getMetaAdStats(range: DateRange): Promise<MetaAdStats> {
       if (!after) break
     }
 
+    // Nur KS24-Kampagnen (Paket 18, T-81) - andere Kampagnen im Werbekonto zählen nicht.
     const campaigns = rows
+      .filter((r) => isKs24Campaign(r.campaign_name))
       .map((r) => ({
         metaCampaignId: r.campaign_id ?? "",
         name: r.campaign_name ?? "",

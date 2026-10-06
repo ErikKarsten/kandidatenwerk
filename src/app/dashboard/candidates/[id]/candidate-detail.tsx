@@ -9,6 +9,7 @@ import {
   addNoteAction,
   archiveCandidateAction,
   deleteCandidateAction,
+  deleteDemoCandidateAction,
   updateCandidateBerufsbildAction,
 } from "./actions"
 import { ProfileTab, type CustomFieldDefinition } from "./profile-tab"
@@ -22,6 +23,8 @@ import { AssignmentTab, type KanzleiCampaignOption } from "./assignment-tab"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
+import { CommunicationTab, type CandidateMessage, type MessageTemplate } from "./communication-tab"
+import type { TemplateVars } from "@/lib/automation-engine"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -68,14 +71,15 @@ interface CandidateDetailProps {
   // Zusatzfelder laut Feld-Vorlage(n), null = alle (Paket 8).
   templateFieldKeys: string[] | null
   kanzleiCampaigns: KanzleiCampaignOption[]
+  communication: { vars: TemplateVars; templates: MessageTemplate[]; messages: CandidateMessage[] }
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, communication }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
-  const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung">("profil")
+  const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung" | "kommunikation">("profil")
   const [berufsbildPending, startBerufsbildTransition] = useTransition()
   const [berufsbildError, setBerufsbildError] = useState<string | null>(null)
   const [modalStep, setModalStep] = useState<ModalStep>(null)
@@ -133,9 +137,9 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
 
   // Beispiel-Lead (Paket 14, T-68): Löschen ohne Rückfrage-Dialog, zurück zum Kunden.
   function handleDeleteDemo() {
-    if (!confirm("Beispiel-Lead löschen? Er verschwindet auch aus dem Kundenportal.")) return
+    if (!confirm("Beispiel-Lead samt Beispielkampagne löschen? Beides verschwindet auch aus dem Kundenportal.")) return
     startDeleteTransition(async () => {
-      const result = await deleteCandidateAction(candidate.id)
+      const result = await deleteDemoCandidateAction(candidate.id)
       if (result?.error) { setModalError(result.error); return }
       router.back()
       router.refresh()
@@ -228,7 +232,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
               className="ml-auto rounded-md border px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
               style={{ borderColor: "#fca5a5", backgroundColor: "white" }}
             >
-              Beispiel-Lead löschen
+              Beispiel-Lead und Beispielkampagne löschen
             </button>
           </div>
         )}
@@ -328,6 +332,9 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             >
               Zuordnung ({activeAssignments.length})
             </TabButton>
+            <TabButton active={tab === "kommunikation"} onClick={() => setTab("kommunikation")}>
+              Kommunikation ({communication.messages.length})
+            </TabButton>
           </div>
 
           <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
@@ -364,6 +371,16 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                 activeAssignments={activeAssignments}
                 clients={clients}
                 kanzleiCampaigns={kanzleiCampaigns}
+              />
+            )}
+            {tab === "kommunikation" && (
+              <CommunicationTab
+                candidateId={candidate.id}
+                email={candidate.email}
+                isDemo={!!candidate.is_demo}
+                vars={communication.vars}
+                templates={communication.templates}
+                messages={communication.messages}
               />
             )}
           </div>

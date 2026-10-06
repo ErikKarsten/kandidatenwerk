@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 
 // Übersicht der Lead-Kampagnen (Meta) für Einstellungen -> Meta-Kampagnen und die
 // Werbegebiete für Karte/Kundenprofil (Atlas T-38). Läuft mit dem RLS-Client des
@@ -54,7 +55,10 @@ export async function getLeadCampaignsOverview(supabase: SupabaseClient): Promis
       .order("status", { ascending: true })
       .order("title", { ascending: true })
   )
-  if (campaigns.length === 0) return []
+  // Nur KS24-Kampagnen (Paket 18, T-81); ältere Kampagnen ohne KS24 bleiben in der
+  // Datenbank (samt Kandidaten), erscheinen hier aber nicht mehr.
+  const ks24 = campaigns.filter((c) => isKs24Campaign(c.title as string))
+  if (ks24.length === 0) return []
 
   const [leads, assigned] = await Promise.all([
     fetchAllRows<{ id: string; campaign_id: string }>(() =>
@@ -66,8 +70,8 @@ export async function getLeadCampaignsOverview(supabase: SupabaseClient): Promis
   const leadsByCampaign = new Map<string, string[]>()
   for (const l of leads) leadsByCampaign.set(l.campaign_id, [...(leadsByCampaign.get(l.campaign_id) ?? []), l.id])
 
-  const titleById = new Map(campaigns.map((c) => [c.id as string, c.title as string]))
-  return campaigns.map((c) => {
+  const titleById = new Map(ks24.map((c) => [c.id as string, c.title as string]))
+  return ks24.map((c) => {
     const campaignLeads = leadsByCampaign.get(c.id as string) ?? []
     return {
       id: c.id as string,
@@ -99,7 +103,7 @@ export async function getActiveAdAreas(supabase: SupabaseClient): Promise<AdArea
   const titleById = new Map(
     areas.map((a) => [a.campaign_id as string, ((a.campaigns as { title?: string } | null)?.title ?? "") as string])
   )
-  return areas.map((a) => toArea(a, titleById))
+  return areas.filter((a) => isKs24Campaign(titleById.get(a.campaign_id as string))).map((a) => toArea(a, titleById))
 }
 
 function toArea(a: Record<string, unknown>, titleById: Map<string, string>): AdArea {
