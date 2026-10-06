@@ -18,6 +18,7 @@ import {
   missingProfileItems,
   type ClientProfileValues,
 } from "@/lib/client-project"
+import { applyDefaultTemplateSet } from "@/lib/automation-templates"
 
 type Result = { error: string } | null
 type Supabase = Awaited<ReturnType<typeof createSupabaseServerClient>>
@@ -289,6 +290,7 @@ export async function createCampaignFromPositionsAction(
     .select("id")
     .single()
   if (error) return { error: error.message }
+  await applyDefaultTemplateSet(ctx.supabase, campaign.id)
 
   const { error: linkError } = await ctx.supabase.from("client_positions").update({ campaign_id: campaign.id }).in("id", positionIds)
   if (linkError) return { error: linkError.message }

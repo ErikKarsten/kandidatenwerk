@@ -7,6 +7,7 @@ import { NotesSection, type Note } from "./notes-section"
 import { PortalFilesList, type PortalFile } from "./files-list"
 import { PortalStatusSelector } from "./status-selector"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
+import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 
 export default async function PortalCandidateDetailPage({
   params,
@@ -116,66 +117,83 @@ export default async function PortalCandidateDetailPage({
   const customFields = (candidate.custom_fields as Record<string, string> | null) ?? {}
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl">
+    <div className="p-4 sm:p-6 max-w-6xl">
       <Link href="/portal/candidates" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
         <ArrowLeft size={15} />
         Zurück zu meinen Kandidaten
       </Link>
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-gray-900">
           {candidate.first_name} {candidate.last_name}
         </h1>
         <PortalStatusSelector clientAssignmentId={assignment.id} currentStatus={assignment.status} />
       </div>
 
-      <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Stammdaten</span>
-        <div className="mt-3 flex flex-col gap-2.5">
-          <FieldRow label="Berufsbild">{candidate.berufsbild || "—"}</FieldRow>
-          <FieldRow label="E-Mail">{candidate.email || "—"}</FieldRow>
-          <FieldRow label="Telefon">{candidate.phone || "—"}</FieldRow>
-          <FieldRow label="PLZ">{candidate.plz || "—"}</FieldRow>
-          {stammdatenFieldDefinitions.map((f) => (
-            <FieldRow key={f.key} label={f.label}>
-              {customFields[f.key]?.trim() || "—"}
-            </FieldRow>
-          ))}
-        </div>
-      </div>
+      {/* Zweispaltig ab lg: rechts die Beschreibung (Paket 15, T-72) - unsere Einschätzung
+          und Notizen zum Kandidaten, die der Kunde bisher nicht sah. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="order-2 min-w-0 lg:order-1">
+          <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Stammdaten</span>
+            <div className="mt-3 flex flex-col gap-2.5">
+              <FieldRow label="Berufsbild">{BERUFSBILD_OPTIONS.find((o) => o.value === candidate.berufsbild)?.label ?? (candidate.berufsbild || "—")}</FieldRow>
+              <FieldRow label="E-Mail">{candidate.email || "—"}</FieldRow>
+              <FieldRow label="Telefon">{candidate.phone || "—"}</FieldRow>
+              <FieldRow label="PLZ">{candidate.plz || "—"}</FieldRow>
+              {stammdatenFieldDefinitions.map((f) => (
+                <FieldRow key={f.key} label={f.label}>
+                  {customFields[f.key]?.trim() || "—"}
+                </FieldRow>
+              ))}
+            </div>
+          </div>
 
-      <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Zusatzfelder</span>
-        {/* Gleiches Boxen-Layout wie die Zusatzfelder im internen Kandidatenprofil
-            (profile-tab.tsx) - hier bewusst als reine, nicht-interaktive Anzeige statt
-            editierbarer Inputs, damit für den Kunden nicht der Eindruck entsteht, er
-            könnte die Werte hier ändern. */}
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {customFieldDefinitions.map((f) => {
-            const value = customFields[f.key]?.trim()
-            return (
-              <div key={f.key} className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-400">{f.label}</span>
-                <div
-                  className="rounded-md border px-3 py-1.5 text-sm text-gray-900"
-                  style={{ borderColor: "#dde3ea", backgroundColor: "#f9fafb" }}
-                >
-                  {value || "—"}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+          <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Zusatzfelder</span>
+            {/* Gleiches Boxen-Layout wie die Zusatzfelder im internen Kandidatenprofil
+                (profile-tab.tsx) - hier bewusst als reine, nicht-interaktive Anzeige statt
+                editierbarer Inputs, damit für den Kunden nicht der Eindruck entsteht, er
+                könnte die Werte hier ändern. */}
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {customFieldDefinitions.map((f) => {
+                const value = customFields[f.key]?.trim()
+                return (
+                  <div key={f.key} className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-400">{f.label}</span>
+                    <div
+                      className="rounded-md border px-3 py-1.5 text-sm text-gray-900"
+                      style={{ borderColor: "#dde3ea", backgroundColor: "#f9fafb" }}
+                    >
+                      {value || "—"}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
 
-      {files.length > 0 && (
-        <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
-          <PortalFilesList files={files} />
-        </div>
-      )}
+          {files.length > 0 && (
+            <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
+              <PortalFilesList files={files} />
+            </div>
+          )}
 
-      <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
-        <NotesSection clientAssignmentId={assignment.id} notes={notes} />
+          <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
+            <NotesSection clientAssignmentId={assignment.id} notes={notes} />
+          </div>
+        </div>
+
+        <aside className="order-1 lg:order-2 lg:sticky lg:top-4 lg:self-start">
+          <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Beschreibung</span>
+            {candidate.description?.trim() ? (
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{candidate.description.trim()}</p>
+            ) : (
+              <p className="mt-3 text-sm text-gray-400">Noch keine Beschreibung hinterlegt.</p>
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   )

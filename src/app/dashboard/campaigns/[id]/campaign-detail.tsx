@@ -27,7 +27,7 @@ import { CandidateStatusSelect } from "./candidate-status-select"
 import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
 import { AvailableCandidatesPanel } from "./available-candidates-panel"
-import type { EmailTemplate } from "../../einstellungen/actions"
+import type { AutomationTemplate, AutomationTemplateSet } from "../../einstellungen/automation-template-actions"
 import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
@@ -100,7 +100,7 @@ interface CampaignDetailProps {
   campaign: Campaign
   candidates: Candidate[]
   automations: Automation[]
-  emailTemplates: EmailTemplate[]
+  automationTemplates: { templates: AutomationTemplate[]; sets: AutomationTemplateSet[] }
   clients: ClientOption[]
   fieldTemplates: { id: string; name: string; is_default: boolean }[]
 }
@@ -132,7 +132,7 @@ function triggerCSVDownload(csv: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function CampaignDetail({ campaign, candidates, automations, emailTemplates, clients, fieldTemplates }: CampaignDetailProps) {
+export function CampaignDetail({ campaign, candidates, automations, automationTemplates, clients, fieldTemplates }: CampaignDetailProps) {
   const [tab, setTab] = useState<"kandidaten" | "matches" | "einrichtung" | "automatisierungen">("kandidaten")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [selectedOption, setSelectedOption] = useState<CandidateOption | null>(null)
@@ -886,7 +886,7 @@ export function CampaignDetail({ campaign, candidates, automations, emailTemplat
 
       {/* Automatisierungen-Tab */}
       {tab === "automatisierungen" && (
-        <AutomationsTab campaignId={campaign.id} automations={automations} emailTemplates={emailTemplates} />
+        <AutomationsTab campaignId={campaign.id} automations={automations} templates={automationTemplates.templates} templateSets={automationTemplates.sets} />
       )}
 
       {/* Einrichtungs-Tab */}

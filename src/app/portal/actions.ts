@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { PORTAL_ASSIGNMENT_STATUS_VALUES, assignmentStatusLabel } from "@/lib/assignment-status"
 
 // Nutzt bewusst createSupabaseServerClient() (nicht den Admin-Client) - der Insert
 // laeuft ueber die normale Session des eingeloggten Kunden, RLS
@@ -33,17 +34,9 @@ export async function createNoteAction(
   return null
 }
 
-// Reduzierte, kundenfreundliche Auswahl statt der vollen internen 6-Werte-Pipeline
-// (inbox/vq/vqk/vg/ja/nein, siehe ASSIGNMENT_STATUS_OPTIONS in matches-section.tsx) -
-// die drei internen Vorstufen bleiben nur für Staff änderbar (Anfrage vom 28.09.2026).
-// Gleiche Werte wie in der neuen RLS-Policy "Kunde aendert Status der eigenen aktiven
-// Zuordnung" (20260928000000) - zusätzliche Prüfung hier ist bewusst redundant
-// (Defense in Depth), nicht die einzige Absicherung.
-const PORTAL_ASSIGNMENT_STATUS_LABELS: Record<string, string> = {
-  vg: "Interview vereinbart",
-  ja: "Angenommen",
-  nein: "Abgelehnt",
-}
+// Der Kunde setzt nur Vorstellungsgespräch/Eingestellt/Abgelehnt (src/lib/assignment-status.ts).
+// Gleiche Werte wie in der RLS-Policy "Kunde aendert Status der eigenen aktiven
+// Zuordnung" (20260928000000) - zusätzliche Prüfung hier bewusst redundant.
 
 // Nutzt bewusst createSupabaseServerClient() für den Status-Update selbst (nicht den
 // Admin-Client) - RLS ("Kunde aendert Status der eigenen aktiven Zuordnung",
@@ -58,7 +51,7 @@ export async function updatePortalAssignmentStatusAction(
   clientAssignmentId: string,
   newStatus: string
 ): Promise<{ error: string } | null> {
-  if (!(newStatus in PORTAL_ASSIGNMENT_STATUS_LABELS)) {
+  if (!PORTAL_ASSIGNMENT_STATUS_VALUES.includes(newStatus)) {
     return { error: "Ungültiger Status." }
   }
 
@@ -90,7 +83,7 @@ export async function updatePortalAssignmentStatusAction(
   const { error: historyError } = await admin.from("candidate_history").insert({
     candidate_id: assignment.candidate_id,
     type: "note",
-    content: `Status durch Kunden im Portal geändert: "${PORTAL_ASSIGNMENT_STATUS_LABELS[newStatus]}".`,
+    content: `Status durch Kunden im Portal geändert: "${assignmentStatusLabel(newStatus).label}".`,
   })
   if (historyError) console.error("Verlaufseintrag fehlgeschlagen:", historyError)
 

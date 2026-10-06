@@ -28,6 +28,7 @@ import {
   type ParsedArea,
   isKs24Campaign,
 } from "@/lib/meta-campaigns-parse"
+import { applyDefaultTemplateSet } from "@/lib/automation-templates"
 
 type Supabase = SupabaseClient<Database>
 
@@ -258,6 +259,8 @@ export async function syncMetaCampaigns(
         if (error) throw new Error(error.message)
         campaignId = inserted.id as string
         result.created++
+        // Neue Kampagne: Standard-Vorlagenset übernehmen, ausgeschaltet (Paket 15, T-74).
+        await applyDefaultTemplateSet(db as unknown as SupabaseClient<Database>, campaignId)
         if (formId) result.formsLinked++
       }
 

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { assignmentStatusLabel } from "@/lib/assignment-status"
 
 // Gleiche Label-Konventionen wie an den anderen Portal-Stellen (bewusst eigene Kopien,
 // siehe portal-sidebar.tsx / portal/candidates/page.tsx / portal/campaigns/page.tsx).
@@ -9,14 +10,6 @@ const CAMPAIGN_STATUS_LABEL: Record<string, { label: string; bg: string; dot: st
   active: { label: "Aktiv", bg: "#1a9a6a18", dot: "#1a9a6a", text: "#1a9a6a" },
   paused: { label: "Pausiert", bg: "#f5990018", dot: "#f59900", text: "#d97706" },
   completed: { label: "Abgeschlossen", bg: "#9ca3af18", dot: "#9ca3af", text: "#6b7280" },
-}
-const ASSIGNMENT_STATUS_LABEL: Record<string, string> = {
-  inbox: "Unbearbeitet",
-  vq: "Vorqualifiziert",
-  vqk: "Vorqualifiziert beim Kunden",
-  vg: "Vorstellungsgespräch",
-  ja: "Ja",
-  nein: "Nein",
 }
 
 export default async function PortalCampaignDetailPage({
@@ -104,7 +97,7 @@ export default async function PortalCampaignDetailPage({
                   className="rounded-full px-2.5 py-1 text-xs font-medium"
                   style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}
                 >
-                  {ASSIGNMENT_STATUS_LABEL[a.status] ?? a.status}
+                  {assignmentStatusLabel(a.status).label}
                 </span>
               </Link>
             )

@@ -2,12 +2,12 @@ import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import {
   getTeamMembers,
-  getEmailTemplates,
   getLeadNotificationRecipientIds,
   getCustomFieldDefinitions,
   getPendingCustomFieldReviewQueue,
 } from "./actions"
 import { EinstellungenDetail } from "./einstellungen-detail"
+import { getAutomationTemplates } from "./automation-template-actions"
 import { getFieldTemplates, getLeadForms } from "./field-actions"
 import { getLeadCampaignsOverview } from "@/lib/meta-campaigns-queries"
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -34,7 +34,7 @@ export default async function EinstellungenPage() {
     : { data: null }
 
   const team = ownProfile.agency_id ? await getTeamMembers(ownProfile.agency_id) : []
-  const emailTemplates = ownProfile.agency_id ? await getEmailTemplates(ownProfile.agency_id) : []
+  const automationTemplates = ownProfile.agency_id ? await getAutomationTemplates() : { templates: [], sets: [] }
   const leadNotificationRecipientIds = ownProfile.agency_id
     ? await getLeadNotificationRecipientIds(ownProfile.agency_id)
     : []
@@ -63,7 +63,7 @@ export default async function EinstellungenPage() {
       agencyName={agency?.name ?? ""}
       team={team}
       agencyId={ownProfile.agency_id}
-      emailTemplates={emailTemplates}
+      automationTemplates={automationTemplates}
       leadNotificationRecipientIds={leadNotificationRecipientIds}
       customFieldDefinitions={customFieldDefinitions}
       customFieldReviewQueue={customFieldReviewQueue}

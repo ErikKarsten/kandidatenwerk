@@ -1,18 +1,7 @@
 import Link from "next/link"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { assignmentStatusLabel } from "@/lib/assignment-status"
 
-// Gleiche deutsche Labels wie in candidates/[id]/matches-section.tsx
-// (ASSIGNMENT_STATUS_OPTIONS) - hier bewusst als eigene, kleine Kopie statt geteiltem
-// Import, da das interne Sidebar-Kandidatenprofil und die Portal-Ansicht bewusst
-// getrennte, unabhängig änderbare Komponenten sind (siehe portal-sidebar.tsx).
-const STATUS_LABELS: Record<string, string> = {
-  inbox: "Unbearbeitet",
-  vq: "Vorqualifiziert",
-  vqk: "Vorqualifiziert beim Kunden",
-  vg: "Vorstellungsgespräch",
-  ja: "Ja",
-  nein: "Nein",
-}
 
 export default async function PortalCandidatesPage() {
   const supabase = await createSupabaseServerClient()
@@ -60,9 +49,9 @@ export default async function PortalCandidatesPage() {
               </div>
               <span
                 className="rounded-full px-2.5 py-1 text-xs font-medium"
-                style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}
+                style={{ backgroundColor: assignmentStatusLabel(a.status).bg, color: assignmentStatusLabel(a.status).text }}
               >
-                {STATUS_LABELS[a.status] ?? a.status}
+                {assignmentStatusLabel(a.status).label}
               </span>
             </Link>
           )

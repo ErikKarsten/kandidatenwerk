@@ -29,7 +29,7 @@ const STATUS_MAP: Record<string, string> = {
   Vorqualifiziert: "neu",
   "Nicht erreicht": "neu",
   "2x nicht erreicht + Mail": "neu",
-  "In Kontakt": "interview",
+  "In Kontakt": "in_kontakt",
 }
 const FALLBACK_STATUS = "neu"
 

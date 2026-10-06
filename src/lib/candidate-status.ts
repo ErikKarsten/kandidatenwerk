@@ -1,4 +1,6 @@
-// Einzige Quelle für alle Kandidaten-Pipeline-Status (Value, Label, Farben). Jede
+// Einzige Quelle für alle Kandidaten-Pipeline-Status (Value, Label, Farben). Seit Paket 15
+// (T-71) ohne Interview/Vorgestellt/Platziert - das bildet der Status der Zuordnung beim
+// Kunden ab (src/lib/assignment-status.ts). Jede
 // Status-UI (Dropdowns, Badges, Filter, Dashboard-Pipeline) importiert von hier statt
 // eigene Kopien zu pflegen. Muss mit der candidates_status_check-Constraint in
 // supabase/migrations/20260803000000_extend_candidate_status_options.sql synchron bleiben.
@@ -9,9 +11,6 @@ export const CANDIDATE_STATUS_OPTIONS = [
   { value: "nicht_erreicht", label: "Nicht erreicht", bg: "#f9731618", dot: "#f97316", text: "#c2410c" },
   { value: "nicht_erreicht_mail", label: "2x nicht erreicht + Mail", bg: "#ef444418", dot: "#ef4444", text: "#b91c1c" },
   { value: "in_kontakt", label: "In Kontakt", bg: "#14b8a618", dot: "#14b8a6", text: "#0f766e" },
-  { value: "interview", label: "Interview", bg: "#1e56a018", dot: "#1e56a0", text: "#1e56a0" },
-  { value: "vorgestellt", label: "Vorgestellt", bg: "#8b5cf618", dot: "#8b5cf6", text: "#7c3aed" },
-  { value: "platziert", label: "Platziert", bg: "#1a9a6a18", dot: "#1a9a6a", text: "#1a9a6a" },
   { value: "abgelehnt", label: "Abgelehnt", bg: "#9ca3af18", dot: "#9ca3af", text: "#6b7280" },
 ] as const
 

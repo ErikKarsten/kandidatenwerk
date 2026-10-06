@@ -64,7 +64,6 @@ export function ProjectPositions({
   // Weiterer Standort für eine Stelle (Paket 13).
   const [locationFor, setLocationFor] = useState<string | null>(null)
   const [newLocation, setNewLocation] = useState({ plz: "", ort: "", radius: "" })
-  const sameTitleCount = (title: string) => positions.filter((p) => p.title.trim().toLowerCase() === title.trim().toLowerCase()).length
 
   const unlinked = positions.filter((p) => !p.campaign_id)
   const campaignTitleOf = (id: string | null) => campaigns.find((c) => c.id === id)?.title ?? "Kampagne"
@@ -116,11 +115,9 @@ export function ProjectPositions({
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-gray-900">
                 {p.title}
-                {sameTitleCount(p.title) > 1 && (
-                  <span className="ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
-                    {sameTitleCount(p.title)} Standorte
-                  </span>
-                )}
+                {/* Ort im Titel statt Standort-Zähler (Paket 15, T-70): Duplikate für
+                    weitere Standorte sind so sofort unterscheidbar. */}
+                {(p.ort || p.plz) && <span className="font-normal text-gray-500"> · {p.ort || p.plz}</span>}
               </p>
               <p className="text-xs text-gray-500">
                 {[

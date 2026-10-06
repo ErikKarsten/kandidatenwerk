@@ -664,6 +664,8 @@ export type Database = {
           full_name: string | null
           created_at: string
           email: string | null
+          phone: string | null
+          avatar_path: string | null
         }
         Insert: {
           id: string
@@ -673,6 +675,8 @@ export type Database = {
           full_name?: string | null
           created_at?: string
           email?: string | null
+          phone?: string | null
+          avatar_path?: string | null
         }
         Update: {
           id?: string
@@ -682,6 +686,8 @@ export type Database = {
           full_name?: string | null
           created_at?: string
           email?: string | null
+          phone?: string | null
+          avatar_path?: string | null
         }
         Relationships: [
           {
@@ -1034,6 +1040,87 @@ export type Database = {
         }
         Relationships: []
       }
+      automation_templates: {
+        Row: {
+          id: string
+          agency_id: string
+          name: string
+          trigger: string
+          trigger_status: string | null
+          delay_seconds: number
+          recipient: string
+          subject: string
+          body_html: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          name: string
+          trigger?: string
+          trigger_status?: string | null
+          delay_seconds?: number
+          recipient?: string
+          subject?: string
+          body_html?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          name?: string
+          trigger?: string
+          trigger_status?: string | null
+          delay_seconds?: number
+          recipient?: string
+          subject?: string
+          body_html?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      automation_template_sets: {
+        Row: {
+          id: string
+          agency_id: string
+          name: string
+          is_default: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          name: string
+          is_default?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          name?: string
+          is_default?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      automation_template_set_items: {
+        Row: {
+          set_id: string
+          template_id: string
+        }
+        Insert: {
+          set_id: string
+          template_id: string
+        }
+        Update: {
+          set_id?: string
+          template_id?: string
+        }
+        Relationships: []
+      }
       campaign_automations: {
         Row: {
           id: string
@@ -1049,6 +1136,8 @@ export type Database = {
           subject: string
           body_html: string
           created_at: string
+          template_id: string | null
+          active_since: string | null
         }
         Insert: {
           id?: string
@@ -1064,6 +1153,8 @@ export type Database = {
           subject?: string
           body_html?: string
           created_at?: string
+          template_id?: string | null
+          active_since?: string | null
         }
         Update: {
           id?: string
@@ -1079,6 +1170,8 @@ export type Database = {
           subject?: string
           body_html?: string
           created_at?: string
+          template_id?: string | null
+          active_since?: string | null
         }
         Relationships: [
           {
