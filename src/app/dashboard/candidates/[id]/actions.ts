@@ -413,7 +413,7 @@ export async function assignToCampaignAction(
   try {
     const assignment = await ensureCampaignAssignment(supabase, candidateId, campaignId, guard.staff.userId)
     // Neue Zuordnung: Kanzlei per Mail informieren (Paket 20, T-90), nach der Antwort.
-    if (assignment.created) after(() => notifyClientAboutAssignment(supabase, assignment.id, guard.staff.userId))
+    if (assignment.created) after(() => notifyClientAboutAssignment(assignment.id, guard.staff.userId))
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }

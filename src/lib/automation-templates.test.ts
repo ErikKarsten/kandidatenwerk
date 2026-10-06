@@ -7,7 +7,7 @@ describe("Automatisierungs-Vorlagen", () => {
   it("beschriftet Auslöser, Empfänger und Verzögerung", () => {
     expect(automationTriggerLabel("new_lead", null)).toBe("Neuer Lead")
     expect(automationTriggerLabel("status_change", "nicht_erreicht_mail")).toBe("Statusänderung → 2x nicht erreicht + Mail")
-    expect(automationRecipientLabel("client")).toBe("Kunde (primärer Ansprechpartner)")
+    expect(automationRecipientLabel("client")).toBe("Kanzlei: alle Portal-Zugänge (ohne Zugang: Kontakt-E-Mail)")
     expect(automationDelayLabel(3600)).toBe("1 Stunde")
     expect(automationDelayLabel(45)).toBe("45 Sekunden")
   })

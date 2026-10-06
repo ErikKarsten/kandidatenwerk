@@ -5,11 +5,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { sendEmail } from "@/lib/brevo-mail"
+import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { candidatePortalLink, resolveAutomationRecipients, substituteTemplateVars, wrapAutomationEmailHtml } from "@/lib/automation-engine"
 
 type Db = SupabaseClient<Database>
 
-export async function notifyClientAboutAssignment(db: Db, assignmentId: string, byUserId?: string | null): Promise<void> {
+// Läuft mit Server-Rechten (Service-Role): Portal-Zugänge der Kanzlei sind für Team-Logins
+// per RLS nicht lesbar - mit der Nutzer-Session landete die Mail deshalb immer bei der
+// Kontakt-E-Mail statt bei den Portal-Zugängen (Fix Paket 21).
+export async function notifyClientAboutAssignment(assignmentId: string, byUserId?: string | null, db: Db = createSupabaseAdminClient()): Promise<void> {
   try {
     const { data: a } = await db
       .from("client_assignments")

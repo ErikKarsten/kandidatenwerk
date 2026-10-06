@@ -32,8 +32,8 @@ export const AUTOMATION_DELAY_OPTIONS = [
 
 export const AUTOMATION_RECIPIENT_OPTIONS = [
   { value: "candidate", label: "Kandidat" },
-  { value: "client", label: "Kunde (primärer Ansprechpartner)" },
-  { value: "all_contacts", label: "Alle Kunden-Ansprechpartner" },
+  { value: "client", label: "Kanzlei: alle Portal-Zugänge (ohne Zugang: Kontakt-E-Mail)" },
+  { value: "all_contacts", label: "Kanzlei: alle Ansprechpartner (Stammdaten)" },
 ]
 
 export const AUTOMATION_VARIABLES = ["#Kandidatenname", "#Kampagnenname", "#Kundenname", "#Email", "#Telefon", "#Bewerberlink"]

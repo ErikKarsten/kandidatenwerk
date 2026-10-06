@@ -44,6 +44,7 @@ interface CandidateRow {
 interface CampaignJoin {
   id: string
   title: string
+  kind: string
   client_id: string | null
   clients: { name: string } | { name: string }[] | null
 }
@@ -86,6 +87,43 @@ async function statusReachedAtMap(supabase: Supabase, candidates: CandidateRow[]
   return new Map(candidates.map((c) => [c.id, latest.get(c.id) ?? c.created_at]))
 }
 
+// Kandidaten einer Kampagne: bei Lead-Kampagnen die darüber beworbenen, bei
+// Kanzlei-Kampagnen zusätzlich die ihr zugeordneten (client_assignments.campaign_id) -
+// vorher sahen Automatisierungen in Kanzlei-Kampagnen nie einen Kandidaten (Paket 21).
+async function loadCampaignCandidates(
+  supabase: Supabase,
+  campaign: CampaignJoin,
+  trigger: string,
+  triggerStatus: string | null,
+  joinedAt: Map<string, string>
+): Promise<CandidateRow[]> {
+  const columns = "id, first_name, last_name, email, phone, status, client_id, created_at"
+  let own = supabase.from("candidates").select(columns).eq("campaign_id", campaign.id).eq("is_demo", false)
+  if (trigger === "status_change") own = own.eq("status", triggerStatus!)
+  const { data: ownRows, error } = await own
+  if (error) throw new Error(error.message)
+  const byId = new Map((ownRows ?? []).map((c) => [c.id, c as CandidateRow]))
+
+  if (campaign.kind === "kanzlei") {
+    const { data: assignments, error: aError } = await supabase
+      .from("client_assignments")
+      .select("candidate_id, created_at")
+      .eq("campaign_id", campaign.id)
+      .is("removed_at", null)
+    if (aError) throw new Error(aError.message)
+    for (const a of assignments ?? []) joinedAt.set(a.candidate_id, a.created_at)
+    const ids = [...joinedAt.keys()].filter((id) => !byId.has(id))
+    for (let i = 0; i < ids.length; i += 80) {
+      let q = supabase.from("candidates").select(columns).in("id", ids.slice(i, i + 80)).eq("is_demo", false)
+      if (trigger === "status_change") q = q.eq("status", triggerStatus!)
+      const { data, error: cError } = await q
+      if (cError) throw new Error(cError.message)
+      for (const c of data ?? []) byId.set(c.id, c as CandidateRow)
+    }
+  }
+  return [...byId.values()]
+}
+
 // dryRun: zeigt nur (über log), was verschickt würde - kein Versand, kein DB-Schreiben.
 // In dem Fall stehen sent/skipped für "würde verschicken"/"würde überspringen".
 export async function runAutomations(
@@ -94,7 +132,7 @@ export async function runAutomations(
 ): Promise<RunAutomationsResult> {
   const { data: automations, error: autoError } = await supabase
     .from("campaign_automations")
-    .select("*, campaigns(id, title, client_id, clients(name))")
+    .select("*, campaigns(id, title, kind, client_id, clients(name))")
     .eq("active", true)
 
   if (autoError) throw new Error(autoError.message)
@@ -108,26 +146,25 @@ export async function runAutomations(
     if (!campaign) continue
     if (automation.trigger === "status_change" && !automation.trigger_status) continue
 
-    let query = supabase
-      .from("candidates")
-      .select("id, first_name, last_name, email, phone, status, client_id, created_at")
-      .eq("campaign_id", campaign.id)
-
     const activeSince = automation.active_since ?? automation.created_at
-    if (automation.trigger === "new_lead") {
-      const cutoff = new Date(Date.now() - automation.delay_seconds * 1000).toISOString()
-      query = query.lte("created_at", cutoff).gte("created_at", activeSince)
-    } else {
-      query = query.eq("status", automation.trigger_status!)
-    }
-
-    const { data: candidates, error: candError } = await query
-    if (candError) {
-      console.error(`Automatisierung "${automation.name}": Kandidaten-Query fehlgeschlagen: ${candError.message}`)
+    const cutoff = new Date(Date.now() - automation.delay_seconds * 1000).toISOString()
+    let candidates: CandidateRow[]
+    // Seit wann ein Kandidat zur Kampagne gehört (Kanzlei-Kampagnen: Zeitpunkt der Zuordnung).
+    const joinedAt = new Map<string, string>()
+    try {
+      candidates = await loadCampaignCandidates(supabase, campaign, automation.trigger, automation.trigger_status, joinedAt)
+    } catch (candError) {
+      console.error(`Automatisierung "${automation.name}": Kandidaten-Query fehlgeschlagen: ${candError instanceof Error ? candError.message : candError}`)
       errors++
       continue
     }
-    if (!candidates?.length) continue
+    if (automation.trigger === "new_lead") {
+      candidates = candidates.filter((c) => {
+        const since = joinedAt.get(c.id) ?? c.created_at
+        return since <= cutoff && since >= activeSince
+      })
+    }
+    if (!candidates.length) continue
 
     // In Paketen - lange ID-Listen sprengen sonst die URL.
     const firedIds = new Set<string>()
@@ -151,7 +188,12 @@ export async function runAutomations(
 
       try {
         if (automation.trigger === "status_change") {
-          const statusSince = reachedAt.get(candidate.id) ?? candidate.created_at
+          // Zählt ab dem späteren Zeitpunkt: Status erreicht oder der Kanzlei-Kampagne
+          // zugeordnet (Paket 21) - sonst fiele ein schon vorqualifizierter Kandidat, der
+          // nach dem Einschalten zugeordnet wird, durchs Raster.
+          const reached = reachedAt.get(candidate.id) ?? candidate.created_at
+          const joined = joinedAt.get(candidate.id)
+          const statusSince = joined && joined > reached ? joined : reached
           // Status schon vor dem Einschalten erreicht: einmalig als erledigt vermerken,
           // ohne Mail - sonst würde jeder Lauf diese Kandidaten erneut prüfen.
           if (new Date(statusSince).getTime() < new Date(activeSince).getTime()) {
@@ -164,7 +206,12 @@ export async function runAutomations(
         }
 
         const candidateName = `${candidate.first_name} ${candidate.last_name}`.trim()
-        const recipients = await resolveAutomationRecipients(supabase, automation.recipient, candidate)
+        // Kanzlei der Kampagne, wenn beim Kandidaten keine hinterlegt ist (Lead-Kampagnen ohne
+        // automatische Zuordnung, Kanzlei-Kampagnen über die Zuordnung).
+        const recipients = await resolveAutomationRecipients(supabase, automation.recipient, {
+          email: candidate.email,
+          client_id: candidate.client_id ?? campaign.client_id,
+        })
 
         if (recipients.length === 0) {
           // Kein Empfänger ermittelbar (z.B. Kandidat ohne E-Mail, Kunde ohne
