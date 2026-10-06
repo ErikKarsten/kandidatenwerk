@@ -25,6 +25,7 @@ export function renderEmailLayout(o: EmailLayoutOptions): string {
 <div ${EMAIL_LAYOUT_MARKER}="1" style="background-color:#f0f4f8;padding:32px 16px;font-family:-apple-system,Helvetica,Arial,sans-serif;">
   <div style="max-width:560px;margin:0 auto;background-color:#ffffff;border:1px solid #dde3ea;border-radius:16px;overflow:hidden;">
     <div style="padding:32px 32px 0;text-align:center;">
+      <!--KW_LOGO_START-->
       <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 16px;">
         <tr>
           <td style="width:44px;height:44px;background-color:#0f2137;border-radius:12px;text-align:center;vertical-align:middle;" align="center" valign="middle">
@@ -36,6 +37,7 @@ export function renderEmailLayout(o: EmailLayoutOptions): string {
         </tr>
       </table>
       <div style="font-size:20px;font-weight:700;color:${BLUE};">Kandidatenwerk</div>
+      <!--KW_LOGO_END-->
       ${o.subtitle ? `<div style="font-size:13px;color:#6b7280;margin-top:2px;">${o.subtitle}</div>` : ""}
     </div>
     <div style="padding:28px 32px 8px;">
@@ -52,6 +54,17 @@ export function renderEmailLayout(o: EmailLayoutOptions): string {
 // Knopf im Layout-Stil (z.B. "Kandidat ansehen").
 export function emailButton(href: string, label: string): string {
   return `<div style="text-align:center;margin:20px 0 4px;"><a href="${href}" style="display:inline-block;background-color:${BLUE};color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:8px;">${label}</a></div>`
+}
+
+// Agentur-Logo statt Symbol + Schriftzug (Paket 23, T-94) - setzt sendEmail ein, wenn in
+// den Kontoeinstellungen ein Logo hinterlegt ist.
+export function applyEmailLogo(html: string, logoUrl: string | null | undefined): string {
+  if (!logoUrl) return html
+  const safe = logoUrl.replace(/"/g, "%22")
+  return html.replace(
+    /<!--KW_LOGO_START-->[\s\S]*?<!--KW_LOGO_END-->/,
+    `<img src="${safe}" alt="Logo" style="display:block;margin:0 auto;max-height:64px;max-width:220px;border:0;">`
+  )
 }
 
 export function hasEmailLayout(html: string): boolean {

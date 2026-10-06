@@ -10,6 +10,7 @@ import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { createDemoCandidateForClient } from "@/lib/demo-candidate"
 import { ensureClientLocation, parseLocationsFromText } from "@/lib/client-locations"
 import { syncKanzleistelleIfPublished } from "@/lib/kanzleistelle-profile-sync"
+import { ensurePortalAccess } from "@/lib/portal-access"
 import type { Database } from "@/types/database"
 
 export interface CloseWebhookPayload {
@@ -340,6 +341,8 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
         role: text(payload.ansprechpartner_position),
       })
       filled.push("Ansprechpartner")
+      // Ansprechpartner = Portal-Zugang (Paket 23), still - Einladung per Knopf.
+      if (contactEmail) await ensurePortalAccess(clientId, contactEmail)
     }
   }
 

@@ -1,4 +1,22 @@
-import { hasEmailLayout, renderEmailLayout } from "@/lib/email-layout"
+import { applyEmailLogo, hasEmailLayout, renderEmailLayout } from "@/lib/email-layout"
+import { createClient } from "@supabase/supabase-js"
+
+// Logo aus den Kontoeinstellungen (agency_settings.logo_url), 5 Minuten zwischengespeichert.
+// Fehler beim Laden blockieren nie den Versand - dann bleibt das Kandidatenwerk-Symbol.
+let logoCache: { url: string | null; at: number } | null = null
+async function getEmailLogoUrl(): Promise<string | null> {
+  if (logoCache && Date.now() - logoCache.at < 5 * 60_000) return logoCache.url
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SECRET_KEY
+    if (!url || !key) return null
+    const { data } = await createClient(url, key).from("agency_settings").select("logo_url").not("logo_url", "is", null).limit(1).maybeSingle()
+    logoCache = { url: (data?.logo_url as string | null) ?? null, at: Date.now() }
+    return logoCache.url
+  } catch {
+    return null
+  }
+}
 // Versand von Transactional-E-Mails über die Brevo-API (POST /v3/smtp/email). Bewusst
 // getrennt von der SMTP-Konfiguration, die Supabase Auth für Login-/Bestätigungsmails
 // nutzt - anderer Schlüsseltyp (BREVO_API_KEY beginnt mit "xkeysib-", der SMTP-Key mit
@@ -33,7 +51,10 @@ export async function sendEmail(
       to: to.map((email) => ({ email })),
       subject,
       // Einheitliches Layout für alle Mails (Paket 19, T-87).
-      htmlContent: hasEmailLayout(htmlContent) ? htmlContent : renderEmailLayout({ contentHtml: htmlContent, footerSender: options.footerSender }),
+      htmlContent: applyEmailLogo(
+        hasEmailLayout(htmlContent) ? htmlContent : renderEmailLayout({ contentHtml: htmlContent, footerSender: options.footerSender }),
+        await getEmailLogoUrl()
+      ),
     }),
   })
 

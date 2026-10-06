@@ -194,7 +194,7 @@ export default async function ClientDetailPage({
   const admin = createSupabaseAdminClient()
   const { data: portalProfiles } = await admin
     .from("profiles")
-    .select("id, email")
+    .select("id, email, portal_invited_at")
     .eq("client_id", client.id)
     .eq("role", "client")
     .order("created_at", { ascending: true })
@@ -204,7 +204,7 @@ export default async function ClientDetailPage({
       return {
         id: p.id,
         email: p.email,
-        status: data.user?.last_sign_in_at ? ("aktiv" as const) : ("eingeladen" as const),
+        status: data.user?.last_sign_in_at ? ("aktiv" as const) : p.portal_invited_at ? ("eingeladen" as const) : ("angelegt" as const),
       }
     })
   )

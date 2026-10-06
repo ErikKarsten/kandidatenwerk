@@ -30,6 +30,7 @@ import { fetchMetaPages, fetchMetaLead, isMetaTestLead } from "@/lib/meta-ads-cl
 import { processMetaLead, type MetaSyncCampaign } from "@/lib/meta-leads-sync-shared"
 import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 import { runAutomations } from "@/lib/cron/run-automations"
+import { sendLeadConfirmations } from "@/lib/lead-confirmation"
 
 const ARCHIVED_STATUS = "Archiviert"
 
@@ -147,6 +148,7 @@ async function handleLeadgenEvent(value: LeadgenChangeValue) {
     // Eingangsbestätigung & Co. sofort statt im nächsten 5-Minuten-Lauf (Paket 22).
     if (outcome.status === "created") {
       try {
+        await sendLeadConfirmations(supabase, { candidateIds: [outcome.candidateId] })
         await runAutomations(supabase, { campaignIds: [campaign.id], immediate: true, log: () => {} })
       } catch (autoError) {
         console.error(`[meta-webhook] Sofort-Automatisierung fehlgeschlagen:`, autoError instanceof Error ? autoError.message : autoError)
