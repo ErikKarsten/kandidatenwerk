@@ -7,5 +7,8 @@ describe("isKs24Campaign", () => {
     expect(isKs24Campaign("ks 24 Test")).toBe(true)
     expect(isKs24Campaign("Grone & Krull (08/26) - SFA")).toBe(false)
     expect(isKs24Campaign(null)).toBe(false)
+    // Nur am Anfang des Namens (Paket 18).
+    expect(isKs24Campaign("Test KS24 Kopie")).toBe(false)
+    expect(isKs24Campaign("KS240 Sonstiges")).toBe(false)
   })
 })

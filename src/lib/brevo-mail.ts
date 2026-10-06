@@ -7,10 +7,13 @@
 const SENDER_EMAIL = "info@kanzleistelle24.de"
 const SENDER_NAME = "Kandidatenwerk"
 
+// options (Paket 18): eigener Absendername (Adresse bleibt info@) und Antwortadresse,
+// z.B. für Mails aus dem Reiter "Kommunikation" im Namen eines Mitarbeiters.
 export async function sendEmail(
   to: string[],
   subject: string,
-  htmlContent: string
+  htmlContent: string,
+  options: { senderName?: string; replyTo?: { email: string; name?: string } } = {}
 ): Promise<void> {
   const apiKey = process.env.BREVO_API_KEY
   if (!apiKey) throw new Error("BREVO_API_KEY ist nicht gesetzt.")
@@ -24,7 +27,8 @@ export async function sendEmail(
       "api-key": apiKey,
     },
     body: JSON.stringify({
-      sender: { email: SENDER_EMAIL, name: SENDER_NAME },
+      sender: { email: SENDER_EMAIL, name: options.senderName || SENDER_NAME },
+      ...(options.replyTo ? { replyTo: options.replyTo } : {}),
       to: to.map((email) => ({ email })),
       subject,
       htmlContent,

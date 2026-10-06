@@ -432,3 +432,30 @@ export async function assignToCampaignAction(
   if (campaign?.client_id) revalidatePath(`/dashboard/clients/${campaign.client_id}`)
   return null
 }
+
+// Beispiel-Lead samt Beispielkampagne löschen (Paket 18, T-82). Nur für Demo-Kandidaten.
+export async function deleteDemoCandidateAction(candidateId: string): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+
+  const { data: candidate } = await supabase.from("candidates").select("is_demo").eq("id", candidateId).maybeSingle()
+  if (!candidate?.is_demo) return { error: "Nur Beispiel-Leads lassen sich hier löschen." }
+  const { data: links } = await supabase
+    .from("client_assignments")
+    .select("client_id, campaign_id, campaigns(is_demo)")
+    .eq("candidate_id", candidateId)
+  const demoCampaignIds = (links ?? [])
+    .filter((l) => (Array.isArray(l.campaigns) ? l.campaigns[0]?.is_demo : (l.campaigns as { is_demo: boolean } | null)?.is_demo))
+    .map((l) => l.campaign_id as string)
+
+  const { error } = await supabase.from("candidates").delete().eq("id", candidateId)
+  if (error) return { error: error.message }
+  if (demoCampaignIds.length > 0) {
+    const { error: campaignError } = await supabase.from("campaigns").delete().in("id", demoCampaignIds).eq("is_demo", true)
+    if (campaignError) return { error: `Beispiel-Lead gelöscht, Beispielkampagne nicht: ${campaignError.message}` }
+  }
+  for (const clientId of new Set((links ?? []).map((l) => l.client_id))) revalidatePath(`/dashboard/clients/${clientId}`)
+  revalidatePath("/dashboard/candidates")
+  return null
+}

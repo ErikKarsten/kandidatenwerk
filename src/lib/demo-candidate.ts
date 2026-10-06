@@ -1,5 +1,5 @@
 // Beispiel-Lead (Paket 14, T-68): Jeder neue Kunde bekommt einen deutlich markierten
-// Demo-Kandidaten, damit man im Gespräch und im Kundenportal zeigen kann, wie ein Lead
+// Demo-Kandidaten in einer Beispielkampagne (Paket 18), damit man im Gespräch und im Kundenportal zeigen kann, wie ein Lead
 // aussieht. Er passt zur ersten gesuchten Stelle (Berufsbild, PLZ), sonst
 // Steuerfachangestellte/r am Kanzleistandort. is_demo hält ihn aus "Alle Kandidaten",
 // Statistiken, Matching, Karte und Dublettenprüfung heraus.
@@ -43,8 +43,6 @@ export function buildDemoCandidate(target: DemoTarget) {
     plz: target.plz,
     lat: coords?.lat ?? null,
     lng: coords?.lng ?? null,
-    description:
-      "Beispiel-Lead zum Vorführen - kein echter Kandidat. So sehen Bewerbungen aus, die über die Kampagnen eingehen: Kontaktdaten, Antworten aus dem Lead-Formular und die Einschätzung aus dem Vorqualifizierungsgespräch.",
     custom_fields: {
       ausbildung: `Abgeschlossene Ausbildung als ${label}`,
       erreichbarkeit: "Werktags ab 17 Uhr",
@@ -84,9 +82,32 @@ export async function createDemoCandidateForClient(db: SupabaseClient<Database>,
     const target = pickDemoTarget(positions ?? [], client?.plz ?? null)
     const { data: candidate, error } = await db.from("candidates").insert(buildDemoCandidate(target)).select("id").single()
     if (error) throw new Error(error.message)
+
+    // Beispielkampagne (Paket 18, T-82), in der der Beispiel-Lead liegt - so sieht der
+    // Kunde im Gespräch und im Portal, wie Kampagne und Kandidat zusammengehören.
+    const coords = target.plz ? geocodePlz(target.plz) : null
+    const label = BERUFSBILD_OPTIONS.find((o) => o.value === target.berufsbild)?.label ?? "Steuerfachangestellte"
+    const { data: campaign, error: campaignError } = await db
+      .from("campaigns")
+      .insert({
+        title: `Beispielkampagne – ${label} (m/w/d)`,
+        client_id: clientId,
+        kind: "kanzlei",
+        status: "active",
+        is_demo: true,
+        berufsbild: target.berufsbild,
+        plz: target.plz,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
+        description: "Beispielkampagne zum Vorführen – keine echte Kampagne.",
+      })
+      .select("id")
+      .single()
+    if (campaignError) throw new Error(campaignError.message)
+
     const { error: assignError } = await db
       .from("client_assignments")
-      .insert({ candidate_id: candidate.id, client_id: clientId, created_by: createdBy ?? null })
+      .insert({ candidate_id: candidate.id, client_id: clientId, campaign_id: campaign.id, created_by: createdBy ?? null })
     if (assignError) throw new Error(assignError.message)
     return candidate.id
   } catch (err) {

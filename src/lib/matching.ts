@@ -35,6 +35,7 @@ export async function matchCandidateToCampaigns(supabase: Supabase, candidateId:
     .select("id, lat, lng, radius_km")
     .eq("status", "active")
     .eq("kind", "kanzlei") // Lead-Kampagnen (T-36) sind keine Zuordnungsziele
+    .eq("is_demo", false) // Beispielkampagnen (Paket 18) nie matchen
     .eq("berufsbild", candidate.berufsbild)
     .not("lat", "is", null)
     .not("lng", "is", null)
@@ -68,12 +69,12 @@ export async function matchCandidateToCampaigns(supabase: Supabase, candidateId:
 export async function matchCampaignToCandidates(supabase: Supabase, campaignId: string): Promise<void> {
   const { data: campaign, error: campaignError } = await supabase
     .from("campaigns")
-    .select("id, status, kind, berufsbild, lat, lng, radius_km")
+    .select("id, status, kind, berufsbild, lat, lng, radius_km, is_demo")
     .eq("id", campaignId)
     .single()
 
   if (campaignError) throw new Error(campaignError.message)
-  if (campaign.status !== "active" || campaign.kind !== "kanzlei") return
+  if (campaign.status !== "active" || campaign.kind !== "kanzlei" || campaign.is_demo) return
   if (!campaign.berufsbild || campaign.lat === null || campaign.lng === null) return
 
   const { data: candidates, error: candidatesError } = await supabase

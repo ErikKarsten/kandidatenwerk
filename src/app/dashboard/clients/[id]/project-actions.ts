@@ -23,6 +23,8 @@ import { applyDefaultTemplateSet } from "@/lib/automation-templates"
 import { after } from "next/server"
 import { scheduleKanzleistelleSync } from "@/lib/kanzleistelle-auto-sync"
 import { deactivateKanzleistelleJob } from "@/lib/kanzleistelle-profile-sync"
+import { loadProfileFieldConfig } from "@/lib/profile-field-config"
+import { resolveFields } from "@/lib/profile-fields"
 
 type Result = { error: string } | null
 type Supabase = Awaited<ReturnType<typeof createSupabaseServerClient>>
@@ -127,6 +129,7 @@ export async function saveClientProfileAction(clientId: string, values: ClientPr
   const row: Record<string, unknown> = { client_id: clientId, updated_at: new Date().toISOString(), updated_by: ctx.userId }
   for (const f of PROFILE_FIELDS) row[f.key] = clean(values[f.key])
   row.benefits = (values.benefits ?? []).map((b) => b.trim()).filter(Boolean)
+  row.extra = cleanExtra(values.extra)
   const { error } = await ctx.supabase.from("client_profiles").upsert(row as never, { onConflict: "client_id" })
   if (error) return { error: error.message }
   scheduleKanzleistelleSync(clientId)
@@ -138,12 +141,16 @@ export async function finalizeClientProfileAction(clientId: string, finalize: bo
   const ctx = await staff()
   if ("error" in ctx) return ctx
   if (finalize) {
-    const [{ data: profile }, { data: positionRows }, { count: locationCount }] = await Promise.all([
+    const [{ data: profile }, { data: positionRows }, { count: locationCount }, config] = await Promise.all([
       ctx.supabase.from("client_profiles").select("*").eq("client_id", clientId).maybeSingle(),
-      ctx.supabase.from("client_positions").select("title, berufsbild, plz, arbeitszeit, berufserfahrung, startdatum, aufgaben, anforderungen").eq("client_id", clientId),
+      ctx.supabase.from("client_positions").select("title, berufsbild, plz, arbeitszeit, berufserfahrung, software, gehalt, startdatum, aufgaben, anforderungen, extra").eq("client_id", clientId),
       ctx.supabase.from("client_locations").select("id", { count: "exact", head: true }).eq("client_id", clientId),
+      loadProfileFieldConfig(ctx.supabase),
     ])
-    const missing = missingProfileItems(profile as ClientProfileValues | null, positionRows ?? [], locationCount ?? 0)
+    const missing = missingProfileItems(profile as ClientProfileValues | null, positionRows ?? [], locationCount ?? 0, {
+      kanzlei: resolveFields("kanzlei", config.settings),
+      stelle: resolveFields("stelle", config.settings),
+    })
     if (missing.length > 0) return { error: `Noch offen: ${missing.join(", ")}` }
   }
   const { error } = await ctx.supabase
@@ -180,6 +187,12 @@ export interface PositionInput {
   startdatum: string | null
   anforderungen: string | null
   aufgaben: string | null
+  // Werte eigener Felder des Stellenprofils (Paket 18, T-80).
+  extra?: Record<string, string> | null
+}
+
+function cleanExtra(extra: Record<string, string> | null | undefined): Record<string, string> {
+  return Object.fromEntries(Object.entries(extra ?? {}).map(([k, v]) => [k, (v ?? "").trim()]).filter(([, v]) => v))
 }
 
 export async function savePositionAction(clientId: string, input: PositionInput): Promise<Result> {
@@ -206,6 +219,7 @@ export async function savePositionAction(clientId: string, input: PositionInput)
     startdatum: clean(input.startdatum),
     anforderungen: clean(input.anforderungen),
     aufgaben: clean(input.aufgaben),
+    extra: cleanExtra(input.extra),
     updated_at: new Date().toISOString(),
   }
   const { error } = input.id

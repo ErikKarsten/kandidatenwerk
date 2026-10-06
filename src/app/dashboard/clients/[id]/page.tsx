@@ -7,6 +7,7 @@ import { coveringAreas } from "@/lib/ad-coverage"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { ClientDetail } from "./client-detail"
+import { loadProfileFieldConfig } from "@/lib/profile-field-config"
 
 const CAMPAIGN_STATUS_VALUES = new Set(["active", "paused", "completed", "Archiviert"])
 const PAGE_SIZES: readonly PageSize[] = [10, 20, 50]
@@ -121,6 +122,7 @@ export default async function ClientDetailPage({
     assigneeName: ((Array.isArray(t.assignee) ? t.assignee[0] : t.assignee) as { full_name: string | null } | null)?.full_name ?? null,
   }))
   const team = (teamRows ?? []).map((t) => ({ id: t.id, full_name: t.full_name }))
+  const fieldConfig = await loadProfileFieldConfig(supabase)
   const nameOf = (profileId: string | null) => (profileId ? team.find((t) => t.id === profileId)?.full_name ?? "Unbekannt" : "System")
   const commentFiles = (fileRows ?? []).filter((f) => f.comment_id)
   const project = {
@@ -134,8 +136,16 @@ export default async function ClientDetailPage({
       close_status: client.close_status ?? null,
       close_status_at: client.close_status_at ?? null,
     },
-    profile: profileRow ? { ...profileRow, finalized_by_name: profileRow.finalized_by ? nameOf(profileRow.finalized_by) : null } : null,
-    positions: (positionRows ?? []).map((p) => ({ ...p, campaign_id: p.campaign_id ?? null })),
+    profile: profileRow
+      ? {
+          ...profileRow,
+          extra: (profileRow.extra ?? {}) as Record<string, string>,
+          finalized_by_name: profileRow.finalized_by ? nameOf(profileRow.finalized_by) : null,
+        }
+      : null,
+    positions: (positionRows ?? []).map((p) => ({ ...p, campaign_id: p.campaign_id ?? null, extra: (p.extra ?? {}) as Record<string, string> })),
+    // Eingestellte Profilfelder und Textbausteine (Paket 18, T-80).
+    fieldConfig,
     locations: locationRows ?? [],
     // Kanzleistelle24-Stand (Paket 16, T-52): veröffentlicht = über das Kanzleiprofil übertragen.
     kanzleistelle: {

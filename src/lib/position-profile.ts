@@ -13,10 +13,36 @@ export interface PositionLike {
   plz?: string | null
   arbeitszeit?: string | null
   berufserfahrung?: string | null
+  software?: string | null
+  gehalt?: string | null
   startdatum?: string | null
   aufgaben?: string | null
   anforderungen?: string | null
+  extra?: unknown
 }
+
+// Felder des Stellenprofils, wie sie für die Pflichtprüfung gebraucht werden (eingestellt
+// in Einstellungen > Felder, siehe profile-fields.ts).
+export interface PositionFieldRule {
+  key: string
+  label: string
+  required: boolean
+  custom: boolean
+}
+
+// Eingebaute Felder des Stellenprofils. Bezeichnung, Berufsbild und Standort sind immer
+// Pflicht und nicht einstellbar (Matching, Kampagnen, Kanzleistelle24 brauchen sie).
+export const STELLE_BUILTIN_FIELDS: { key: string; label: string; hint?: string; required?: boolean; multiline?: boolean }[] = [
+  { key: "arbeitszeit", label: "Arbeitszeit", hint: "Vollzeit / Teilzeit, Stunden", required: true },
+  { key: "berufserfahrung", label: "Berufserfahrung", hint: "z.B. ab 2 Jahre", required: true },
+  { key: "software", label: "Software / Buchhaltungsprogramm", hint: "z.B. DATEV" },
+  { key: "gehalt", label: "Gehalt (intern, nicht auf Kanzleistelle24)", hint: "z.B. 45.000–55.000 €" },
+  { key: "startdatum", label: "Start", hint: "z.B. ab sofort", required: true },
+  { key: "aufgaben", label: "Aufgaben", required: true, multiline: true },
+  { key: "anforderungen", label: "Anforderungen", required: true, multiline: true },
+]
+
+const DEFAULT_RULES: PositionFieldRule[] = STELLE_BUILTIN_FIELDS.map((f) => ({ key: f.key, label: f.label, required: !!f.required, custom: false }))
 
 // Anzahl Punkte in einem zeilenweise gepflegten Feld (Aufzählungszeichen werden ignoriert).
 export function countPoints(text: string | null | undefined): number {
@@ -26,18 +52,22 @@ export function countPoints(text: string | null | undefined): number {
     .filter(Boolean).length
 }
 
-export function missingPositionItems(p: PositionLike): string[] {
-  const filled = (v: string | null | undefined) => !!(v ?? "").trim()
+export function missingPositionItems(p: PositionLike, rules: PositionFieldRule[] = DEFAULT_RULES): string[] {
+  const filled = (v: unknown) => typeof v === "string" && !!v.trim()
+  const extra = (p.extra && typeof p.extra === "object" ? p.extra : {}) as Record<string, unknown>
   const missing: string[] = []
   if (!filled(p.berufsbild)) missing.push("Berufsbild")
   if (!filled(p.plz)) missing.push("Standort")
-  if (!filled(p.arbeitszeit)) missing.push("Arbeitszeit")
-  if (!filled(p.berufserfahrung)) missing.push("Berufserfahrung")
-  if (!filled(p.startdatum)) missing.push("Start")
-  const aufgaben = countPoints(p.aufgaben)
-  if (aufgaben < MIN_AUFGABEN) missing.push(`Aufgaben (${aufgaben}/${MIN_AUFGABEN})`)
-  const anforderungen = countPoints(p.anforderungen)
-  if (anforderungen < MIN_ANFORDERUNGEN) missing.push(`Anforderungen (${anforderungen}/${MIN_ANFORDERUNGEN})`)
+  for (const r of rules.filter((x) => x.required)) {
+    const value = r.custom ? extra[r.key] : (p as Record<string, unknown>)[r.key]
+    if (r.key === "aufgaben" || r.key === "anforderungen") {
+      const min = r.key === "aufgaben" ? MIN_AUFGABEN : MIN_ANFORDERUNGEN
+      const count = countPoints(typeof value === "string" ? value : null)
+      if (count < min) missing.push(`${r.label} (${count}/${min})`)
+    } else if (!filled(value)) {
+      missing.push(r.label)
+    }
+  }
   return missing
 }
 
@@ -46,81 +76,4 @@ export function appendPoint(text: string | null | undefined, point: string): str
   const current = (text ?? "").trim()
   if (current.split(/\n+/).some((l) => l.replace(/^[-•*✅]\s*/, "").trim() === point)) return current
   return current ? `${current}\n${point}` : point
-}
-
-const COMMON_ANFORDERUNGEN = [
-  "Sicherer Umgang mit DATEV oder vergleichbarer Software",
-  "Selbstständige, sorgfältige und strukturierte Arbeitsweise",
-  "Freude an der Arbeit im Team und am Kontakt mit Mandanten",
-  "Gute Kenntnisse in MS Office, insbesondere Excel",
-  "Sehr gute Deutschkenntnisse in Wort und Schrift",
-]
-
-export const POSITION_SNIPPETS: Record<string, { aufgaben: string[]; anforderungen: string[] }> = {
-  steuerfachangestellte: {
-    aufgaben: [
-      "Laufende Finanzbuchhaltung für einen festen Mandantenstamm",
-      "Lohn- und Gehaltsabrechnungen inkl. Meldungen an Sozialversicherungsträger",
-      "Erstellung von Umsatzsteuer-Voranmeldungen",
-      "Mitwirkung bei Jahresabschlüssen",
-      "Erstellung betrieblicher und privater Steuererklärungen",
-      "Prüfung von Steuerbescheiden",
-      "Ansprechpartner/in für Mandanten in steuerlichen Alltagsfragen",
-    ],
-    anforderungen: [
-      "Abgeschlossene Ausbildung als Steuerfachangestellte/r",
-      "Erste Berufserfahrung in einer Steuerkanzlei",
-      ...COMMON_ANFORDERUNGEN,
-    ],
-  },
-  steuerfachwirt: {
-    aufgaben: [
-      "Eigenverantwortliche Betreuung eines festen Mandantenstamms",
-      "Erstellung von Jahresabschlüssen für Einzelunternehmen und Personengesellschaften",
-      "Erstellung betrieblicher und privater Steuererklärungen",
-      "Prüfung von Steuerbescheiden und Einlegen von Einsprüchen",
-      "Vorbereitung und Begleitung von Betriebsprüfungen",
-      "Fachliche Unterstützung und Anleitung von Kolleginnen und Kollegen",
-    ],
-    anforderungen: [
-      "Erfolgreiche Fortbildung zum/zur Steuerfachwirt/in",
-      "Mehrjährige Berufserfahrung in einer Steuerkanzlei",
-      ...COMMON_ANFORDERUNGEN,
-    ],
-  },
-  bilanzbuchhalter: {
-    aufgaben: [
-      "Erstellung von Monats-, Quartals- und Jahresabschlüssen nach HGB",
-      "Betreuung der laufenden Finanzbuchhaltung anspruchsvoller Mandate",
-      "Kontenabstimmungen und Abschlussbuchungen",
-      "Erstellung betrieblicher Steuererklärungen",
-      "Mitwirkung bei Auswertungen und Reportings für Mandanten",
-      "Begleitung von Betriebsprüfungen",
-    ],
-    anforderungen: [
-      "Weiterbildung zum/zur Bilanzbuchhalter/in (IHK) oder vergleichbare Qualifikation",
-      "Mehrjährige Erfahrung in der Abschlusserstellung",
-      ...COMMON_ANFORDERUNGEN,
-    ],
-  },
-  steuerberater: {
-    aufgaben: [
-      "Eigenverantwortliche Betreuung und Beratung eines anspruchsvollen Mandantenstamms",
-      "Erstellung und Prüfung von Jahresabschlüssen und Steuererklärungen",
-      "Steuerliche Gestaltungsberatung für Unternehmen und Privatpersonen",
-      "Vertretung von Mandanten gegenüber Finanzbehörden und bei Betriebsprüfungen",
-      "Fachliche Führung und Weiterentwicklung des Teams",
-      "Mitwirkung an der Weiterentwicklung der Kanzlei",
-    ],
-    anforderungen: [
-      "Erfolgreich abgelegtes Steuerberaterexamen",
-      "Mehrjährige Berufserfahrung in der Steuerberatung",
-      "Unternehmerisches Denken und Freude an der Mandantenberatung",
-      ...COMMON_ANFORDERUNGEN.slice(0, 3),
-    ],
-  },
-}
-
-export function snippetsFor(berufsbild: string | null | undefined): { aufgaben: string[]; anforderungen: string[] } {
-  return POSITION_SNIPPETS[berufsbild ?? ""] ?? { aufgaben: [], anforderungen: COMMON_ANFORDERUNGEN }
 }

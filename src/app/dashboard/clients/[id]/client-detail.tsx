@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/table"
 import { assignmentStatusLabel } from "@/lib/assignment-status"
 import { KanzleistelleCard, type KanzleistelleStatus } from "./kanzleistelle-card"
+import type { ProfileFieldConfig } from "@/lib/profile-field-config"
 
 
 const CAMPAIGN_STATUS: Record<string, { label: string; bg: string; dot: string; text: string }> = {
@@ -128,6 +129,7 @@ interface ClientDetailProps {
     positions: ClientPosition[]
     locations: ClientLocation[]
     kanzleistelle: KanzleistelleStatus
+    fieldConfig: ProfileFieldConfig
     comments: ProjectComment[]
     team: { id: string; full_name: string | null }[]
     currentUserId: string
@@ -487,6 +489,7 @@ export function ClientDetail({
               positions={project.positions}
               locations={project.locations}
               kanzleistelle={project.kanzleistelle}
+              fieldConfig={project.fieldConfig}
               files={files}
               campaigns={kanzleiCampaigns.map((c) => ({ id: c.id, title: c.title }))}
               team={project.team}

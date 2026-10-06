@@ -187,8 +187,9 @@ export default async function PortalCandidateDetailPage({
         <aside className="order-1 lg:order-2 lg:sticky lg:top-4 lg:self-start">
           <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
             <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Beschreibung</span>
-            {candidate.description?.trim() ? (
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{candidate.description.trim()}</p>
+            {/* "Beschreibung" im Backend ist das Feld notes (Fix Paket 18). */}
+            {candidate.notes?.trim() ? (
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{candidate.notes.trim()}</p>
             ) : (
               <p className="mt-3 text-sm text-gray-400">Noch keine Beschreibung hinterlegt.</p>
             )}

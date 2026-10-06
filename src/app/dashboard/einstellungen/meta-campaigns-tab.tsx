@@ -7,7 +7,6 @@ import { RefreshCw } from "lucide-react"
 import { syncMetaCampaignsNowAction } from "./actions"
 import type { LeadCampaignOverview } from "@/lib/meta-campaigns-queries"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
-import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 
 const STATUS_STYLE: Record<string, { label: string; bg: string; text: string }> = {
   active: { label: "Läuft", bg: "#1a9a6a18", text: "#1a9a6a" },
@@ -66,7 +65,8 @@ export function MetaCampaignsTab({
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Meta-Kampagnen</h2>
           <p className="mt-1 max-w-xl text-xs text-gray-500">
-            Lead-Kampagnen aus dem Meta-Werbekonto – importiert werden nur Kampagnen mit „KS24“ im Namen. Neue Kampagnen erscheinen automatisch (stündlicher Abgleich), das
+            <strong className="text-gray-700">Importiert und ausgewertet werden ausschließlich Kampagnen, deren Name mit „KS24“ beginnt</strong> – alle anderen
+            Kampagnen im Werbekonto werden ignoriert, auch in den Auswertungen. Neue KS24-Kampagnen erscheinen automatisch (stündlicher Abgleich), das
             Lead-Formular wird verknüpft und die Leads laufen in „Alle Kandidaten“ ein. Die Werbegebiete stehen auf der
             Karte unter „Werbegebiete“.
           </p>
@@ -144,7 +144,6 @@ export function MetaCampaignsTab({
                       <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: st.bg, color: st.text }}>
                         {st.label}
                       </span>
-                      {!isKs24Campaign(c.title) && <div className="mt-1 text-[10px] text-gray-400">kein KS24 – kein Import</div>}
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-600">{areaSummary(c)}</td>
                     <td className="px-3 py-2 text-xs">

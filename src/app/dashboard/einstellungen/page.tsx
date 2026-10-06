@@ -11,6 +11,7 @@ import { getAutomationTemplates } from "./automation-template-actions"
 import { getFieldTemplates, getLeadForms } from "./field-actions"
 import { getLeadCampaignsOverview } from "@/lib/meta-campaigns-queries"
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { loadProfileFieldConfig } from "@/lib/profile-field-config"
 
 export default async function EinstellungenPage() {
   const supabase = await createSupabaseServerClient()
@@ -35,6 +36,7 @@ export default async function EinstellungenPage() {
 
   const team = ownProfile.agency_id ? await getTeamMembers(ownProfile.agency_id) : []
   const automationTemplates = ownProfile.agency_id ? await getAutomationTemplates() : { templates: [], sets: [] }
+  const profileFieldConfig = await loadProfileFieldConfig(supabase)
   const leadNotificationRecipientIds = ownProfile.agency_id
     ? await getLeadNotificationRecipientIds(ownProfile.agency_id)
     : []
@@ -64,6 +66,7 @@ export default async function EinstellungenPage() {
       team={team}
       agencyId={ownProfile.agency_id}
       automationTemplates={automationTemplates}
+      profileFieldConfig={profileFieldConfig}
       leadNotificationRecipientIds={leadNotificationRecipientIds}
       customFieldDefinitions={customFieldDefinitions}
       customFieldReviewQueue={customFieldReviewQueue}

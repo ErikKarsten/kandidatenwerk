@@ -35,12 +35,14 @@ const TYPE_ICON: Record<string, typeof ArrowRightLeft> = {
   status_change: ArrowRightLeft,
   note: StickyNote,
   automation: Mail,
+  email: Mail,
 }
 
 const TYPE_COLOR: Record<string, { bg: string; text: string }> = {
   status_change: { bg: "#1e56a018", text: "#1e56a0" },
   note: { bg: "#9ca3af18", text: "#6b7280" },
   automation: { bg: "#1a9a6a18", text: "#1a9a6a" },
+  email: { bg: "#8b5cf618", text: "#7c3aed" },
 }
 const FALLBACK_COLOR = { bg: "#9ca3af18", text: "#6b7280" }
 
@@ -131,7 +133,7 @@ export function HistorySection({
         <div className="flex flex-col gap-6">
           {hasDescription && <CollapsibleTextBlock title="Leadtable-Notizen (importiert)" text={leadtableDescription!} />}
           {hasWeitereAntworten && (
-            <CollapsibleTextBlock title="Weitere Leadtable-Antworten" text={weitereAntworten!} />
+            <CollapsibleTextBlock title="Weitere Formularangaben" text={weitereAntworten!} />
           )}
 
           {deleteError && <p className="text-xs text-red-600">Löschen fehlgeschlagen: {deleteError}</p>}

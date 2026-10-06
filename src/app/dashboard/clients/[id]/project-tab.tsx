@@ -3,13 +3,15 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, AlertTriangle, Plus, X } from "lucide-react"
-import { PROFILE_FIELDS, PROFILE_GROUPS, PROJECT_PHASES, contractEnd, missingProfileItems, type ClientProfileValues } from "@/lib/client-project"
+import { PROFILE_GROUPS, PROJECT_PHASES, contractEnd, missingProfileItems, type ClientProfileValues } from "@/lib/client-project"
 import { finalizeClientProfileAction, saveClientProfileAction, updateProjectMetaAction } from "./project-actions"
 import { ProjectPositions, type ClientPosition } from "./project-positions"
 import { LocationsCard } from "./locations-card"
 import type { ClientLocation } from "@/lib/client-locations"
 import { KanzleistelleCard, type KanzleistelleStatus } from "./kanzleistelle-card"
 import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
+import type { ProfileFieldConfig } from "@/lib/profile-field-config"
+import { fieldValue, resolveFields, type ResolvedField } from "@/lib/profile-fields"
 
 export interface ProjectMeta {
   project_phase: string
@@ -37,6 +39,7 @@ export function ProjectTab({
   positions,
   locations,
   kanzleistelle,
+  fieldConfig,
   files,
   campaigns,
   team,
@@ -47,23 +50,33 @@ export function ProjectTab({
   positions: ClientPosition[]
   locations: ClientLocation[]
   kanzleistelle: KanzleistelleStatus
+  fieldConfig: ProfileFieldConfig
   files: ClientFileItem[]
   campaigns: { id: string; title: string }[]
   team: { id: string; full_name: string | null }[]
 }) {
-  const missing = missingProfileItems(profile, positions, locations.length)
+  const kanzleiFields = resolveFields("kanzlei", fieldConfig.settings)
+  const stelleFields = resolveFields("stelle", fieldConfig.settings)
+  const missing = missingProfileItems(profile, positions, locations.length, { kanzlei: kanzleiFields, stelle: stelleFields })
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <OnboardingBanner clientId={clientId} profile={profile} missing={missing} />
       <KanzleistelleCard clientId={clientId} status={kanzleistelle} />
       <ProjectMetaCard clientId={clientId} meta={meta} team={team} />
-      <ProfileCard clientId={clientId} profile={profile} missing={missing} />
+      <ProfileCard clientId={clientId} profile={profile} missing={missing} fields={kanzleiFields} />
       {/* Standorte als eigene Liste (Paket 16, T-75) - gleiche Liste wie in den Stammdaten. */}
       <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#dde3ea" }}>
         <LocationsCard clientId={clientId} locations={locations} closeHint={profile?.standorte} />
       </div>
-      <ProjectPositions clientId={clientId} positions={positions} campaigns={campaigns} locations={locations} />
+      <ProjectPositions
+        clientId={clientId}
+        positions={positions}
+        campaigns={campaigns}
+        locations={locations}
+        fields={stelleFields}
+        snippets={fieldConfig.snippets}
+      />
       {/* Dateien des Kunden (bisher eigener Reiter, seit Paket 17 im Projekt). */}
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold text-gray-900">Dateien ({files.length})</h3>
@@ -251,7 +264,17 @@ function ProjectMetaCard({ clientId, meta, team }: { clientId: string; meta: Pro
 // Bearbeiten-Modus als gelb umrandetes Feld (Paket 13).
 const MISSING_STYLE = { borderColor: "#f59e0b", backgroundColor: "#fffbeb" }
 
-function ProfileCard({ clientId, profile, missing }: { clientId: string; profile: ClientProfileData | null; missing: string[] }) {
+function ProfileCard({
+  clientId,
+  profile,
+  missing,
+  fields,
+}: {
+  clientId: string
+  profile: ClientProfileData | null
+  missing: string[]
+  fields: ResolvedField[]
+}) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [v, setV] = useState<ClientProfileValues>({})
@@ -261,7 +284,7 @@ function ProfileCard({ clientId, profile, missing }: { clientId: string; profile
   const input = "w-full rounded-md border px-2 py-1.5 text-sm"
 
   function startEdit() {
-    setV({ ...(profile ?? {}), benefits: [...(profile?.benefits ?? [])] })
+    setV({ ...(profile ?? {}), benefits: [...(profile?.benefits ?? [])], extra: { ...(profile?.extra ?? {}) } })
     setEditing(true)
   }
 
@@ -303,32 +326,25 @@ function ProfileCard({ clientId, profile, missing }: { clientId: string; profile
                 {g.label}
               </h4>
               <div className="grid gap-3 sm:grid-cols-2">
-                {PROFILE_FIELDS.filter((f) => f.group === g.value).map((f) => (
-                  <label key={f.key} className={`flex flex-col gap-1 ${f.multiline ? "sm:col-span-2" : ""}`}>
-                    <span className="text-xs font-medium text-gray-500">
-                      {f.label}
-                      {f.required ? " *" : ""}
-                    </span>
-                    {f.multiline ? (
-                      <textarea
-                        className={input}
-                        style={f.required && !(v[f.key] ?? "").trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
-                        rows={f.key === "gehaltsgefuege" ? 3 : 4}
-                        value={v[f.key] ?? ""}
-                        placeholder={f.placeholder}
-                        onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
-                      />
-                    ) : (
-                      <input
-                        className={input}
-                        style={f.required && !(v[f.key] ?? "").trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }}
-                        value={v[f.key] ?? ""}
-                        placeholder={f.placeholder}
-                        onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
-                      />
-                    )}
-                  </label>
-                ))}
+                {fields.filter((f) => f.group === g.value).map((f) => {
+                  const value = fieldValue(v, f)
+                  const change = (text: string) =>
+                    setV(f.custom ? { ...v, extra: { ...(v.extra ?? {}), [f.key]: text } } : { ...v, [f.key]: text })
+                  const style = f.required && !value.trim() ? MISSING_STYLE : { borderColor: "#dde3ea" }
+                  return (
+                    <label key={f.key} className={`flex flex-col gap-1 ${f.multiline ? "sm:col-span-2" : ""}`}>
+                      <span className="text-xs font-medium text-gray-500">
+                        {f.label}
+                        {f.required ? " *" : ""}
+                      </span>
+                      {f.multiline ? (
+                        <textarea className={input} style={style} rows={f.key === "gehaltsgefuege" ? 3 : 4} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
+                      ) : (
+                        <input className={input} style={style} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
+                      )}
+                    </label>
+                  )
+                })}
               </div>
               {g.value === "angebot" && (
                 <div className="flex flex-col gap-1.5">
@@ -380,21 +396,21 @@ function ProfileCard({ clientId, profile, missing }: { clientId: string; profile
       ) : (
         <div className="flex flex-col gap-5">
           {PROFILE_GROUPS.map((g) => {
-            const fields = PROFILE_FIELDS.filter((f) => f.group === g.value && ((profile[f.key] ?? "").trim() || missing.includes(f.label)))
+            const groupFields = fields.filter((f) => f.group === g.value && (fieldValue(profile, f).trim() || (f.required && missing.includes(f.label))))
             const benefits = g.value === "angebot" ? profile.benefits ?? [] : []
             const benefitsMissing = g.value === "angebot" && missing.includes("Benefits")
-            if (fields.length === 0 && benefits.length === 0 && !benefitsMissing) return null
+            if (groupFields.length === 0 && benefits.length === 0 && !benefitsMissing) return null
             return (
               <section key={g.value}>
                 <h4 className="mb-2 border-b pb-1 text-xs font-semibold uppercase tracking-wide text-gray-400" style={{ borderColor: "#eef2f6" }}>
                   {g.label}
                 </h4>
                 <dl className="flex flex-col gap-3">
-                  {fields.map((f) =>
-                    (profile[f.key] ?? "").trim() ? (
+                  {groupFields.map((f) =>
+                    fieldValue(profile, f).trim() ? (
                       <div key={f.key}>
                         <dt className="text-xs font-medium text-gray-400">{f.label}</dt>
-                        <dd className="whitespace-pre-wrap text-sm text-gray-800">{profile[f.key]}</dd>
+                        <dd className="whitespace-pre-wrap text-sm text-gray-800">{fieldValue(profile, f)}</dd>
                       </div>
                     ) : (
                       <div key={f.key} className="rounded-md border px-2 py-1" style={MISSING_STYLE}>

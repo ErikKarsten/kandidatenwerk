@@ -66,6 +66,7 @@ export default async function CandidateDetailPage({
       .select("id, title, berufsbild, client_id, lat, lng, clients(name)")
       .eq("kind", "kanzlei")
       .eq("status", "active")
+      .eq("is_demo", false)
       .order("title", { ascending: true }),
   ])
 
@@ -196,6 +197,39 @@ export default async function CandidateDetailPage({
   const clients = (clientRows ?? []).map((c) => ({ id: c.id, name: c.name }))
   const profiles = (profileRows ?? []).map((p) => ({ id: p.id, full_name: p.full_name }))
 
+  // Reiter "Kommunikation" (Paket 18, T-84): verschickte Mails, Vorlagen an "Kandidat",
+  // Platzhalter-Werte für die Vorlagen.
+  const [{ data: messageRows }, { data: messageTemplateRows }] = await Promise.all([
+    supabase.from("candidate_messages").select("*").eq("candidate_id", id).order("created_at", { ascending: false }),
+    supabase.from("automation_templates").select("id, name, subject, body_html").eq("recipient", "candidate").order("name"),
+  ])
+  const firstAssignment = (assignmentRows ?? [])[0]
+  const assignmentCampaign = firstAssignment
+    ? ((Array.isArray(firstAssignment.campaigns) ? firstAssignment.campaigns[0] : firstAssignment.campaigns) as { title: string } | null)
+    : null
+  const communication = {
+    vars: {
+      Kandidatenname: `${candidate.first_name} ${candidate.last_name}`.trim(),
+      Kampagnenname: campaigns?.title ?? assignmentCampaign?.title ?? "",
+      Kundenname: campaigns?.clients?.name ?? clients.find((c) => c.id === firstAssignment?.client_id)?.name ?? "",
+      Email: candidate.email ?? "",
+      Telefon: candidate.phone ?? "",
+      Bewerberlink: "",
+    },
+    templates: (messageTemplateRows ?? []).map((t) => ({ id: t.id, name: t.name, subject: t.subject, body: t.body_html })),
+    messages: (messageRows ?? []).map((m) => ({
+      id: m.id,
+      channel: m.channel,
+      toAddress: m.to_address,
+      subject: m.subject,
+      body: m.body,
+      senderName: profiles.find((p) => p.id === m.sent_by)?.full_name ?? null,
+      status: m.status,
+      error: m.error,
+      createdAt: m.created_at,
+    })),
+  }
+
   return (
     <CandidateDetail
       candidate={candidateData}
@@ -208,6 +242,7 @@ export default async function CandidateDetailPage({
       customFieldDefinitions={customFieldDefinitionRows ?? []}
       templateFieldKeys={templateFieldKeys}
       kanzleiCampaigns={kanzleiCampaigns}
+      communication={communication}
     />
   )
 }

@@ -19,6 +19,7 @@ export default async function CampaignsPage({
   let query = supabase
     .from("campaigns")
     .select("id, title, description, status, meta_campaign_id, berufsbild, created_at, clients(name)")
+    .eq("is_demo", false)
     .order("created_at", { ascending: false })
 
   if (!showArchived) {

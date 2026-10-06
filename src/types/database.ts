@@ -97,6 +97,7 @@ export type Database = {
           finalized_by: string | null
           updated_at: string
           updated_by: string | null
+          extra: Json
         }
         Insert: {
           client_id: string
@@ -119,6 +120,7 @@ export type Database = {
           finalized_by?: string | null
           updated_at?: string
           updated_by?: string | null
+          extra?: Json
         }
         Update: {
           client_id?: string
@@ -141,6 +143,7 @@ export type Database = {
           finalized_by?: string | null
           updated_at?: string
           updated_by?: string | null
+          extra?: Json
         }
         Relationships: [
           {
@@ -175,6 +178,7 @@ export type Database = {
           created_at: string
           updated_at: string
           kanzleistelle_job_id: string | null
+          extra: Json
         }
         Insert: {
           id?: string
@@ -198,6 +202,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           kanzleistelle_job_id?: string | null
+          extra?: Json
         }
         Update: {
           id?: string
@@ -221,6 +226,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           kanzleistelle_job_id?: string | null
+          extra?: Json
         }
         Relationships: [
           {
@@ -929,6 +935,7 @@ export type Database = {
           meta_form_name: string | null
           kind: string
           agency_id: string | null
+          is_demo: boolean
         }
         Insert: {
           id?: string
@@ -953,6 +960,7 @@ export type Database = {
           meta_form_name?: string | null
           kind?: string
           agency_id?: string | null
+          is_demo?: boolean
         }
         Update: {
           id?: string
@@ -977,6 +985,7 @@ export type Database = {
           meta_form_name?: string | null
           kind?: string
           agency_id?: string | null
+          is_demo?: boolean
         }
         Relationships: [
           {
@@ -1092,6 +1101,126 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      candidate_messages: {
+        Row: {
+          id: string
+          candidate_id: string
+          channel: string
+          to_address: string
+          subject: string | null
+          body: string
+          sent_by: string | null
+          reply_to: string | null
+          status: string
+          error: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          candidate_id: string
+          channel?: string
+          to_address: string
+          subject?: string | null
+          body: string
+          sent_by?: string | null
+          reply_to?: string | null
+          status?: string
+          error?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          candidate_id?: string
+          channel?: string
+          to_address?: string
+          subject?: string | null
+          body?: string
+          sent_by?: string | null
+          reply_to?: string | null
+          status?: string
+          error?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      profile_field_settings: {
+        Row: {
+          id: string
+          agency_id: string
+          scope: string
+          key: string
+          label: string
+          hint: string | null
+          required: boolean
+          active: boolean
+          multiline: boolean
+          is_custom: boolean
+          field_group: string | null
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          scope: string
+          key: string
+          label: string
+          hint?: string | null
+          required?: boolean
+          active?: boolean
+          multiline?: boolean
+          is_custom?: boolean
+          field_group?: string | null
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          scope?: string
+          key?: string
+          label?: string
+          hint?: string | null
+          required?: boolean
+          active?: boolean
+          multiline?: boolean
+          is_custom?: boolean
+          field_group?: string | null
+          sort_order?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      position_snippets: {
+        Row: {
+          id: string
+          agency_id: string
+          berufsbild: string
+          kind: string
+          text: string
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          berufsbild: string
+          kind: string
+          text: string
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          berufsbild?: string
+          kind?: string
+          text?: string
+          sort_order?: number
+          created_at?: string
+        }
+        Relationships: []
       }
       automation_templates: {
         Row: {

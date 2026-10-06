@@ -13,6 +13,7 @@ import { applyFormMapping, loadFormQuestions, rememberFormKeys, resolvePlzFromAn
 import { nearestPlz } from "@/lib/geocode-plz"
 import { ensureClientAssignment } from "@/lib/client-assignment"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
+import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 
 export type SupabaseClient = GenericSupabaseClient<Database>
 
@@ -145,7 +146,10 @@ export async function processMetaLead(
     mapped.firstName || mapped.lastName
       ? { firstName: mapped.firstName ?? "", lastName: mapped.lastName ?? "", usedLongNameHeuristic: false }
       : extractCleanName(name ?? "")
-  const customFields = mapped.fields
+  // Beschreibung bleibt leer (Paket 18, T-83): Antworten ohne passendes Feld kommen ins
+  // Zusatzfeld "Weitere Formularangaben", Import-Hinweise in den Verlauf.
+  const customFields: Record<string, string> = { ...mapped.fields }
+  if (mapped.descriptionLines.length > 0) customFields[WEITERE_ANTWORTEN_KEY] = mapped.descriptionLines.join("\n")
 
   // Berufsbild: eigene Angabe (Berufsbild-/Ausbildungsfrage) vor Kampagnentitel.
   const berufsbild =
@@ -199,17 +203,15 @@ export async function processMetaLead(
       client_id: campaign.client_id,
       meta_lead_id: lead.id,
       custom_fields: customFields as Json,
-      notes: [
-        mapped.descriptionLines.join("\n"),
-        `${notePrefix}Import direkt aus Meta, Kampagne "${campaign.title}"`,
-        locationNote,
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
     })
     .select("id")
     .single()
   if (insertError) throw new Error(insertError.message)
+  await supabase.from("candidate_history").insert({
+    candidate_id: inserted.id,
+    type: "note",
+    content: [`${notePrefix}Import direkt aus Meta, Kampagne „${campaign.title}“.`, locationNote].filter(Boolean).join(" "),
+  })
 
   if (campaign.client_id) {
     try {
