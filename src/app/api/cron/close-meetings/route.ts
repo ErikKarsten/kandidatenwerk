@@ -3,12 +3,12 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { pollRecentMeetings, processPendingMeetings } from "@/lib/close-meetings"
 import { runTrackedCronJob } from "@/lib/cron/job-runs"
+import { isCronAuthorized } from "@/lib/cron-auth"
 
 // Aufgerufen vom Cloudflare Cron Trigger (custom-worker.ts, alle 5 Minuten): fasst
 // vorgemerkte Close-Besprechungen zusammen und legt sie als Kommentar beim Kunden an.
 export async function POST(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET
-  if (!cronSecret || request.headers.get("x-cron-secret") !== cronSecret) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

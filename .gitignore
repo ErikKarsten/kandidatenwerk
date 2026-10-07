@@ -48,3 +48,11 @@ next-env.d.ts
 
 # Sicherungen aus scripts/leadtable-neuimport.ts (enthalten personenbezogene Daten)
 /backups/
+
+# Vorlagen ohne Werte dürfen ins Repo
+!.env.example
+!.env.staging.example
+
+# Playwright (T-101)
+/playwright-report/
+/test-results/

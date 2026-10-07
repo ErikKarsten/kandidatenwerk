@@ -2,12 +2,10 @@ import { NextResponse, type NextRequest } from "next/server"
 import { syncApplicationsFromKanzleistelle } from "@/lib/sync-kanzleistelle"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { runTrackedCronJob } from "@/lib/cron/job-runs"
+import { isCronAuthorized } from "@/lib/cron-auth"
 
 export async function POST(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET
-  const providedSecret = request.headers.get("x-cron-secret")
-
-  if (!cronSecret || providedSecret !== cronSecret) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
