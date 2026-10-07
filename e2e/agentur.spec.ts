@@ -21,9 +21,9 @@ test("Dashboard und Hauptbereiche laden", async ({ page }) => {
   }
 })
 
-test("Kandidatenliste zeigt Testkandidaten", async ({ page }) => {
-  await page.goto("/dashboard/candidates")
-  await expect(page.getByText("Ben").first()).toBeVisible()
+test("Kandidatenliste zeigt Musterkandidaten", async ({ page }) => {
+  await page.goto("/dashboard/candidates?tag=Musterdatensatz")
+  await expect(page.getByText("Laura Schneider").first()).toBeVisible()
 })
 
 test("Portal ist für Agentur gesperrt", async ({ page }) => {
