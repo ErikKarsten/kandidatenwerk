@@ -27,7 +27,6 @@ import { CommunicationTab, type CandidateMessage, type MessageTemplate } from ".
 import type { TemplateVars } from "@/lib/automation-engine"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
 import { TagEditor } from "@/components/dashboard/tag-editor"
-import { AssignmentStatusSelect } from "@/components/dashboard/assignment-status-select"
 import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { useShowMode } from "@/lib/show-mode"
 import { CandidateShowView } from "./show-view"
@@ -255,32 +254,19 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             <h1 className="text-2xl font-bold text-gray-900">
               {candidate.first_name} {candidate.last_name}
             </h1>
-            {/* Ab der Zuordnung gilt der Status beim Kunden statt des internen (Paket 31). */}
-            {activeAssignments.length > 0 ? (
-              activeAssignments.map((a) => (
-                <AssignmentStatusSelect
-                  key={a.id}
-                  assignmentId={a.id}
-                  status={a.status}
-                  size="md"
-                  title={`Status bei ${clients.find((c) => c.id === a.clientId)?.name ?? "der Kanzlei"}`}
-                />
-              ))
-            ) : (
-              <select
-                defaultValue={candidate.status}
-                onChange={handleStatusChange}
-                disabled={statusPending}
-                className="rounded-full px-3 py-1 text-xs font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 disabled:opacity-50"
-                style={{ backgroundColor: colors.bg, color: colors.text }}
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            )}
+            <select
+              defaultValue={candidate.status}
+              onChange={handleStatusChange}
+              disabled={statusPending}
+              className="rounded-full px-3 py-1 text-xs font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 disabled:opacity-50"
+              style={{ backgroundColor: colors.bg, color: colors.text }}
+            >
+              {STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
             <div className="flex items-center gap-1.5">
               <select
                 value={candidate.berufsbild ?? ""}

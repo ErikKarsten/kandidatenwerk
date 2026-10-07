@@ -48,9 +48,8 @@ export interface CandidateListItem {
   created_at: string
   custom_fields: Record<string, string> | null
   tags: string[]
-  // Status beim Kunden (weitester aller aktiven Zuordnungen); ersetzt ab der Zuordnung
-  // den internen Status in der Anzeige (Paket 31).
-  assignmentStatus: string | null
+  // Aktive Zuordnungen mit Status beim Kunden (Paket 34: eigene Spalte neben dem internen Status).
+  assignments: { client_id: string; client_name: string; status: string }[]
   campaigns: {
     id: string
     title: string
@@ -230,7 +229,7 @@ export function CandidatesList({
               </option>
             ))}
           </optgroup>
-          <optgroup label="Beim Kunden">
+          <optgroup label="Status Zuordnung">
             {ASSIGNMENT_STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={`kunde:${o.value}`}>
                 Kunde: {o.label}
@@ -316,6 +315,7 @@ export function CandidatesList({
                 <TableRow style={{ borderColor: "#dde3ea" }}>
                   <TableHead className="text-gray-600">Name</TableHead>
                   <TableHead className="text-gray-600">Status</TableHead>
+                  <TableHead className="text-gray-600">Status Zuordnung</TableHead>
                   {!showMode && <TableHead className="text-gray-600">E-Mail</TableHead>}
                   <TableHead className="text-gray-600">Erstellt am</TableHead>
                   <TableHead className="text-gray-600">Ausbildung</TableHead>
@@ -347,22 +347,31 @@ export function CandidatesList({
                         )}
                       </TableCell>
                       <TableCell>
-                        {c.assignmentStatus ? (
-                          <span
-                            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-                            style={{ backgroundColor: assignmentStatusLabel(c.assignmentStatus).bg, color: assignmentStatusLabel(c.assignmentStatus).text }}
-                            title="Status beim Kunden"
-                          >
-                            <Building2 size={11} />
-                            {assignmentStatusLabel(c.assignmentStatus).label}
-                          </span>
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+                          style={{ backgroundColor: colors.bg, color: colors.text }}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
+                          {STATUS_LABEL[c.status] ?? c.status}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {c.assignments.length === 0 ? (
+                          <span className="text-gray-300">—</span>
                         ) : (
-                          <span
-                            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-                            style={{ backgroundColor: colors.bg, color: colors.text }}
-                          >
-                            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
-                            {STATUS_LABEL[c.status] ?? c.status}
+                          <span className="flex flex-col gap-1">
+                            {c.assignments.map((a) => (
+                              <span
+                                key={a.client_id}
+                                className="inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+                                style={{ backgroundColor: assignmentStatusLabel(a.status).bg, color: assignmentStatusLabel(a.status).text }}
+                                title={showMode ? "Status beim Kunden" : `Status bei ${a.client_name}`}
+                              >
+                                <Building2 size={11} />
+                                {showMode ? "" : `${a.client_name}: `}
+                                {assignmentStatusLabel(a.status).label}
+                              </span>
+                            ))}
                           </span>
                         )}
                       </TableCell>

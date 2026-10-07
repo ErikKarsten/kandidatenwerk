@@ -61,7 +61,7 @@ export default async function CandidatesPage({
   let query = supabase
     .from("candidate_list_rows")
     .select(
-      "id, first_name, last_name, email, status, berufsbild, source, created_at, custom_fields, campaign_id, campaign_title, client_id, client_name, tags, assignment_status",
+      "id, first_name, last_name, email, status, berufsbild, source, created_at, custom_fields, campaign_id, campaign_title, client_id, client_name, tags, assignment_status, assignments",
       { count: "exact" }
     )
 
@@ -117,7 +117,7 @@ export default async function CandidatesPage({
     created_at: c.created_at ?? "",
     custom_fields: (c.custom_fields as Record<string, string> | null) ?? null,
     tags: c.tags ?? [],
-    assignmentStatus: c.assignment_status ?? null,
+    assignments: Array.isArray(c.assignments) ? (c.assignments as { client_id: string; client_name: string; status: string }[]) : [],
     campaigns: c.campaign_id
       ? {
           id: c.campaign_id,
