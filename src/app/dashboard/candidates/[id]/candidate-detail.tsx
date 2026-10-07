@@ -27,6 +27,9 @@ import { CommunicationTab, type CandidateMessage, type MessageTemplate } from ".
 import type { TemplateVars } from "@/lib/automation-engine"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
 import { TagEditor } from "@/components/dashboard/tag-editor"
+import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
+import { useShowMode } from "@/lib/show-mode"
+import { CandidateShowView } from "./show-view"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -91,6 +94,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
   const [archivePending, startArchiveTransition] = useTransition()
   const [deletePending, startDeleteTransition] = useTransition()
   const [taskModalOpen, setTaskModalOpen] = useState(false)
+  const [showMode, setShowMode] = useShowMode()
 
   const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
 
@@ -148,6 +152,11 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
       router.back()
       router.refresh()
     })
+  }
+
+  // Show-Modus (Paket 29): eigene Vorführansicht ohne personenbezogene Daten.
+  if (showMode) {
+    return <CandidateShowView candidate={candidate} customFieldDefinitions={customFieldDefinitions} onShowModeChange={setShowMode} />
   }
 
   return (
@@ -281,6 +290,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} />
           </div>
           <div className="flex items-center gap-2">
+            <ShowModeToggle on={false} onChange={setShowMode} />
             <CvExportMenu candidateId={candidate.id} />
             <button
               onClick={() => { setModalStep("choice"); setModalError(null) }}
