@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { processPendingMeetings } from "@/lib/close-meetings"
+import { pollRecentMeetings, processPendingMeetings } from "@/lib/close-meetings"
 import { runTrackedCronJob } from "@/lib/cron/job-runs"
 
 // Aufgerufen vom Cloudflare Cron Trigger (custom-worker.ts, alle 5 Minuten): fasst
@@ -14,8 +14,9 @@ export async function POST(request: NextRequest) {
 
   const supabase = createSupabaseAdminClient()
   const result = await runTrackedCronJob(supabase, "close-meetings", async () => {
+    const polled = await pollRecentMeetings(supabase as unknown as SupabaseClient)
     const r = await processPendingMeetings(supabase as unknown as SupabaseClient)
-    return { result: r, ok: r.failed === 0 }
+    return { result: { ...r, polled }, ok: r.failed === 0 }
   })
   return NextResponse.json(result)
 }
