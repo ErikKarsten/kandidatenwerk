@@ -8,6 +8,9 @@ import { CandidatePanel } from "@/components/dashboard/candidate-panel/candidate
 import type { AdArea } from "@/lib/meta-campaigns-queries"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { searchLocationAction } from "./actions"
+import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
+import { anonymousName, useShowMode } from "@/lib/show-mode"
+import { berufsbildLabel } from "@/lib/berufsbild"
 
 // Leaflet greift beim Modul-Import auf Browser-Globals zu - muss deshalb clientseitig-only
 // geladen werden (ssr:false), sonst schlägt das Server-Rendering fehl (gleiches Muster
@@ -38,6 +41,7 @@ export interface MapClientPoint {
 export interface MapCandidatePoint {
   id: string
   name: string
+  berufsbild?: string | null
   lat: number
   lng: number
   // true = kein eigenes lat/lng auf dem Kandidaten, Koordinaten stattdessen vom
@@ -100,6 +104,9 @@ export function MapOverview({
   const [accuracyFilter, setAccuracyFilter] = useState<AccuracyFilter>("all")
   // Kandidat im Seitenfenster statt Seitenwechsel (Paket 13, T-55).
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
+  // Show-Modus (Paket 29): Kandidaten nur mit Kennung und Berufsbild, Kanzleien ohne Namen,
+  // Seitenfenster anonymisiert - zum Vorführen beim Kunden.
+  const [showMode, setShowMode] = useShowMode()
 
   const mapRef = useRef<MatchesMapHandle>(null)
   const [locationQuery, setLocationQuery] = useState("")
@@ -149,10 +156,10 @@ export function MapOverview({
       ? clients.map((c) => ({
           lat: c.lat,
           lng: c.lng,
-          label: c.name,
-          sublabel: c.place ? `Kanzlei · ${c.place}` : "Kanzlei",
+          label: showMode ? "Kanzlei" : c.name,
+          sublabel: showMode ? undefined : c.place ? `Kanzlei · ${c.place}` : "Kanzlei",
           color: CLIENT_COLOR,
-          href: `/dashboard/clients/${c.id}`,
+          href: showMode ? undefined : `/dashboard/clients/${c.id}`,
         }))
       : []
 
@@ -167,8 +174,8 @@ export function MapOverview({
     const candidatePoints: MapPoint[] = filteredCandidates.map((c) => ({
       lat: c.lat,
       lng: c.lng,
-      label: c.name,
-      sublabel: "Kandidat",
+      label: showMode ? anonymousName(c.id) : c.name,
+      sublabel: [showMode ? null : "Kandidat", berufsbildLabel(c.berufsbild)].filter(Boolean).join(" · ") || "Kandidat",
       color: CANDIDATE_COLOR,
       approximate: c.approximate,
       note: c.approximate ? "Ungefährer Standort, keine eigene PLZ hinterlegt" : undefined,
@@ -176,7 +183,7 @@ export function MapOverview({
     }))
 
     return [...clientPoints, ...candidatePoints]
-  }, [clients, candidates, includeClients, includeCandidates, accuracyFilter])
+  }, [clients, candidates, includeClients, includeCandidates, accuracyFilter, showMode])
 
   return (
     <div className="flex flex-col gap-4">
@@ -234,6 +241,9 @@ export function MapOverview({
               Stecknadel entfernen
             </button>
           )}
+          <div className="ml-auto">
+            <ShowModeToggle on={showMode} onChange={setShowMode} />
+          </div>
         </div>
         {searchError && <p className="text-xs text-red-500">{searchError}</p>}
       </div>
@@ -310,7 +320,7 @@ export function MapOverview({
       </div>
 
       <MatchesMap ref={mapRef} points={points} circles={showAdAreas ? adCircles : []} height="600px" scrollWheelZoom searchPin={searchPin} />
-      {selectedCandidateId && <CandidatePanel candidateId={selectedCandidateId} onClose={() => setSelectedCandidateId(null)} />}
+      {selectedCandidateId && <CandidatePanel candidateId={selectedCandidateId} onClose={() => setSelectedCandidateId(null)} anonymize={showMode} />}
     </div>
   )
 }

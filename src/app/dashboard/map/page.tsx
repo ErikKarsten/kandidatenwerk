@@ -19,7 +19,7 @@ export default async function MapPage() {
       .select("id, name, lat, lng")
       .not("lat", "is", null)
       .not("lng", "is", null),
-    supabase.from("candidates").select("id, first_name, last_name, lat, lng, campaign_id").eq("is_demo", false),
+    supabase.from("candidates").select("id, first_name, last_name, lat, lng, campaign_id, berufsbild").eq("is_demo", false),
     supabase.from("campaigns").select("id, client_id"),
     // Werbegebiete laufender Meta-Kampagnen (Atlas T-38) für die Ebene "Werbegebiete".
     getActiveAdAreas(supabase as unknown as SupabaseClient),
@@ -55,6 +55,7 @@ export default async function MapPage() {
       candidatePoints.push({
         id: candidate.id,
         name,
+        berufsbild: candidate.berufsbild,
         lat: candidate.lat,
         lng: candidate.lng,
         approximate: false,
@@ -71,6 +72,7 @@ export default async function MapPage() {
     candidatePoints.push({
       id: candidate.id,
       name,
+      berufsbild: candidate.berufsbild,
       lat: client.lat,
       lng: client.lng,
       approximate: true,

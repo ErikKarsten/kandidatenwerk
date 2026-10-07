@@ -18,7 +18,8 @@ export interface GenerateTextOptions {
 }
 
 const KIE_URL = "https://api.kie.ai/claude/v1/messages"
-const KIE_MODELS: Record<LlmTier, string> = { fast: "claude-haiku-4-5", smart: "claude-sonnet-5-5" }
+// Für den kie.ai-Schlüssel ist nur Sonnet 5.5 freigegeben (07.10.2026) - auch für "fast".
+const KIE_MODELS: Record<LlmTier, string> = { fast: "claude-sonnet-5-5", smart: "claude-sonnet-5-5" }
 const ANTHROPIC_MODELS: Record<LlmTier, string> = { fast: "claude-haiku-4-5", smart: "claude-opus-5-5" }
 
 export function llmConfigured(): boolean {
