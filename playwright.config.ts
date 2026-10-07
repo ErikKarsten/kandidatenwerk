@@ -1,7 +1,11 @@
 import { defineConfig, devices } from "@playwright/test"
+import dotenv from "dotenv"
+
+// Testzugänge (E2E_*) aus .env.local, angelegt von scripts/live-testbereich.ts.
+dotenv.config({ path: ".env.local", quiet: true })
 
 // End-to-End-Tests (T-101). Laufen gegen eine bereits deployte Umgebung, standardmäßig
-// Staging (E2E_BASE_URL). Ohne Logins (E2E_ADMIN_*, E2E_PORTAL_*) laufen nur die
+// Staging bzw. bis zum Launch Live (E2E_BASE_URL). Ohne Logins (E2E_ADMIN_*, E2E_PORTAL_*) laufen nur die
 // öffentlichen Prüfungen - so sind sie auch gegen Live gefahrlos (nur lesend).
 //   E2E_BASE_URL=https://... npx playwright test
 //   npx playwright test --project=chromium   (schnell, nur ein Browser)
