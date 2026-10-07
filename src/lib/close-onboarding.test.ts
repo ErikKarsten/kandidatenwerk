@@ -27,13 +27,16 @@ describe("Übernahme aus Close", () => {
 
   it("liest die KI-Antwort nur mit bekannten Feldern", () => {
     const p = payloadFromAnswer(
-      'Hier: {"profil": {"intro": "Wir sind ...", "erfunden": "x", "painpoints": "Keine Berufsanfänger"}, "benefits": ["Firmenwagen nach Absprache"], "laufzeit_monate": "12", "stellen": [{"titel": "StFA (m/w/d)", "berufsbild": "steuerfachangestellte", "aufgaben": "a\\nb"}, {"berufsbild": "x"}]}'
+      'Hier: {"profil": {"intro": "Wir sind ...", "erfunden": "x", "ansprechpartner_bewerbung": "Frau X", "painpoints": "Keine Berufsanfänger"}, "benefits": ["Firmenwagen nach Absprache"], "laufzeit_monate": "12", "vertragsstart": "2026-11-01", "stellen": [{"titel": "StFA (m/w/d)", "berufsbild": "steuerfachangestellte", "aufgaben": "a\\nb"}, {"berufsbild": "x"}]}'
     ) as Record<string, unknown>
     expect(p.intro).toBe("Wir sind ...")
     expect(p.painpoints).toBe("Keine Berufsanfänger")
     expect(p.erfunden).toBeUndefined()
     expect(p.benefits).toEqual(["Firmenwagen nach Absprache"])
-    expect(p.laufzeit_monate).toBe(12)
+    // Vertragsstart, Laufzeit und Ansprechpartner pflegt der KAM von Hand.
+    expect(p.laufzeit_monate).toBeUndefined()
+    expect(p.vertragsstart).toBeUndefined()
+    expect(p.ansprechpartner_bewerbung).toBeUndefined()
     expect(p.stellen_json).toEqual([{ titel: "StFA (m/w/d)", berufsbild: "steuerfachangestellte", aufgaben: "a\nb" }])
     expect(payloadFromAnswer("kein JSON")).toEqual({})
   })

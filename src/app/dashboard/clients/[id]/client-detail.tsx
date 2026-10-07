@@ -15,6 +15,7 @@ import { ContactsSection, type Contact } from "./contacts-section"
 import { ProjectTab, type ProjectMeta, type ClientProfileData } from "./project-tab"
 import { ProjectComments } from "./project-comments"
 import { ClientTasksTab, type ClientTask } from "./client-tasks-tab"
+import { AssignmentStatusSelect } from "@/components/dashboard/assignment-status-select"
 import { AdCoverageBadge, type CoverageArea } from "./ad-coverage-badge"
 import type { ClientPosition } from "./project-positions"
 import type { ClientLocation } from "@/lib/client-locations"
@@ -34,7 +35,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { assignmentStatusLabel } from "@/lib/assignment-status"
 import { KanzleistelleCard, type KanzleistelleStatus } from "./kanzleistelle-card"
 import type { ProfileFieldConfig } from "@/lib/profile-field-config"
 
@@ -858,12 +858,7 @@ function KandidatenTab({
                   <TableCell className="text-gray-600">{c.assignmentCampaignTitle ?? "Kanzlei allgemein"}</TableCell>
                   <TableCell className="text-gray-400">{c.campaignTitle || "—"}</TableCell>
                   <TableCell>
-                    <span
-                      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                      style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}
-                    >
-                      {assignmentStatusLabel(c.assignmentStatus).label}
-                    </span>
+                    <AssignmentStatusSelect assignmentId={c.assignmentId} status={c.assignmentStatus} />
                   </TableCell>
                   <TableCell className="text-gray-500">
                     {new Date(c.assignedSince).toLocaleDateString("de-DE", {

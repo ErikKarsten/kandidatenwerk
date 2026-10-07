@@ -44,8 +44,8 @@ export async function ensureClientAssignment(
   }
 }
 
-// Zuordnung eines Kandidaten zu einer KANZLEI-KAMPAGNE (Atlas T-36, 1:n): idempotent je
-// (Kandidat, Kampagne). client_id wird aus der Kampagne übernommen - der DB-Trigger
+// Zuordnung eines Kandidaten zu einer KANZLEI-KAMPAGNE (Atlas T-36): idempotent je
+// (Kandidat, Kampagne), höchstens eine aktive Zuordnung je Kanzlei (Paket 31). client_id wird aus der Kampagne übernommen - der DB-Trigger
 // client_assignments_sync_campaign erzwingt das zusätzlich und lehnt Lead-Kampagnen ab.
 // Gibt die ID der (bestehenden oder neuen) Zuordnung zurück und ob sie neu ist.
 export async function ensureCampaignAssignment(
@@ -66,15 +66,22 @@ export async function ensureCampaignAssignment(
   }
   if (!(await isAssignable(supabase, candidateId))) throw new Error(NOT_ASSIGNABLE_MESSAGE)
 
+  // Eine aktive Zuordnung je Kandidat und Kanzlei (Paket 31, Unique-Index): über dieselbe
+  // Kampagne idempotent, über eine andere Kampagne derselben Kanzlei ein klarer Hinweis.
   const { data: existing, error: lookupError } = await supabase
     .from("client_assignments")
-    .select("id")
+    .select("id, campaign_id, campaigns(title)")
     .eq("candidate_id", candidateId)
-    .eq("campaign_id", campaignId)
+    .eq("client_id", campaign.client_id)
     .is("removed_at", null)
     .maybeSingle()
   if (lookupError) throw new Error(lookupError.message)
-  if (existing) return { id: existing.id, created: false }
+  if (existing && existing.campaign_id === campaignId) return { id: existing.id, created: false }
+  if (existing) {
+    const rel = existing.campaigns as { title: string } | { title: string }[] | null
+    const title = (Array.isArray(rel) ? rel[0]?.title : rel?.title) ?? "ohne Kampagne"
+    throw new Error(`Der Kandidat ist dieser Kanzlei bereits zugeordnet (Kampagne „${title}“).`)
+  }
 
   const { data: inserted, error: insertError } = await supabase
     .from("client_assignments")

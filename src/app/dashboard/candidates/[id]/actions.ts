@@ -9,6 +9,7 @@ import { ensureCampaignAssignment } from "@/lib/client-assignment"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { normalizeTags } from "@/lib/candidate-tags"
+import { ASSIGNMENT_STATUS_OPTIONS, assignmentStatusLabel } from "@/lib/assignment-status"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -332,31 +333,45 @@ export async function removeClientAssignmentAction(
   return null
 }
 
+// Status beim Kunden aus dem Backend setzen (Paket 31): gleiche Werte wie im Portal, mit
+// Verlaufseintrag beim Kandidaten.
 export async function updateAssignmentStatusAction(
   assignmentId: string,
   status: string
 ): Promise<{ error: string } | null> {
+  if (!ASSIGNMENT_STATUS_OPTIONS.some((o) => o.value === status)) return { error: "Unbekannter Status." }
   const supabase = await createSupabaseServerClient()
   // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return staffError
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Nicht eingeloggt." }
+  const { data: before } = await supabase
+    .from("client_assignments")
+    .select("status, candidate_id, client_id, clients(name)")
+    .eq("id", assignmentId)
+    .is("removed_at", null)
+    .maybeSingle()
+  if (!before) return { error: "Zuordnung nicht gefunden." }
+  if (before.status === status) return null
 
   // .is("removed_at", null) - nur die aktive Zuordnung darf im Status verändert
   // werden, eine bereits entfernte (historische) Zuordnung bleibt unveränderlich.
-  const { data, error } = await supabase
-    .from("client_assignments")
-    .update({ status })
-    .eq("id", assignmentId)
-    .is("removed_at", null)
-    .select("candidate_id")
-    .single()
-
+  const { error } = await supabase.from("client_assignments").update({ status }).eq("id", assignmentId).is("removed_at", null)
   if (error) return { error: error.message }
 
-  revalidatePath(`/dashboard/candidates/${data.candidate_id}`)
+  const rel = before.clients as { name: string } | { name: string }[] | null
+  const clientName = (Array.isArray(rel) ? rel[0]?.name : rel?.name) ?? "Kanzlei"
+  const { error: historyError } = await supabase.from("candidate_history").insert({
+    candidate_id: before.candidate_id,
+    type: "note",
+    content: `Status bei „${clientName}“ geändert: ${assignmentStatusLabel(before.status).label} → ${assignmentStatusLabel(status).label}`,
+    created_by: guard.staff.userId,
+  })
+  if (historyError) console.error("Verlaufseintrag fehlgeschlagen:", historyError.message)
+
+  revalidatePath(`/dashboard/candidates/${before.candidate_id}`)
+  revalidatePath(`/dashboard/clients/${before.client_id}`)
+  revalidatePath("/dashboard/candidates")
   return null
 }
 

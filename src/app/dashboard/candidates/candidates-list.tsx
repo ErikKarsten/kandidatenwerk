@@ -20,6 +20,8 @@ import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { TagChip } from "@/components/dashboard/tag-editor"
 import { anonymousName, useShowMode } from "@/lib/show-mode"
 import { visibleTags } from "@/lib/candidate-tags"
+import { ASSIGNMENT_STATUS_OPTIONS, assignmentStatusLabel } from "@/lib/assignment-status"
+import { Building2 } from "lucide-react"
 
 const STATUS_LABEL = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o.label]))
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -46,6 +48,9 @@ export interface CandidateListItem {
   created_at: string
   custom_fields: Record<string, string> | null
   tags: string[]
+  // Status beim Kunden (weitester aller aktiven Zuordnungen); ersetzt ab der Zuordnung
+  // den internen Status in der Anzeige (Paket 31).
+  assignmentStatus: string | null
   campaigns: {
     id: string
     title: string
@@ -218,11 +223,20 @@ export function CandidatesList({
           style={{ borderColor: "#dde3ea" }}
         >
           <option value="alle">Alle Status</option>
-          {Object.entries(STATUS_LABEL).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
+          <optgroup label="Intern">
+            {Object.entries(STATUS_LABEL).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Beim Kunden">
+            {ASSIGNMENT_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={`kunde:${o.value}`}>
+                Kunde: {o.label}
+              </option>
+            ))}
+          </optgroup>
         </select>
         <select
           value={berufsbildFilter}
@@ -333,13 +347,24 @@ export function CandidatesList({
                         )}
                       </TableCell>
                       <TableCell>
-                        <span
-                          className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-                          style={{ backgroundColor: colors.bg, color: colors.text }}
-                        >
-                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
-                          {STATUS_LABEL[c.status] ?? c.status}
-                        </span>
+                        {c.assignmentStatus ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+                            style={{ backgroundColor: assignmentStatusLabel(c.assignmentStatus).bg, color: assignmentStatusLabel(c.assignmentStatus).text }}
+                            title="Status beim Kunden"
+                          >
+                            <Building2 size={11} />
+                            {assignmentStatusLabel(c.assignmentStatus).label}
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+                            style={{ backgroundColor: colors.bg, color: colors.text }}
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
+                            {STATUS_LABEL[c.status] ?? c.status}
+                          </span>
+                        )}
                       </TableCell>
                       {!showMode && (
                         <TableCell className="text-gray-600">
