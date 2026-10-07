@@ -12,7 +12,6 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { closeGet, leadFieldLabels, type CloseLead } from "@/lib/close-api"
 import { importLeadHistory, leadActivityTexts } from "@/lib/close-sync"
 import { closeLeadUrl, processCloseWebhook, type CloseWebhookPayload, type PositionPayload } from "@/lib/close-webhook"
-import { PROFILE_FIELDS } from "@/lib/client-project"
 import { generateText } from "@/lib/llm"
 
 const MAX_ATTEMPTS = 3
@@ -68,31 +67,60 @@ function leadFieldsText(lead: CloseLead, labels: Map<string, string>): string {
     .join("\n")
 }
 
-const SYSTEM = `Du befüllst für Endlich Mitarbeiter (Recruiting für Steuerkanzleien) das Kanzleiprofil und die gesuchten Stellen eines neuen Kunden. Grundlage sind alle Informationen aus dem Vertriebs-CRM Close: Lead-Felder, Notizen, Formulare aus Gesprächen, Zusammenfassungen von Besprechungen und automatische Transkripte von Telefonaten (mit Erkennungsfehlern).
+// Feldbeschreibungen nach dem bisherigen Zapier-Prompt (07.10.2026). Bewusst NICHT
+// automatisch: Vertragsstart, Laufzeit und Ansprechpartner für Bewerbungsgespräche - die
+// pflegt der Key Account Manager im Projekt-Reiter (Entscheidung 07.10.2026).
+const PROFILE_FIELD_GUIDE: Record<string, string> = {
+  kurzbeschreibung: "Ein Satz über die Kanzlei: Art, Größe, Ort, Besonderheit. Beispiel: Moderne Steuerkanzlei mit 15 Mitarbeitenden in Köln, spezialisiert auf Ärzte.",
+  intro: "3–5 Sätze, mit denen wir die Kanzlei einem Bewerber vorstellen: wer sie ist, was sie ausmacht, Arbeitsweise und Kultur. Positiv formuliert, nur Fakten aus den Gesprächen.",
+  mitarbeiterzahl: "Anzahl Mitarbeitende bzw. Teamgröße. Beispiel: ca. 20, davon 3 Steuerberater",
+  standorte: "Standort(e) mit Straße, PLZ und Ort, soweit genannt; mehrere durch Semikolon trennen. Beispiel: Hauptstraße 5, 50667 Köln; 53111 Bonn",
+  mandantenstruktur: "Mandanten, Branchen und fachliche Schwerpunkte. Beispiel: Überwiegend Handwerk und Heilberufe; Schwerpunkt Lohn und Jahresabschlüsse",
+  software: "Eingesetzte Programme. Beispiel: DATEV, DATEV Unternehmen online",
+  arbeitszeiten: "Arbeitszeitmodell. Beispiel: Gleitzeit, Teilzeit ab 25 Std. möglich, Freitag ab 13 Uhr frei",
+  homeoffice: "Regelung zu Homeoffice bzw. mobilem Arbeiten. Beispiel: 2 Tage pro Woche nach Einarbeitung",
+  gehaltsgefuege: "Intern: was die Kanzlei zahlt (Spannen je Rolle/Erfahrung, 13. Gehalt, Bonus, Gehaltsrunden), Beträge genau. Beispiel: Steuerfachangestellte 42.000–52.000 € brutto/Jahr je nach Erfahrung, 13. Monatsgehalt",
+  painpoints: "Intern: Warum arbeitet die Kanzlei mit uns? Probleme bei der Personalsuche (Stellen lange offen, Überlastung, Portale erfolglos, Wachstum, Ruhestand). Stichpunkte, jede Zeile beginnt mit \"- \".",
+  ziele_zusammenarbeit: "Intern: Was erwartet die Kanzlei konkret von uns: Anzahl Einstellungen, Zeitrahmen, gewünschtes Profil inkl. Ausschlüsse (z.B. keine Berufsanfänger), woran sie Erfolg misst. Stichpunkte, jede Zeile beginnt mit \"- \".",
+  vertriebsnotizen: "Intern: weitere relevante Absprachen aus dem Vertrieb (z.B. Referenzen, vereinbarte Abläufe), die in keinem anderen Feld stehen. Stichpunkte.",
+}
 
-Regeln:
-- Nur übernehmen, was in den Quellen steht. Nichts erfinden. Unbekanntes weglassen (Feld nicht ausgeben).
-- Neuere Aussagen haben Vorrang vor älteren.
-- Kanzleiprofil-Texte (kurzbeschreibung, intro) sachlich und positiv, für Bewerber lesbar.
-- Interne Wünsche und Ausschlüsse der Kanzlei (z.B. "keine Berufsanfänger", Gehaltsgrenzen, Gründe für die Suche) gehören in painpoints oder ziele_zusammenarbeit, nicht in die Stellen.
-- Stellen: aufgaben und anforderungen als Stichpunkte, ein Punkt pro Zeile, bewerbergerecht formuliert. berufsbild ist einer von: steuerfachangestellte, steuerfachwirt, bilanzbuchhalter, steuerberater, sonstige.
-- benefits als Liste kurzer Stichpunkte, ohne Bedingungen wie "wenn es passt".
-- vertragsstart als JJJJ-MM-TT, laufzeit_monate als Zahl - nur wenn eindeutig genannt.
+const SYSTEM = `Du bist Assistent eines Recruiting-Dienstleisters für Steuerkanzleien (Endlich Mitarbeiter). Du bekommst alle Informationen aus unserem Vertriebs-CRM Close zu einer Steuerkanzlei: Lead-Felder, Notizen, Formulare aus Gesprächen, Zusammenfassungen von Besprechungen und automatische Transkripte von Telefonaten (mit Erkennungsfehlern, ohne Sprecherangaben).
 
-Antworte nur mit JSON in dieser Form (alle Felder optional):
-{
-  "profil": { <Feldschlüssel>: "Text" },
-  "benefits": ["..."],
-  "vertragsstart": "JJJJ-MM-TT",
-  "laufzeit_monate": 12,
-  "stellen": [{ "titel": "", "berufsbild": "", "plz": "", "ort": "", "arbeitszeit": "", "berufserfahrung": "", "software": "", "gehalt": "", "start": "", "aufgaben": "", "anforderungen": "" }]
-}`
+Deine Aufgabe: Arbeite daraus das Kanzleiprofil für unser internes System "Kandidatenwerk" heraus. Daraus entstehen später Stellenanzeigen und die Briefings für unsere Bewerber-Telefonisten. Außerdem halten wir fest, warum die Kanzlei mit uns zusammenarbeitet.
+
+REGELN
+1. Verwende ausschließlich Informationen, die in den Quellen tatsächlich vorkommen. Nichts erfinden, nichts schätzen, nichts verallgemeinern.
+2. Ist eine Information nicht vorhanden, lass das Feld weg.
+3. Schreibe auf Deutsch, sachlich und konkret. Übernimm Zahlen, Namen, Programme und Beträge genau so, wie sie genannt wurden.
+4. Gibt es widersprüchliche Aussagen, gilt die Aussage aus der neuesten Quelle (Datum steht an jeder Quelle).
+5. Jedes Feld enthält nur den reinen Inhalt – keine Feldnamen, keine Einleitung, keine Anführungszeichen drumherum.
+6. Interne Wünsche und Ausschlüsse der Kanzlei (z.B. "keine Berufsanfänger", Gehaltsgrenzen, Gründe für die Suche) gehören in painpoints oder ziele_zusammenarbeit - nie in aufgaben oder anforderungen einer Stelle.
+
+FELDER FÜR "profil"
+#FELDER#
+
+BENEFITS
+"benefits": Liste aller Vorteile für Mitarbeitende als kurze Stichpunkte, ohne Bedingungen wie "wenn es passt". Beispiel: ["Jobrad", "30 Tage Urlaub", "Fortbildungsbudget", "betriebliche Altersvorsorge"]
+
+STELLEN
+"stellen": alle gesuchten Stellen. Schlüssel (unbekannte weglassen): titel, berufsbild, plz, ort, umkreis_km, arbeitszeit, berufserfahrung, software, gehalt, start, aufgaben, anforderungen.
+- berufsbild ist genau einer dieser Werte: Steuerfachangestellte, Steuerfachwirt, Bilanzbuchhalter, Steuerberater, Sonstige.
+- umkreis_km ist eine Zahl (Kilometer, in denen Bewerber wohnen dürfen).
+- gehalt: Gehalt für genau diese Stelle (intern, geht nie in die Anzeige).
+- aufgaben und anforderungen: bewerbergerechte Stichpunkte, ein Punkt pro Zeile.
+Beispiel: [{"titel":"Steuerfachangestellte (m/w/d)","berufsbild":"Steuerfachangestellte","plz":"50667","ort":"Köln","umkreis_km":25,"arbeitszeit":"Vollzeit oder Teilzeit ab 30 Std.","berufserfahrung":"ab 2 Jahre","software":"DATEV","gehalt":"45.000–52.000 € brutto/Jahr","start":"ab sofort","aufgaben":"Finanz- und Lohnbuchhaltung\nJahresabschlüsse","anforderungen":"Abgeschlossene Ausbildung als Steuerfachangestellte/r\nGute DATEV-Kenntnisse"}]
+
+Antworte nur mit JSON: {"profil": {...}, "benefits": [...], "stellen": [...]}`.replace(
+  "#FELDER#",
+  Object.entries(PROFILE_FIELD_GUIDE)
+    .map(([key, guide]) => `- ${key}: ${guide}`)
+    .join("\n")
+)
 
 interface ProfileAnswer {
   profil?: Record<string, unknown>
   benefits?: unknown
-  vertragsstart?: unknown
-  laufzeit_monate?: unknown
   stellen?: unknown
 }
 
@@ -107,13 +135,11 @@ export function payloadFromAnswer(raw: string): CloseWebhookPayload {
     return {}
   }
   const out: Record<string, unknown> = {}
-  const allowed = new Set([...PROFILE_FIELDS.map((f) => f.key), "standorte"])
+  const allowed = new Set(Object.keys(PROFILE_FIELD_GUIDE))
   for (const [key, value] of Object.entries(answer.profil ?? {})) {
     if (allowed.has(key) && text(value)) out[key] = text(value)
   }
   if (Array.isArray(answer.benefits)) out.benefits = answer.benefits.map((b) => text(b)).filter(Boolean)
-  if (text(answer.vertragsstart)) out.vertragsstart = text(answer.vertragsstart)
-  if (Number.isInteger(Number(answer.laufzeit_monate)) && Number(answer.laufzeit_monate) > 0) out.laufzeit_monate = Number(answer.laufzeit_monate)
   if (Array.isArray(answer.stellen)) {
     out.stellen_json = (answer.stellen as Record<string, unknown>[])
       .filter((p) => p && typeof p === "object" && text(p.titel))
@@ -142,10 +168,9 @@ export async function extractProfile(
   ].filter(Boolean)
   let prompt = parts.join("\n\n")
   if (prompt.length > MAX_TOTAL_CHARS) prompt = prompt.slice(prompt.length - MAX_TOTAL_CHARS)
-  const fieldList = PROFILE_FIELDS.map((f) => `- ${f.key}: ${f.label}${f.group === "intern" ? " (intern)" : ""}`).join("\n")
   const raw = await generateText({
     tier: "smart",
-    system: `${SYSTEM}\n\nFeldschlüssel für "profil":\n${fieldList}\n- standorte: Adressen aller Standorte`,
+    system: SYSTEM,
     prompt,
     maxTokens: 4000,
     timeoutMs: 180_000,
