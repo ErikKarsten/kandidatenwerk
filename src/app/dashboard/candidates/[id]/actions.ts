@@ -141,6 +141,18 @@ export async function saveDescriptionAction(
   return null
 }
 
+// "Offene Fragen aus Bewerberrunde" (Paket 35): Fragen des Kandidaten an den neuen
+// Arbeitgeber - sichtbar auch im Kundenportal.
+export async function saveOpenQuestionsAction(candidateId: string, text: string): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+  const { error } = await supabase.from("candidates").update({ offene_fragen: text.trim() || null }).eq("id", candidateId)
+  if (error) return { error: error.message }
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
+  return null
+}
+
 export async function addNoteAction(
   candidateId: string,
   content: string

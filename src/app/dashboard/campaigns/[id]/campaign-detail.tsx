@@ -24,6 +24,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { CandidateStatusSelect } from "./candidate-status-select"
+import { AssignmentStatusSelect } from "@/components/dashboard/assignment-status-select"
+import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
 import { AvailableCandidatesPanel } from "./available-candidates-panel"
@@ -62,6 +64,9 @@ interface Candidate {
   berufsbild: string | null
   plz: string | null
   created_at: string
+  // Kanzlei-Kampagne: Zuordnung mit Status beim Kunden (Paket 35).
+  assignmentId?: string
+  assignmentStatus?: string
 }
 
 function berufsbildLabel(value: string | null): string {
@@ -167,7 +172,8 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
   const filteredCandidates = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     return candidates.filter((c) => {
-      if (statusFilter !== "alle" && c.status !== statusFilter) return false
+      // Kanzlei-Kampagne: Status beim Kunden, sonst interner Status.
+      if (statusFilter !== "alle" && (c.assignmentStatus ?? c.status) !== statusFilter) return false
       if (berufsbildFilter !== "alle" && c.berufsbild !== berufsbildFilter) return false
       if (query) {
         const name = `${c.first_name} ${c.last_name}`.toLowerCase()
@@ -718,7 +724,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                 style={{ borderColor: "#dde3ea" }}
               >
                 <option value="alle">Alle Status</option>
-                {Object.entries(CANDIDATE_STATUS_LABEL).map(([value, label]) => (
+                {(campaign.kind === "kanzlei" ? ASSIGNMENT_STATUS_OPTIONS.map((o) => [o.value, o.label] as const) : Object.entries(CANDIDATE_STATUS_LABEL)).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
@@ -783,7 +789,11 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                             </Link>
                           </TableCell>
                           <TableCell>
-                            <CandidateStatusSelect candidateId={c.id} campaignId={campaign.id} currentStatus={c.status} />
+                            {c.assignmentId && c.assignmentStatus ? (
+                              <AssignmentStatusSelect assignmentId={c.assignmentId} status={c.assignmentStatus} size="md" />
+                            ) : (
+                              <CandidateStatusSelect candidateId={c.id} campaignId={campaign.id} currentStatus={c.status} />
+                            )}
                           </TableCell>
                           <TableCell className="text-gray-600">{berufsbildLabel(c.berufsbild)}</TableCell>
                           <TableCell className="text-gray-600">{c.plz ?? "—"}</TableCell>
@@ -822,13 +832,17 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                           >
                             {c.first_name} {c.last_name}
                           </Link>
-                          <span
-                            className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-                            style={{ backgroundColor: colors.bg, color: colors.text }}
-                          >
-                            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
-                            {CANDIDATE_STATUS_LABEL[c.status] ?? c.status}
-                          </span>
+                          {c.assignmentId && c.assignmentStatus ? (
+                            <AssignmentStatusSelect assignmentId={c.assignmentId} status={c.assignmentStatus} />
+                          ) : (
+                            <span
+                              className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                              style={{ backgroundColor: colors.bg, color: colors.text }}
+                            >
+                              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
+                              {CANDIDATE_STATUS_LABEL[c.status] ?? c.status}
+                            </span>
+                          )}
                         </div>
                         {(c.berufsbild || c.plz) && (
                           <p className="text-xs text-gray-500">

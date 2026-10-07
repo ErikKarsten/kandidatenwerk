@@ -1,6 +1,6 @@
 "use client"
 
-// Show-Modus (Paket 28, T-110): Kandidaten vor Kunden vorführen wie in einer Banking-App
+// Anonymisierter Modus (Paket 28, T-110): Kandidaten vor Kunden vorführen wie in einer Banking-App
 // mit ausgeblendeten Beträgen - Name wird zur Kennung, Kontakt, Erreichbarkeit
 // und interne Tags (Musterdatensatz) verschwinden. Gilt in "Alle Kandidaten" und im
 // Seitenfenster; Einstellung je Browser.
@@ -15,7 +15,7 @@ export function anonymousName(candidateId: string): string {
   return `Kandidat:in ${cvReference(candidateId)}`
 }
 
-// Zusatzfelder, die im Show-Modus nie gezeigt werden.
+// Zusatzfelder, die im anonymisierten Modus nie gezeigt werden.
 export const PERSONAL_FIELD_KEYS = new Set(["erreichbarkeit"])
 
 // E-Mail-Adressen und Telefonnummern in Freitexten (Beschreibung) ausblenden.

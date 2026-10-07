@@ -10,7 +10,7 @@ import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { TagChip } from "@/components/dashboard/tag-editor"
 import type { CustomFieldDefinition } from "./profile-tab"
 
-// Vorführansicht eines Kandidaten im Show-Modus (Paket 29, T-110): nur, was man einer
+// Vorführansicht eines Kandidaten im anonymisierten Modus (Paket 29, T-110): nur, was man einer
 // Kanzlei zeigen darf - Kennung statt Name, Profil wie im anonymisierten Lebenslauf und die
 // Beschreibung (Kontaktdaten darin ausgeblendet). PLZ ja; keine Kontaktdaten, keine
 // Reiter, kein Verlauf, keine Kanzlei-Notizen, keine internen Tags.
@@ -26,6 +26,7 @@ export function CandidateShowView({
     berufsbild: string | null
     plz: string | null
     notes: string | null
+    offene_fragen: string | null
     tags: string[]
     custom_fields: Record<string, string> | null
   }
@@ -93,12 +94,18 @@ export function CandidateShowView({
         <div className="flex flex-col gap-4">
           {candidate.notes?.trim() && (
             <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
-              <h2 className="mb-2 text-sm font-semibold text-gray-900">Kurzprofil</h2>
+              <h2 className="mb-2 text-sm font-semibold text-gray-900">Beschreibung</h2>
               <p className="whitespace-pre-wrap text-sm text-gray-700">{maskContactData(candidate.notes)}</p>
             </div>
           )}
+          {candidate.offene_fragen?.trim() && (
+            <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
+              <h2 className="mb-2 text-sm font-semibold text-gray-900">Offene Fragen aus Bewerberrunde</h2>
+              <p className="whitespace-pre-wrap text-sm text-gray-700">{maskContactData(candidate.offene_fragen)}</p>
+            </div>
+          )}
           <p className="rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#7c3aed14", color: "#5b21b6" }}>
-            Show-Modus: Name, Kontaktdaten und interne Angaben sind ausgeblendet.
+            Anonymisierter Modus: Name, Kontaktdaten und interne Angaben sind ausgeblendet.
           </p>
         </div>
       </div>

@@ -6,7 +6,7 @@ describe("Kandidaten-Tags", () => {
     expect(normalizeTags(["  Musterdatensatz ", "musterdatensatz", "", "Top  Kandidat"])).toEqual(["Musterdatensatz", "Top Kandidat"])
   })
 
-  it("blendet Musterdatensatz nur im Show-Modus aus", () => {
+  it("blendet Musterdatensatz nur im anonymisierten Modus aus", () => {
     expect(visibleTags(["Musterdatensatz", "Top"], true)).toEqual(["Top"])
     expect(visibleTags(["Musterdatensatz", "Top"], false)).toEqual(["Musterdatensatz", "Top"])
     expect(visibleTags(null, true)).toEqual([])

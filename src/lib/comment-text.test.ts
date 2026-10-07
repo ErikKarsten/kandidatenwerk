@@ -10,13 +10,22 @@ describe("Kommentartexte", () => {
     ])
   })
 
-  it("markiert nur Punkte unter nächsten Schritten und offenen Fragen", () => {
+  it("gliedert Gesprächszusammenfassungen", () => {
     const lines = parseCommentLines(
-      "Kurzfazit: gut\n\nBesprochen:\n- Stelle A\n\nVereinbart / nächste Schritte:\n- Angebot verschicken (Noah, bis Freitag)\n\nOffene Fragen:\n- Zugriffsproblem klären",
+      "Willkommensmeeting · 07.10.2026\n\nKurzfazit: Alles gut.\n\nBesprochen:\n- Stelle A\n\nVereinbart / nächste Schritte:\n- Angebot verschicken (Noah, bis Freitag)\n\nOffene Fragen:\n- Zugriffsproblem klären\n\nIn Close ansehen: https://app.close.com/lead/x/",
       true
     )
-    expect(lines.filter((l) => l.actionable).map((l) => l.text)).toEqual(["- Angebot verschicken (Noah, bis Freitag)", "- Zugriffsproblem klären"])
-    expect(parseCommentLines("Offene Fragen:\n- x", false).some((l) => l.actionable)).toBe(false)
+    expect(lines[0]).toMatchObject({ kind: "title", text: "Willkommensmeeting · 07.10.2026" })
+    expect(lines.find((l) => l.text === "Kurzfazit")).toMatchObject({ kind: "heading", rest: "Alles gut." })
+    expect(lines.filter((l) => l.kind === "heading").map((l) => l.text)).toEqual(["Kurzfazit", "Besprochen", "Vereinbart / nächste Schritte", "Offene Fragen"])
+    expect(lines.filter((l) => l.actionable).map((l) => l.text)).toEqual(["Angebot verschicken (Noah, bis Freitag)", "Zugriffsproblem klären"])
+    expect(lines.at(-1)).toMatchObject({ kind: "link", text: "https://app.close.com/lead/x/" })
+  })
+
+  it("lässt normale Notizen ungegliedert", () => {
+    const lines = parseCommentLines("Hinweis: Rückruf morgen\n- Punkt", false)
+    expect(lines.map((l) => l.kind)).toEqual(["text", "bullet"])
+    expect(lines.some((l) => l.actionable)).toBe(false)
   })
 
   it("kürzt Aufgabentitel", () => {

@@ -47,14 +47,18 @@ export default async function CampaignDetailPage({
   if (campaign.kind === "kanzlei") {
     const { data: assignmentRows } = await supabase
       .from("client_assignments")
-      .select("created_at, candidates(id, first_name, last_name, email, phone, status, berufsbild, plz, created_at)")
+      .select("id, status, created_at, candidates(id, first_name, last_name, email, phone, status, berufsbild, plz, created_at)")
       .eq("campaign_id", id)
       .is("removed_at", null)
       .order("created_at", { ascending: false })
     type AssignedCandidateJoin = NonNullable<typeof candidates>[number]
+    // Mit der Zuordnung: dort gilt der Status beim Kunden (Paket 35).
     shownCandidates = (assignmentRows ?? [])
-      .map((a) => (Array.isArray(a.candidates) ? a.candidates[0] : a.candidates) as AssignedCandidateJoin | null)
-      .filter((c): c is AssignedCandidateJoin => c !== null)
+      .map((a) => {
+        const c = (Array.isArray(a.candidates) ? a.candidates[0] : a.candidates) as AssignedCandidateJoin | null
+        return c ? { ...c, assignmentId: a.id as string, assignmentStatus: a.status as string } : null
+      })
+      .filter((c): c is AssignedCandidateJoin & { assignmentId: string; assignmentStatus: string } => c !== null)
   }
 
   const client = Array.isArray(campaign.clients)

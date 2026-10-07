@@ -4,7 +4,7 @@ import { useState } from "react"
 import { ChevronDown, FileText } from "lucide-react"
 
 // Auswahl "Lebenslauf" (Paket 24, T-97): vollständig oder anonymisiert, öffnet die
-// druckfertige Seite in einem neuen Tab. anonymOnly (Show-Modus): direkt der anonymisierte.
+// druckfertige Seite in einem neuen Tab. anonymOnly (Anonymisierter Modus): direkt der anonymisierte.
 export function CvExportMenu({ candidateId, openUp = false, anonymOnly = false }: { candidateId: string; openUp?: boolean; anonymOnly?: boolean }) {
   const [open, setOpen] = useState(false)
   if (anonymOnly) {

@@ -17,7 +17,7 @@ export function normalizeTags(tags: string[]): string[] {
   return out.slice(0, MAX_TAGS)
 }
 
-// Im Show-Modus werden interne Tags (Musterdatensatz) nicht gezeigt.
+// Im anonymisierten Modus werden interne Tags (Musterdatensatz) nicht gezeigt.
 export function visibleTags(tags: string[] | null | undefined, showMode: boolean): string[] {
   return (tags ?? []).filter((t) => !(showMode && t === SAMPLE_TAG))
 }

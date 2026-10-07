@@ -53,7 +53,12 @@ export function positionOf(title: string | null | undefined): string | undefined
 // Stammdaten direkt aus dem Lead (ohne KI).
 export function payloadFromLead(lead: CloseLead, statusLabel: string | null): CloseWebhookPayload {
   const address = lead.addresses?.[0]
-  const contact = lead.contacts?.[0]
+  // Primärer Kontakt: erster mit E-Mail (der erste Kontakt in Close hat oft keine),
+  // Telefon vom Kontakt selbst oder sonst die erste Nummer im Lead.
+  const contacts = lead.contacts ?? []
+  const contact = contacts.find((c) => c.emails?.length) ?? contacts[0]
+  const email = text(contact?.emails?.[0]?.email)
+  const phone = text(contact?.phones?.[0]?.phone) ?? text(contacts.find((c) => c.phones?.length)?.phones?.[0]?.phone)
   return {
     close_lead_id: lead.id,
     close_status: statusLabel ?? lead.status_label ?? undefined,
@@ -63,11 +68,11 @@ export function payloadFromLead(lead: CloseLead, statusLabel: string | null): Cl
     strasse: text(address?.address_1),
     plz: text(address?.zipcode),
     ort: text(address?.city),
-    telefon: text(contact?.phones?.[0]?.phone),
-    email: text(contact?.emails?.[0]?.email),
+    telefon: phone,
+    email,
     ansprechpartner_name: text(contact?.name),
-    ansprechpartner_email: text(contact?.emails?.[0]?.email),
-    ansprechpartner_telefon: text(contact?.phones?.[0]?.phone),
+    ansprechpartner_email: email,
+    ansprechpartner_telefon: phone,
     ansprechpartner_position: positionOf(contact?.title),
   }
 }

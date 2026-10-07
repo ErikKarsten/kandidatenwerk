@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { anonymousName, maskContactData } from "./show-mode"
 
-describe("Show-Modus", () => {
+describe("Anonymisierter Modus", () => {
   it("ersetzt den Namen durch die Kennung wie im anonymen Lebenslauf", () => {
     expect(anonymousName("3f9a21bc-0000-0000-0000-000000000000")).toBe("Kandidat:in K-3F9A21")
   })
