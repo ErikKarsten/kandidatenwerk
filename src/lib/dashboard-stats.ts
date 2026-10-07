@@ -61,6 +61,7 @@ export async function getApplicationStats(supabase: SupabaseClient, range: DateR
       .from("candidates")
       .select("created_at, source")
       .eq("is_demo", false)
+      .not("tags", "cs", "{Musterdatensatz}")
       .gte("created_at", berlinDayStartUtc(range.from))
       .lt("created_at", berlinDayStartUtc(addDays(range.to, 1)))
       .order("created_at")
@@ -159,4 +160,37 @@ export async function getMetaAdStats(range: DateRange): Promise<MetaAdStats> {
       error: message.includes('"code":17') ? "Meta hat zu viele Anfragen gemeldet – bitte später neu laden." : "Werbedaten von Meta derzeit nicht abrufbar.",
     }
   }
+}
+
+// Qualifizierte Meta-Leads im Zeitraum (Paket 28, T-116): Kandidaten aus Meta, die im
+// Zeitraum eingegangen sind, zu einer der ausgewerteten Meta-Kampagnen gehören und
+// vorqualifiziert sind oder schon einer Kanzlei zugeordnet wurden (Zuordnung setzt
+// Vorqualifizierung voraus, der Status kann danach weitergewandert sein).
+export async function countQualifiedMetaLeads(supabase: SupabaseClient, range: DateRange, campaignIds: string[]): Promise<number> {
+  if (campaignIds.length === 0) return 0
+  const candidates: { id: string; status: string | null }[] = []
+  for (let i = 0; i < campaignIds.length; i += 80) {
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabase
+        .from("candidates")
+        .select("id, status")
+        .eq("source", "meta_ads")
+        .eq("is_demo", false)
+        .in("campaign_id", campaignIds.slice(i, i + 80))
+        .gte("created_at", berlinDayStartUtc(range.from))
+        .lt("created_at", berlinDayStartUtc(addDays(range.to, 1)))
+        .range(offset, offset + 999)
+      if (error) throw new Error(error.message)
+      candidates.push(...(data ?? []))
+      if (!data || data.length < 1000) break
+    }
+  }
+  const qualified = new Set(candidates.filter((c) => c.status === "vorqualifiziert").map((c) => c.id))
+  const rest = candidates.filter((c) => !qualified.has(c.id)).map((c) => c.id)
+  for (let i = 0; i < rest.length; i += 80) {
+    const { data, error } = await supabase.from("client_assignments").select("candidate_id").in("candidate_id", rest.slice(i, i + 80))
+    if (error) throw new Error(error.message)
+    for (const a of data ?? []) qualified.add(a.candidate_id as string)
+  }
+  return qualified.size
 }

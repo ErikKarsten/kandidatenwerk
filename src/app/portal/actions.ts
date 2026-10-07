@@ -94,3 +94,48 @@ export async function updatePortalAssignmentStatusAction(
   revalidatePath(`/dashboard/candidates/${assignment.candidate_id}`)
   return null
 }
+
+// Kanzlei beendet eine Zuordnung selbst (Paket 28, T-109): Der Kandidat bleibt bei der
+// Agentur erhalten, nur die Zuordnung wird per removed_at beendet - wie beim Entfernen im
+// Backend. Die Zuordnung wird zuerst über die Session gelesen (RLS: nur eigene, aktive
+// Zuordnungen sichtbar); erst danach setzt der Admin-Client removed_at, weil die
+// Portal-Policy nur Statuswechsel erlaubt. Ein Verlaufseintrag hält fest, wer es war.
+export async function removePortalAssignmentAction(clientAssignmentId: string): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: "Nicht eingeloggt." }
+
+  const { data: assignment, error: fetchError } = await supabase
+    .from("client_assignments")
+    .select("id, candidate_id, client_id, campaign_id")
+    .eq("id", clientAssignmentId)
+    .is("removed_at", null)
+    .maybeSingle()
+  if (fetchError) return { error: fetchError.message }
+  if (!assignment) return { error: "Zuordnung nicht gefunden." }
+
+  const admin = createSupabaseAdminClient()
+  const { data: profile } = await admin.from("profiles").select("role, client_id, full_name, email").eq("id", user.id).maybeSingle()
+  if (profile?.role !== "client" || profile.client_id !== assignment.client_id) return { error: "Keine Berechtigung." }
+
+  const { error: updateError } = await admin
+    .from("client_assignments")
+    .update({ removed_at: new Date().toISOString() })
+    .eq("id", assignment.id)
+    .is("removed_at", null)
+  if (updateError) return { error: updateError.message }
+
+  const { data: client } = await admin.from("clients").select("name").eq("id", assignment.client_id).maybeSingle()
+  const { error: historyError } = await admin.from("candidate_history").insert({
+    candidate_id: assignment.candidate_id,
+    type: "note",
+    content: `Zuordnung zu „${client?.name ?? "Kanzlei"}“ durch die Kanzlei im Portal entfernt (${profile.full_name || profile.email || "Portal-Zugang"}).`,
+  })
+  if (historyError) console.error("Verlaufseintrag fehlgeschlagen:", historyError)
+
+  revalidatePath("/portal", "layout")
+  revalidatePath(`/dashboard/candidates/${assignment.candidate_id}`)
+  return null
+}

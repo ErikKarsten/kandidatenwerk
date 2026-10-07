@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Briefcase } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { establishInviteSessionAction, setNewPasswordAction } from "./actions"
+import { LegalLinks } from "@/components/legal-links"
 
 const MIN_PASSWORD_LENGTH = 8
 
@@ -270,6 +271,7 @@ export default function SetPasswordPage() {
             </form>
           )}
         </div>
+        <LegalLinks className="mt-6 text-gray-400" />
       </div>
     </div>
   )

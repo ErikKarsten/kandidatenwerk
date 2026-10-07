@@ -12,9 +12,11 @@ interface KpiCardProps {
     label?: string
   }
   iconColor?: string
+  // Kleiner Zusatz unter dem Wert, z.B. die Basis einer Kennzahl.
+  hint?: string
 }
 
-export function KpiCard({ icon: Icon, label, value, href, trend, iconColor = "#1e56a0" }: KpiCardProps) {
+export function KpiCard({ icon: Icon, label, value, href, trend, iconColor = "#1e56a0", hint }: KpiCardProps) {
   const trendPositive = trend && trend.value >= 0
 
   const inner = (
@@ -28,6 +30,7 @@ export function KpiCard({ icon: Icon, label, value, href, trend, iconColor = "#1
       <div className="min-w-0 flex-1">
         <p className="text-sm text-gray-500">{label}</p>
         <p className="mt-0.5 text-2xl font-semibold text-gray-900">{value}</p>
+        {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
         {trend && (
           <p className={cn("mt-1 text-xs font-medium", trendPositive ? "text-emerald-600" : "text-red-500")}>
             {trendPositive ? "+" : ""}

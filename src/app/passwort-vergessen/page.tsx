@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { Briefcase } from "lucide-react"
 import { ResetForm } from "./reset-form"
+import { LegalLinks } from "@/components/legal-links"
 
 export const metadata = {
   title: "Passwort vergessen – Kandidatenwerk",
@@ -27,6 +28,7 @@ export default function PasswortVergessenPage() {
             Zurück zur Anmeldung
           </Link>
         </p>
+        <LegalLinks className="mt-6 text-gray-400" />
       </div>
     </div>
   )

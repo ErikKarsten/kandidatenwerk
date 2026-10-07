@@ -26,6 +26,7 @@ import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-f
 import { CommunicationTab, type CandidateMessage, type MessageTemplate } from "./communication-tab"
 import type { TemplateVars } from "@/lib/automation-engine"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
+import { TagEditor } from "@/components/dashboard/tag-editor"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -49,6 +50,7 @@ interface Candidate {
   status: string
   source: string
   notes: string | null
+  tags: string[]
   description: string | null
   berufsbild: string | null
   plz: string | null
@@ -73,11 +75,12 @@ interface CandidateDetailProps {
   templateFieldKeys: string[] | null
   kanzleiCampaigns: KanzleiCampaignOption[]
   communication: { vars: TemplateVars; templates: MessageTemplate[]; messages: CandidateMessage[] }
+  knownTags: string[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, communication }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, communication, knownTags }: CandidateDetailProps) {
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung" | "kommunikation">("profil")
@@ -275,6 +278,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
               </select>
               {berufsbildOrigin && <span className="text-xs text-gray-400">{berufsbildOrigin}</span>}
             </div>
+            <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} />
           </div>
           <div className="flex items-center gap-2">
             <CvExportMenu candidateId={candidate.id} />

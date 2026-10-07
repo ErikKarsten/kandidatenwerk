@@ -8,6 +8,7 @@ import { matchCandidateToCampaigns } from "@/lib/matching"
 import { ensureCampaignAssignment } from "@/lib/client-assignment"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
+import { normalizeTags } from "@/lib/candidate-tags"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -460,6 +461,20 @@ export async function deleteDemoCandidateAction(candidateId: string): Promise<{ 
     if (campaignError) return { error: `Beispiel-Lead gelöscht, Beispielkampagne nicht: ${campaignError.message}` }
   }
   for (const clientId of new Set((links ?? []).map((l) => l.client_id))) revalidatePath(`/dashboard/clients/${clientId}`)
+  revalidatePath("/dashboard/candidates")
+  return null
+}
+
+// Tags eines Kandidaten setzen (Paket 28, T-115).
+export async function updateCandidateTagsAction(candidateId: string, tags: string[]): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
+
+  const { error } = await supabase.from("candidates").update({ tags: normalizeTags(tags) }).eq("id", candidateId)
+  if (error) return { error: error.message }
+
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
   revalidatePath("/dashboard/candidates")
   return null
 }

@@ -11,24 +11,31 @@ import { updateCandidateBerufsbildAction } from "@/app/dashboard/candidates/[id]
 import { assignCandidateToCampaignAction } from "@/app/dashboard/campaigns/[id]/actions"
 import { getCandidatePanelDataAction, type CandidatePanelData } from "./actions"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
+import { TagChip, TagEditor } from "@/components/dashboard/tag-editor"
+import { visibleTags } from "@/lib/candidate-tags"
+import { PERSONAL_FIELD_KEYS, anonymousName, maskContactData } from "@/lib/show-mode"
 
 // Seitenfenster für einen Kandidaten (Paket 13, T-55/T-56): öffnet rechts über Karte
 // oder Liste, ohne die Seite zu verlassen - Suche, Filter und Kartenausschnitt bleiben.
 // Mit campaign (Kanzlei-Kampagne) gibt es zusätzlich "Zuordnen". Ohne abdunkelnden
 // Hintergrund, damit man direkt den nächsten Kandidaten anklicken kann; z-index über
-// den Leaflet-Bedienelementen (1000).
+// den Leaflet-Bedienelementen (1000). anonymize = Show-Modus (Paket 28, T-110): ohne Name,
+// Kontaktdaten, PLZ, Erreichbarkeit, Zuordnungen zu Kanzleien und interne Tags; Lebenslauf
+// nur anonymisiert.
 export function CandidatePanel({
   candidateId,
   onClose,
   campaign,
   onChanged,
   onAssigned,
+  anonymize = false,
 }: {
   candidateId: string
   onClose: () => void
   campaign?: { id: string; title: string }
   onChanged?: () => void
   onAssigned?: (candidateId: string) => void
+  anonymize?: boolean
 }) {
   const router = useRouter()
   const [data, setData] = useState<CandidatePanelData | null>(null)
@@ -81,11 +88,13 @@ export function CandidatePanel({
       >
         <div className="flex items-start justify-between gap-2 border-b px-5 py-4" style={{ borderColor: "#eef2f6" }}>
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-semibold text-gray-900">{current ? `${current.firstName} ${current.lastName}`.trim() || "Ohne Namen" : "Lädt…"}</h2>
+            <h2 className="truncate text-lg font-semibold text-gray-900">
+              {current ? (anonymize ? anonymousName(current.id) : `${current.firstName} ${current.lastName}`.trim() || "Ohne Namen") : "Lädt…"}
+            </h2>
             {current && (
               <p className="text-xs text-gray-500">
-                {current.plz ? `PLZ ${current.plz}` : "Wohnort unbekannt"}
-                {current.origin ? ` · über ${current.origin}` : ""}
+                {anonymize ? "" : current.plz ? `PLZ ${current.plz}` : "Wohnort unbekannt"}
+                {current.origin ? `${anonymize ? "" : " · "}über ${current.origin}` : ""}
                 {` · seit ${new Date(current.createdAt).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`}
               </p>
             )}
@@ -144,6 +153,19 @@ export function CandidatePanel({
                 </button>
               )}
 
+              {anonymize ? (
+                visibleTags(current.tags, true).length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {visibleTags(current.tags, true).map((t) => (
+                      <TagChip key={t} tag={t} />
+                    ))}
+                  </div>
+                )
+              ) : (
+                <TagEditor key={current.id} candidateId={current.id} tags={current.tags} knownTags={current.knownTags} onChanged={onChanged} />
+              )}
+
+              {!anonymize && (
               <div className="flex flex-col gap-1.5 text-sm">
                 {current.phone && (
                   <a href={`tel:${current.phone}`} className="inline-flex items-center gap-2 hover:underline" style={{ color: "#1e56a0" }}>
@@ -156,10 +178,11 @@ export function CandidatePanel({
                   </a>
                 )}
               </div>
+              )}
 
               {current.stammdaten.length + current.zusatzfelder.length > 0 && (
                 <dl className="flex flex-col gap-2">
-                  {[...current.stammdaten, ...current.zusatzfelder].map((f) => (
+                  {[...current.stammdaten, ...current.zusatzfelder].filter((f) => !(anonymize && PERSONAL_FIELD_KEYS.has(f.key))).map((f) => (
                     <div key={f.label}>
                       <dt className="text-xs font-medium text-gray-400">{f.label}</dt>
                       <dd className="whitespace-pre-wrap text-sm text-gray-800">{f.value}</dd>
@@ -171,10 +194,11 @@ export function CandidatePanel({
               {current.notes && (
                 <div>
                   <p className="text-xs font-medium text-gray-400">Beschreibung</p>
-                  <p className="whitespace-pre-wrap text-sm text-gray-700">{current.notes}</p>
+                  <p className="whitespace-pre-wrap text-sm text-gray-700">{anonymize ? maskContactData(current.notes) : current.notes}</p>
                 </div>
               )}
 
+              {!anonymize && (
               <div>
                 <p className="mb-1 text-xs font-medium text-gray-400">Zugeordnet ({current.assignments.length})</p>
                 {current.assignments.length === 0 ? (
@@ -192,11 +216,13 @@ export function CandidatePanel({
                   </ul>
                 )}
               </div>
+              )}
             </div>
           )}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3" style={{ borderColor: "#eef2f6" }}>
+          {!anonymize && (
           <a
             href={`/dashboard/candidates/${candidateId}`}
             target="_blank"
@@ -206,7 +232,8 @@ export function CandidatePanel({
           >
             Vollständiges Profil <ExternalLink size={13} />
           </a>
-          <CvExportMenu candidateId={candidateId} openUp />
+          )}
+          <CvExportMenu candidateId={candidateId} openUp anonymOnly={anonymize} />
         </div>
       </aside>
     </>

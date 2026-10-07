@@ -9,7 +9,7 @@
 // Überschreibverhalten und Orchestrierung unterscheiden (z.B. "immer überschreiben" bei
 // manuellem Refresh vs. "nur wenn leer" beim einmaligen Bulk-Import).
 
-import Anthropic from "@anthropic-ai/sdk"
+import { generateText, llmConfigured } from "./llm"
 import { leadtableFetch } from "./leadtable-client"
 import { WEITERE_ANTWORTEN_KEY } from "./candidate-custom-fields"
 import type { CustomFieldDefinitionLite, UnmappedAnswer } from "./custom-field-definitions"
@@ -331,10 +331,9 @@ export async function extractCustomFieldsFromDescriptionAI(
   const answerValues = leadtableAnswerValues(modifiedData)
   if (trimmedDescription === "" && answerValues.length === 0) return { fields: {} }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
+  if (!llmConfigured()) {
     console.warn(
-      "[extractCustomFieldsFromDescriptionAI] ANTHROPIC_API_KEY nicht gesetzt - KI-Extraktion übersprungen."
+      "[extractCustomFieldsFromDescriptionAI] Kein KI-Schlüssel (KIE_API_KEY/ANTHROPIC_API_KEY) - KI-Extraktion übersprungen."
     )
     return { fields: {}, error: AI_GENERIC_ERROR }
   }
@@ -363,23 +362,12 @@ Gib NUR JSON zurück. Lass ein Feld komplett weg, wenn weder die Formular-Antwor
 
   let rawText: string
   try {
-    // Explizites Timeout + reduzierte Retries statt SDK-Default (10 Minuten Timeout,
-    // maxRetries 2 - im Worst Case also bis zu ~30 Minuten, bevor der try/catch unten
-    // überhaupt greift). Diese einfache Extraktion soll den manuellen "Mit Leadtable
-    // aktualisieren"-Klick nicht minutenlang blockieren - im Worst Case (jeder Versuch
-    // läuft ins Timeout) wartet der Aufrufer jetzt maximal AI_TIMEOUT_MS * 2.
-    const AI_TIMEOUT_MS = 15_000
-    const client = new Anthropic({ apiKey, timeout: AI_TIMEOUT_MS, maxRetries: 1 })
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
-    })
-    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text")
-    rawText = textBlock?.text ?? ""
+    // Kurzes Timeout: Die Extraktion soll den manuellen "Mit Leadtable aktualisieren"-Klick
+    // nicht minutenlang blockieren.
+    rawText = await generateText({ tier: "fast", prompt, maxTokens: 1024, timeoutMs: 15_000 })
   } catch (err) {
     console.warn(
-      "[extractCustomFieldsFromDescriptionAI] Anthropic-API-Fehler:",
+      "[extractCustomFieldsFromDescriptionAI] KI-Fehler:",
       err instanceof Error ? err.message : err
     )
     return { fields: {}, error: AI_GENERIC_ERROR }

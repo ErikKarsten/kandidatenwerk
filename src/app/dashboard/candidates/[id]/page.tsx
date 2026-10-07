@@ -148,6 +148,7 @@ export default async function CandidateDetailPage({
     status: candidate.status,
     source: candidate.source,
     notes: candidate.notes,
+    tags: candidate.tags ?? [],
     description: candidate.description,
     berufsbild: candidate.berufsbild ?? null,
     plz: candidate.plz ?? null,
@@ -199,10 +200,12 @@ export default async function CandidateDetailPage({
 
   // Reiter "Kommunikation" (Paket 18, T-84): verschickte Mails, Vorlagen an "Kandidat",
   // Platzhalter-Werte für die Vorlagen.
-  const [{ data: messageRows }, { data: messageTemplateRows }] = await Promise.all([
+  const [{ data: messageRows }, { data: messageTemplateRows }, { data: tagRows }] = await Promise.all([
     supabase.from("candidate_messages").select("*").eq("candidate_id", id).order("created_at", { ascending: false }),
     supabase.from("automation_templates").select("id, name, subject, body_html").eq("recipient", "candidate").order("name"),
+    supabase.from("candidate_tag_list").select("tag").order("tag"),
   ])
+  const knownTags = (tagRows ?? []).map((r) => r.tag).filter((t): t is string => !!t)
   const firstAssignment = (assignmentRows ?? [])[0]
   const assignmentCampaign = firstAssignment
     ? ((Array.isArray(firstAssignment.campaigns) ? firstAssignment.campaigns[0] : firstAssignment.campaigns) as { title: string } | null)
@@ -245,6 +248,7 @@ export default async function CandidateDetailPage({
       templateFieldKeys={templateFieldKeys}
       kanzleiCampaigns={kanzleiCampaigns}
       communication={communication}
+      knownTags={knownTags}
     />
   )
 }

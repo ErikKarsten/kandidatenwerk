@@ -31,6 +31,7 @@ export default async function CandidatesPage({
     status?: string
     berufsbild?: string
     source?: string
+    tag?: string
     sort?: string
     page?: string
     pageSize?: string
@@ -42,6 +43,7 @@ export default async function CandidatesPage({
   const statusFilter = sp.status && VALID_STATUSES.has(sp.status) ? sp.status : "alle"
   const berufsbildFilter = sp.berufsbild && VALID_BERUFSBILDER.has(sp.berufsbild) ? sp.berufsbild : "alle"
   const sourceFilter = sp.source && VALID_SOURCES.has(sp.source) ? sp.source : "alle"
+  const tagFilter = (sp.tag ?? "").trim() || "alle"
   const sort: CandidatesSortOption =
     sp.sort && sp.sort in SORT_COLUMNS ? (sp.sort as CandidatesSortOption) : "newest"
   const pageSize: PageSize = PAGE_SIZES.includes(Number(sp.pageSize) as PageSize)
@@ -54,7 +56,7 @@ export default async function CandidatesPage({
   let query = supabase
     .from("candidate_list_rows")
     .select(
-      "id, first_name, last_name, email, status, berufsbild, source, created_at, custom_fields, campaign_id, campaign_title, client_id, client_name",
+      "id, first_name, last_name, email, status, berufsbild, source, created_at, custom_fields, campaign_id, campaign_title, client_id, client_name, tags",
       { count: "exact" }
     )
 
@@ -62,6 +64,7 @@ export default async function CandidatesPage({
   if (statusFilter !== "alle") query = query.eq("status", statusFilter)
   if (berufsbildFilter !== "alle") query = query.eq("berufsbild", berufsbildFilter)
   if (sourceFilter !== "alle") query = query.eq("source", sourceFilter)
+  if (tagFilter !== "alle") query = query.contains("tags", [tagFilter])
   if (search) {
     // Gleiches Suchverhalten wie vorher: Treffer bei Name (Vor- UND Nachname
     // zusammen, siehe full_name in der View) ODER E-Mail. Komma/Klammern entfernt,
@@ -87,7 +90,11 @@ export default async function CandidatesPage({
   const to = from + pageSize - 1
   query = query.range(from, to)
 
-  const { data, count } = await query
+  const [{ data, count }, { data: tagRows }] = await Promise.all([
+    query,
+    supabase.from("candidate_tag_list").select("tag").order("tag"),
+  ])
+  const knownTags = (tagRows ?? []).map((r) => r.tag).filter((t): t is string => !!t)
 
   // Generierte View-Spalten sind laut database.ts pauschal nullable (PostgREST gibt
   // fuer Views keine NOT-NULL-Constraints ans OpenAPI-Schema weiter) - diese Felder
@@ -103,6 +110,7 @@ export default async function CandidatesPage({
     source: c.source ?? "",
     created_at: c.created_at ?? "",
     custom_fields: (c.custom_fields as Record<string, string> | null) ?? null,
+    tags: c.tags ?? [],
     campaigns: c.campaign_id
       ? {
           id: c.campaign_id,
@@ -121,6 +129,7 @@ export default async function CandidatesPage({
     statusFilter === "alle" &&
     berufsbildFilter === "alle" &&
     sourceFilter === "alle" &&
+    tagFilter === "alle" &&
     !showArchived
 
   return (
@@ -164,6 +173,8 @@ export default async function CandidatesPage({
         statusFilter={statusFilter}
         berufsbildFilter={berufsbildFilter}
         sourceFilter={sourceFilter}
+        tagFilter={tagFilter}
+        knownTags={knownTags}
         sort={sort}
       />
     </div>

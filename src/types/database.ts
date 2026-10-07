@@ -98,6 +98,9 @@ export type Database = {
           updated_at: string
           updated_by: string | null
           extra: Json
+          kanzleistelle_benefits: string[] | null
+          kanzleistelle_benefits_hash: string | null
+          kanzleistelle_working_model: string | null
         }
         Insert: {
           client_id: string
@@ -121,6 +124,9 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           extra?: Json
+          kanzleistelle_benefits?: string[] | null
+          kanzleistelle_benefits_hash?: string | null
+          kanzleistelle_working_model?: string | null
         }
         Update: {
           client_id?: string
@@ -144,6 +150,9 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           extra?: Json
+          kanzleistelle_benefits?: string[] | null
+          kanzleistelle_benefits_hash?: string | null
+          kanzleistelle_working_model?: string | null
         }
         Relationships: [
           {
@@ -823,6 +832,7 @@ export type Database = {
           leadtable_lead_id: string | null
           meta_lead_id: string | null
           is_demo: boolean
+          tags: string[]
         }
         Insert: {
           id?: string
@@ -846,6 +856,7 @@ export type Database = {
           leadtable_lead_id?: string | null
           meta_lead_id?: string | null
           is_demo?: boolean
+          tags?: string[]
         }
         Update: {
           id?: string
@@ -869,6 +880,7 @@ export type Database = {
           leadtable_lead_id?: string | null
           meta_lead_id?: string | null
           is_demo?: boolean
+          tags?: string[]
         }
         Relationships: [
           {
@@ -1533,6 +1545,14 @@ export type Database = {
           }
         ]
       }
+      candidate_tag_list: {
+        Row: {
+          tag: string | null
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
       candidate_list_rows: {
         Row: {
           id: string | null
@@ -1549,6 +1569,7 @@ export type Database = {
           campaign_title: string | null
           client_id: string | null
           client_name: string | null
+          tags: string[] | null
         }
         Insert: {
           id?: string | null
@@ -1565,6 +1586,7 @@ export type Database = {
           campaign_title?: string | null
           client_id?: string | null
           client_name?: string | null
+          tags?: string[] | null
         }
         Update: {
           id?: string | null
@@ -1581,6 +1603,7 @@ export type Database = {
           campaign_title?: string | null
           client_id?: string | null
           client_name?: string | null
+          tags?: string[] | null
         }
         Relationships: [
           {

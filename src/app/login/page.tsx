@@ -1,5 +1,6 @@
 import { Briefcase } from "lucide-react"
 import { LoginForm } from "./login-form"
+import { LegalLinks } from "@/components/legal-links"
 
 export const metadata = {
   title: "Anmelden – Kandidatenwerk",
@@ -31,6 +32,7 @@ export default function LoginPage() {
         >
           <LoginForm />
         </div>
+        <LegalLinks className="mt-6 text-gray-400" />
       </div>
     </div>
   )

@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react"
 import dynamic from "next/dynamic"
 import { Search } from "lucide-react"
-import type { MapCircle, MapPoint, MatchesMapHandle } from "@/components/dashboard/matches-map"
+import type { MapCircle, MapPoint, MatchesMapHandle, SearchPin } from "@/components/dashboard/matches-map"
 import { CandidatePanel } from "@/components/dashboard/candidate-panel/candidate-panel"
 import type { AdArea } from "@/lib/meta-campaigns-queries"
 import { geocodePlz } from "@/lib/geocode-plz"
@@ -105,6 +105,7 @@ export function MapOverview({
   const [locationQuery, setLocationQuery] = useState("")
   const [searchError, setSearchError] = useState<string | null>(null)
   const [searchPending, startSearchTransition] = useTransition()
+  const [searchPin, setSearchPin] = useState<SearchPin | null>(null)
 
   function handleLocationSearch() {
     const query = locationQuery.trim()
@@ -120,6 +121,7 @@ export function MapOverview({
         setSearchError(`PLZ "${query}" nicht gefunden.`)
         return
       }
+      setSearchPin({ lat: coords.lat, lng: coords.lng, label: `PLZ ${query}` })
       mapRef.current?.flyTo(coords.lat, coords.lng, SEARCH_ZOOM)
       return
     }
@@ -130,6 +132,7 @@ export function MapOverview({
         setSearchError(result.error)
         return
       }
+      setSearchPin({ lat: result.lat, lng: result.lng, label: query })
       mapRef.current?.flyTo(result.lat, result.lng, SEARCH_ZOOM)
     })
   }
@@ -192,7 +195,8 @@ export function MapOverview({
       </div>
 
       {/* PLZ/Ort-Suche - reine Ansichtsänderung (zoomt/zentriert die Karte), filtert
-          nichts: alle Kanzleien/Kandidaten bleiben sichtbar. */}
+          nichts: alle Kanzleien/Kandidaten bleiben sichtbar. Der gesuchte Ort bekommt eine
+          Stecknadel mit Entfernungsringen (Paket 28, T-112). */}
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <div className="relative w-full max-w-xs">
@@ -220,6 +224,16 @@ export function MapOverview({
           >
             {searchPending ? "Suche…" : "Suchen"}
           </button>
+          {searchPin && (
+            <button
+              type="button"
+              onClick={() => setSearchPin(null)}
+              className="shrink-0 rounded-md border bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              style={{ borderColor: "#dde3ea" }}
+            >
+              Stecknadel entfernen
+            </button>
+          )}
         </div>
         {searchError && <p className="text-xs text-red-500">{searchError}</p>}
       </div>
@@ -295,7 +309,7 @@ export function MapOverview({
         </div>
       </div>
 
-      <MatchesMap ref={mapRef} points={points} circles={showAdAreas ? adCircles : []} height="600px" scrollWheelZoom />
+      <MatchesMap ref={mapRef} points={points} circles={showAdAreas ? adCircles : []} height="600px" scrollWheelZoom searchPin={searchPin} />
       {selectedCandidateId && <CandidatePanel candidateId={selectedCandidateId} onClose={() => setSelectedCandidateId(null)} />}
     </div>
   )
