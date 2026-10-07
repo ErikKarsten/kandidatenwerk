@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto"
 import { describe, expect, it } from "vitest"
-import { verifyCloseSignature } from "./close-meetings"
+import { verifyCloseSignature } from "./close-sync"
 
 describe("verifyCloseSignature", () => {
   const key = "a1b2c3d4e5f6"

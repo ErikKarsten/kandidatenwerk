@@ -319,7 +319,7 @@ export function MapOverview({
         </div>
       </div>
 
-      <MatchesMap ref={mapRef} points={points} circles={showAdAreas ? adCircles : []} height="600px" scrollWheelZoom searchPin={searchPin} />
+      <MatchesMap ref={mapRef} points={points} circles={showAdAreas ? adCircles : []} height="clamp(420px, calc(100vh - 260px), 1400px)" scrollWheelZoom searchPin={searchPin} />
       {selectedCandidateId && <CandidatePanel candidateId={selectedCandidateId} onClose={() => setSelectedCandidateId(null)} anonymize={showMode} />}
     </div>
   )
