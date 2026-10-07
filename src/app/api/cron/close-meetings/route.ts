@@ -10,7 +10,7 @@ import { isCronAuthorized } from "@/lib/cron-auth"
 // Kunden aus Close (close-onboarding.ts) und Close-Aktivitäten als Kommentar beim Kunden
 // (close-sync.ts, Telefonate mit Transkription). Arbeitet höchstens 4 Minuten, damit sich
 // Läufe nicht überschneiden.
-const RUN_BUDGET_MS = 4 * 60_000
+const RUN_BUDGET_MS = 4 * 60_000 + 20_000
 export async function POST(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -20,9 +20,13 @@ export async function POST(request: NextRequest) {
   const result = await runTrackedCronJob(supabase, "close-meetings", async () => {
     const db = supabase as unknown as SupabaseClient
     const deadline = Date.now() + RUN_BUDGET_MS
-    const onboarding = await processOnboarding(db, deadline)
+    // Übernahme starten (Kunde anlegen, Verlauf holen), Aktivitäten verarbeiten (Telefonate
+    // parallel), danach Übernahme abschließen (Profil) - meist alles im selben Lauf.
+    const started = await processOnboarding(db, deadline)
     const polled = await pollRecentActivities(db)
     const r = await processPendingActivities(db, deadline)
+    const finished = await processOnboarding(db, deadline)
+    const onboarding = { steps: started.steps + finished.steps, failed: started.failed + finished.failed }
     return { result: { ...r, polled, onboarding }, ok: r.failed === 0 && onboarding.failed === 0 }
   })
   return NextResponse.json(result)
