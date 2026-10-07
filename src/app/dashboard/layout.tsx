@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { ResponsiveShell } from "@/components/layout/responsive-shell"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { getAgencyLogoUrl } from "@/lib/agency-logo"
 import { OPEN_BUG_REPORT_STATUSES } from "@/lib/bug-reports/shared"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -18,10 +19,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { count: candidatesCount },
     { count: clientsCount },
     { data: { user } },
+    logoUrl,
   ] = await Promise.all([
     supabase.from("candidates").select("id", { count: "exact", head: true }).eq("is_demo", false),
     supabase.from("clients").select("id", { count: "exact", head: true }),
     supabase.auth.getUser(),
+    getAgencyLogoUrl(),
   ])
 
   const [{ count: myOpenTasksCount }, { data: profile }] = user
@@ -61,6 +64,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           userName={profile?.full_name || profile?.email || "Unbekannt"}
           isAdmin={isAdmin}
           openBugReportsCount={openBugReportsCount}
+          logoUrl={logoUrl}
         />
       }
     >

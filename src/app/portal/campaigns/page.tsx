@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
+import { isPortalVisible } from "@/lib/portal-visibility"
 
 // Gleiche Label-Konvention wie portal/candidates/page.tsx (STATUS_LABELS) und
 // clients/[id]/client-detail.tsx (CAMPAIGN_STATUS) - bewusst eigene Kopie, siehe
@@ -16,20 +17,23 @@ export default async function PortalCampaignsPage() {
 
   // RLS ("Kunde sieht Kampagnen des eigenen Kunden", siehe
   // 20260908000003_client_portal_campaigns_read.sql) filtert automatisch auf die
-  // eigene client_id - kein zusätzliches .eq() nötig oder möglich, gleiches Muster wie
-  // bei portal/candidates/page.tsx (client_assignments). candidates(count) respektiert dabei die
-  // bestehende candidates-RLS (nur aktiv zugeordnete Kandidaten zählen mit).
-  const { data: campaigns } = await supabase
-    .from("campaigns")
-    .select("id, title, status, candidates(count)")
-    .neq("status", "Archiviert")
-    .order("created_at", { ascending: false })
+  // eigene client_id - kein zusätzliches .eq() nötig oder möglich.
+  const [{ data: campaigns }, { data: assignments }] = await Promise.all([
+    supabase.from("campaigns").select("id, title, status").neq("status", "Archiviert").order("created_at", { ascending: false }),
+    // Gezählt werden die zugeordneten, im Portal sichtbaren Kandidaten (Paket 36) - gleiche
+    // Regel wie auf der Kampagnenseite: Zuordnung über die Kampagne oder beworben über sie.
+    supabase.from("client_assignments").select("campaign_id, candidates(campaign_id, status, is_demo)").is("removed_at", null),
+  ])
 
-  const rows = (campaigns ?? []).map((c) => {
-    const countRow = Array.isArray(c.candidates) ? c.candidates[0] : null
-    const leadsCount = countRow ? Number((countRow as { count: number | string }).count) : 0
-    return { id: c.id, title: c.title, status: c.status, leadsCount }
-  })
+  const countByCampaign = new Map<string, number>()
+  for (const a of assignments ?? []) {
+    const c = Array.isArray(a.candidates) ? a.candidates[0] : a.candidates
+    if (!c || !isPortalVisible(c)) continue
+    for (const id of new Set([a.campaign_id, c.campaign_id].filter((x): x is string => !!x))) {
+      countByCampaign.set(id, (countByCampaign.get(id) ?? 0) + 1)
+    }
+  }
+  const rows = (campaigns ?? []).map((c) => ({ id: c.id, title: c.title, status: c.status, leadsCount: countByCampaign.get(c.id) ?? 0 }))
 
   return (
     <div className="p-4 sm:p-6">
