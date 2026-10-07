@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { PortalSidebar } from "./portal-sidebar"
 import { ResponsiveShell } from "@/components/layout/responsive-shell"
+import { getAgencyLogoUrl } from "@/lib/agency-logo"
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient()
@@ -23,16 +24,15 @@ export default async function PortalLayout({ children }: { children: React.React
 
   if (!profile?.client_id) redirect("/login")
 
-  const { data: client } = await supabase
-    .from("clients")
-    .select("name, logo_url")
-    .eq("id", profile.client_id)
-    .single()
+  const [{ data: client }, agencyLogoUrl] = await Promise.all([
+    supabase.from("clients").select("name, logo_url").eq("id", profile.client_id).single(),
+    getAgencyLogoUrl(),
+  ])
 
   return (
     <ResponsiveShell
       title={client?.name ?? "Kunden-Portal"}
-      sidebar={<PortalSidebar clientName={client?.name ?? "Kunden-Portal"} logoUrl={client?.logo_url ?? null} />}
+      sidebar={<PortalSidebar clientName={client?.name ?? "Kunden-Portal"} logoUrl={client?.logo_url ?? agencyLogoUrl} />}
     >
       {children}
     </ResponsiveShell>

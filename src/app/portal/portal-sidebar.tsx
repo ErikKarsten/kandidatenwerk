@@ -54,11 +54,11 @@ export function PortalSidebar({
       <div className="flex items-center gap-2.5 px-5 py-5">
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden"
-          style={{ backgroundColor: "#4ba3c3" }}
+          style={{ backgroundColor: logoUrl ? "#ffffff" : "#4ba3c3" }}
         >
           {logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoUrl} alt={clientName} className="h-full w-full object-cover" />
+            <img src={logoUrl} alt={clientName} className="h-full w-full object-contain p-0.5" />
           ) : (
             <Briefcase size={16} className="text-white" />
           )}

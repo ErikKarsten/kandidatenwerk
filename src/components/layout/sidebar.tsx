@@ -112,6 +112,7 @@ export function Sidebar({
   userName,
   isAdmin,
   openBugReportsCount = 0,
+  logoUrl = null,
 }: {
   candidatesCount?: number
   clientsCount?: number
@@ -119,6 +120,8 @@ export function Sidebar({
   userName: string
   isAdmin: boolean
   openBugReportsCount?: number
+  // Logo aus Einstellungen > Mein Konto (Paket 36); ohne Logo das Koffer-Symbol.
+  logoUrl?: string | null
 }) {
   const pathname = usePathname()
   const navItems = buildNavItems(candidatesCount, clientsCount, myOpenTasksCount)
@@ -148,12 +151,19 @@ export function Sidebar({
       style={{ backgroundColor: "#0f2137" }}
     >
       <div className={cn("flex items-center gap-2.5 px-5 py-5", collapsed && "justify-center px-0")}>
-        <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-          style={{ backgroundColor: "#4ba3c3" }}
-        >
-          <Briefcase size={16} className="text-white" />
-        </div>
+        {logoUrl ? (
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={logoUrl} alt="Logo" className="h-full w-full object-contain p-0.5" />
+          </div>
+        ) : (
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+            style={{ backgroundColor: "#4ba3c3" }}
+          >
+            <Briefcase size={16} className="text-white" />
+          </div>
+        )}
         {!collapsed && (
           <span className="text-base font-bold text-white tracking-wide">Kandidatenwerk</span>
         )}

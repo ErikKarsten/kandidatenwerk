@@ -1,7 +1,7 @@
 // Live-Datenbank vor dem Launch leeren (Entscheidung 07.10.2026): löscht alle Kandidaten,
 // Kunden, Kampagnen, Zuordnungen, Aufgaben, Mails, Verläufe, Portal-Zugänge und deren
 // Dateien. Bleibt: Agentur, Team, E-Mail-Vorlagen und Sets, Felder, Textbausteine, Logo,
-// Meta-Lead-Formulare, PLZ-Bereiche, Fehlermeldungen (ohne Kundenbezug), Cron-Protokoll und
+// Meta-Lead-Formulare, PLZ-Bereiche, Fehlermeldungen (ohne Kundenbezug), Cron-Protokoll, Agentur-Logo und
 // die Musterkandidaten (Tag "Musterdatensatz", Paket 28).
 //
 // Vorher wird alles Gelöschte (Tabellen als JSON, Dateien) nach
@@ -59,6 +59,8 @@ const DELETE_TABLES = [
 // Spalte, die in jeder Zeile gesetzt ist (PostgREST verlangt einen Filter beim Löschen).
 const KEY_COLUMN: Record<string, string> = {}
 const DELETE_BUCKETS = ["candidate-files", "client-files", "client-logos"]
+// Das Agentur-Logo (Einstellungen > Mein Konto) liegt in client-logos/agentur/ - bleibt.
+const KEEP_FILE_PREFIXES = ["agentur/"]
 // Musterkandidaten bleiben (nur ihre Zuordnungen, Verläufe usw. werden mit geleert).
 const KEEP_TAG = "Musterdatensatz"
 const KEEP_FILTER = `{${KEEP_TAG}}`
@@ -117,7 +119,7 @@ async function main() {
   console.log(`  ${"Portal- und Testzugänge".padEnd(30)} ${String(users.length).padStart(6)}`)
   const files: Record<string, string[]> = {}
   for (const b of DELETE_BUCKETS) {
-    files[b] = await listFiles(b)
+    files[b] = (await listFiles(b)).filter((p) => !KEEP_FILE_PREFIXES.some((prefix) => p.startsWith(prefix)))
     console.log(`  ${("Dateien " + b).padEnd(30)} ${String(files[b].length).padStart(6)}`)
   }
 
