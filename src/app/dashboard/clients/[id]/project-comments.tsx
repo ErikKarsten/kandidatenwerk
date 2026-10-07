@@ -2,8 +2,10 @@
 
 import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Paperclip, Pencil, Trash2 } from "lucide-react"
+import { ListPlus, Paperclip, Pencil, Trash2 } from "lucide-react"
 import { addCommentAction, deleteCommentAction, getCommentFileUrlAction, updateCommentAction } from "./project-actions"
+import { TaskFormModal } from "@/components/dashboard/task-form-modal"
+import { parseCommentLines, splitLinks, taskTitleFromLine } from "@/lib/comment-text"
 
 export interface ProjectComment {
   id: string
@@ -154,20 +156,41 @@ export function ProjectComments({
       <div className="flex flex-col gap-3 border-t pt-3" style={{ borderColor: "#eef2f6" }}>
         {comments.length === 0 && <p className="text-sm text-gray-400">Noch keine Kommentare.</p>}
         {comments.map((c) => (
-          <CommentItem key={c.id} clientId={clientId} comment={c} canEdit={c.kind !== "system" && (c.authorId === currentUserId || isAdmin)} />
+          <CommentItem
+            key={c.id}
+            clientId={clientId}
+            comment={c}
+            canEdit={c.kind !== "system" && (c.authorId === currentUserId || isAdmin)}
+            team={team}
+            currentUserId={currentUserId}
+          />
         ))}
       </div>
     </div>
   )
 }
 
-function CommentItem({ clientId, comment, canEdit }: { clientId: string; comment: ProjectComment; canEdit: boolean }) {
+function CommentItem({
+  clientId,
+  comment,
+  canEdit,
+  team,
+  currentUserId,
+}: {
+  clientId: string
+  comment: ProjectComment
+  canEdit: boolean
+  team: { id: string; full_name: string | null }[]
+  currentUserId: string
+}) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(comment.content)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const style = KIND_STYLE[comment.kind] ?? KIND_STYLE.notiz
+  // Aufgabe aus einem Punkt der Gesprächszusammenfassung (Paket 30, T-120).
+  const [taskFrom, setTaskFrom] = useState<string | null>(null)
 
   function save() {
     setError(null)
@@ -195,8 +218,8 @@ function CommentItem({ clientId, comment, canEdit }: { clientId: string; comment
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 text-xs">
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="font-medium text-gray-900">{comment.authorName}</span>
         <span className="rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: `${style.color}18`, color: style.color }}>
           {style.label}
@@ -229,7 +252,7 @@ function CommentItem({ clientId, comment, canEdit }: { clientId: string; comment
           </div>
         </div>
       ) : (
-        <p className={`whitespace-pre-wrap text-sm ${comment.kind === "system" ? "italic text-gray-500" : "text-gray-700"}`}>{comment.content}</p>
+        <CommentBody comment={comment} onCreateTask={setTaskFrom} />
       )}
       {comment.files.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -241,6 +264,59 @@ function CommentItem({ clientId, comment, canEdit }: { clientId: string; comment
         </div>
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}
+      {taskFrom && (
+        <TaskFormModal
+          profiles={team}
+          clientId={clientId}
+          onClose={() => setTaskFrom(null)}
+          initial={{
+            title: taskTitleFromLine(taskFrom),
+            description: `Aus ${comment.kind === "gespraech" ? "dem Gespräch" : "dem Kommentar"} vom ${formatTime(comment.createdAt)}:\n${taskFrom.replace(/^\s*[-•*]\s+/, "").trim()}`,
+            assignedTo: team.some((t) => t.id === currentUserId) ? currentUserId : "",
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Kommentartext mit klickbaren, umbrechenden Links. Bei Gesprächszusammenfassungen hat
+// jeder Punkt unter "Vereinbart / nächste Schritte" und "Offene Fragen" einen Knopf
+// "Aufgabe" (Paket 30, T-119/T-120).
+function CommentBody({ comment, onCreateTask }: { comment: ProjectComment; onCreateTask: (line: string) => void }) {
+  const lines = parseCommentLines(comment.content, comment.kind === "gespraech")
+  return (
+    <div className={`min-w-0 text-sm [overflow-wrap:anywhere] ${comment.kind === "system" ? "italic text-gray-500" : "text-gray-700"}`}>
+      {lines.map((line, i) =>
+        line.text.trim() === "" ? (
+          <div key={i} className="h-2" />
+        ) : (
+          <div key={i} className="group flex items-start gap-2">
+            <p className="min-w-0 flex-1 whitespace-pre-wrap">
+              {splitLinks(line.text).map((part, j) =>
+                part.type === "link" ? (
+                  <a key={j} href={part.value} target="_blank" rel="noopener noreferrer" className="break-all hover:underline" style={{ color: "#1e56a0" }}>
+                    {part.value}
+                  </a>
+                ) : (
+                  <span key={j}>{part.value}</span>
+                )
+              )}
+            </p>
+            {line.actionable && (
+              <button
+                type="button"
+                onClick={() => onCreateTask(line.text)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                style={{ borderColor: "#dde3ea" }}
+                title="Als Aufgabe anlegen"
+              >
+                <ListPlus size={12} /> Aufgabe
+              </button>
+            )}
+          </div>
+        )
+      )}
     </div>
   )
 }

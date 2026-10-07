@@ -9,6 +9,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { benefitSourceHash, prepareBenefits, type PreparedBenefits } from "@/lib/kanzleistelle-benefits"
+import { jobTextHash, prepareJobText, type PreparedJobText } from "@/lib/kanzleistelle-job-text"
 
 type Db = SupabaseClient<Database>
 
@@ -47,8 +48,9 @@ function asBullets(text: string): string {
   return lines.length > 1 ? lines.map((l) => `• ${l}`).join("\n") : text
 }
 
-export function buildJobDescription(profile: Partial<Profile> | null, position: Partial<Position>): string {
-  return [section("🏢 Über uns", t(profile?.intro)), section("📋 Ihre Aufgaben", asBullets(t(position.aufgaben)))]
+export function buildJobDescription(profile: Partial<Profile> | null, position: Partial<Position>, aufgaben?: string[] | null): string {
+  const tasks = aufgaben?.length ? aufgaben.map((a) => `• ${a}`).join("\n") : asBullets(t(position.aufgaben))
+  return [section("🏢 Über uns", t(profile?.intro)), section("📋 Ihre Aufgaben", tasks)]
     .filter(Boolean)
     .join("\n\n")
 }
@@ -62,7 +64,8 @@ export function buildBenefits(profile: Partial<Profile> | null): string[] {
   ].filter((b): b is string => !!b)
 }
 
-export function buildRequirements(position: Partial<Position>): string {
+export function buildRequirements(position: Partial<Position>, anforderungen?: string[] | null): string {
+  if (anforderungen?.length) return anforderungen.join("\n")
   return [
     t(position.anforderungen),
     t(position.berufserfahrung) && `Berufserfahrung: ${t(position.berufserfahrung)}`,
@@ -78,7 +81,9 @@ export function buildJobPayload(
   position: Position,
   companyId: string,
   // Per KI aufbereitete Benefits (kanzleistelle-benefits.ts); ohne gelten die Rohangaben.
-  prepared: PreparedBenefits | null = null
+  prepared: PreparedBenefits | null = null,
+  // Per KI getextete Aufgaben/Anforderungen (kanzleistelle-job-text.ts, T-125).
+  jobText: PreparedJobText | null = null
 ): Record<string, unknown> {
   return {
     title: position.title,
@@ -95,8 +100,8 @@ export function buildJobPayload(
     salary_min: null,
     salary_max: null,
     salary_range: null,
-    description: buildJobDescription(profile, position),
-    requirements: buildRequirements(position) || null,
+    description: buildJobDescription(profile, position, jobText?.aufgaben),
+    requirements: buildRequirements(position, jobText?.anforderungen) || null,
     benefits: prepared?.benefits ?? buildBenefits(profile),
     is_active: true,
     status: "published",
@@ -107,7 +112,7 @@ export function buildJobPayload(
 // Aufbereitete Benefits vom Profil lesen bzw. bei geänderten Angaben neu erzeugen und
 // speichern. KI-Fehler verhindern das Veröffentlichen nicht (dann Rohangaben).
 async function resolvePreparedBenefits(db: Db, profile: Profile): Promise<PreparedBenefits | null> {
-  const stored = profile as Profile & { kanzleistelle_benefits?: string[] | null; kanzleistelle_working_model?: string | null; kanzleistelle_benefits_hash?: string | null }
+  const stored = profile
   const hash = benefitSourceHash(profile)
   if (stored.kanzleistelle_benefits_hash === hash && stored.kanzleistelle_benefits?.length) {
     return { benefits: stored.kanzleistelle_benefits, workingModel: (stored.kanzleistelle_working_model as PreparedBenefits["workingModel"]) ?? null }
@@ -115,7 +120,7 @@ async function resolvePreparedBenefits(db: Db, profile: Profile): Promise<Prepar
   try {
     const prepared = await prepareBenefits(profile)
     if (!prepared) return null
-    const { error } = await (db as unknown as SupabaseClient)
+    const { error } = await db
       .from("client_profiles")
       .update({ kanzleistelle_benefits: prepared.benefits, kanzleistelle_working_model: prepared.workingModel, kanzleistelle_benefits_hash: hash })
       .eq("client_id", profile.client_id)
@@ -123,6 +128,33 @@ async function resolvePreparedBenefits(db: Db, profile: Profile): Promise<Prepar
     return prepared
   } catch (err) {
     console.error("Benefits-Aufbereitung fehlgeschlagen:", err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+// Aufgaben/Anforderungen je Stelle wie bei den Benefits: gespeichert, nur bei Änderung neu.
+async function resolveJobText(db: Db, position: Position): Promise<PreparedJobText | null> {
+  const hash = jobTextHash(position)
+  if (position.kanzleistelle_text_hash === hash && (position.kanzleistelle_aufgaben?.length || position.kanzleistelle_anforderungen?.length)) {
+    return { aufgaben: position.kanzleistelle_aufgaben ?? [], anforderungen: position.kanzleistelle_anforderungen ?? [] }
+  }
+  try {
+    const { data: snippets } = await db
+      .from("position_snippets")
+      .select("text")
+      .eq("berufsbild", position.berufsbild || "sonstige")
+      .order("sort_order")
+      .limit(12)
+    const prepared = await prepareJobText(position, (snippets ?? []).map((s) => s.text))
+    if (!prepared) return null
+    const { error } = await db
+      .from("client_positions")
+      .update({ kanzleistelle_aufgaben: prepared.aufgaben, kanzleistelle_anforderungen: prepared.anforderungen, kanzleistelle_text_hash: hash })
+      .eq("id", position.id)
+    if (error) console.error("Stellentext nicht gespeichert:", error.message)
+    return prepared
+  } catch (err) {
+    console.error("Stellentext-Aufbereitung fehlgeschlagen:", err instanceof Error ? err.message : err)
     return null
   }
 }
@@ -174,7 +206,8 @@ export async function publishClientProfileToKanzleistelle(clientId: string, db: 
   const prepared = await resolvePreparedBenefits(db, profile)
   const result: ProfileSyncResult = { firstPublish, created: 0, updated: 0 }
   for (const position of positions ?? []) {
-    const payload = buildJobPayload(client, profile, position, companyId!, prepared)
+    const jobText = await resolveJobText(db, position)
+    const payload = buildJobPayload(client, profile, position, companyId!, prepared, jobText)
     if (position.kanzleistelle_job_id) {
       const { error } = await ks.from("jobs").update(payload).eq("id", position.kanzleistelle_job_id)
       if (error) throw new Error(`Stelle „${position.title}“: ${error.message}`)

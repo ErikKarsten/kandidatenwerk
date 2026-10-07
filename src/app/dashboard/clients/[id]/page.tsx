@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { getDashboardKpis } from "@/lib/kpis"
+import { getClientKpis } from "@/lib/kpis"
 import { getActiveAdAreas } from "@/lib/meta-campaigns-queries"
 import { coveringAreas } from "@/lib/ad-coverage"
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -80,7 +80,7 @@ export default async function ClientDetailPage({
       .eq("client_id", id)
       .is("removed_at", null)
       .order("created_at", { ascending: false }),
-    getDashboardKpis(supabase, id),
+    getClientKpis(supabase, id),
     // Aktive Kanzlei-Kampagnen des Kunden: Grundlage für "Verfügbare Kandidaten" (T-33).
     supabase
       .from("campaigns")

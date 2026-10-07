@@ -188,6 +188,9 @@ export type Database = {
           updated_at: string
           kanzleistelle_job_id: string | null
           extra: Json
+          kanzleistelle_anforderungen: string[] | null
+          kanzleistelle_aufgaben: string[] | null
+          kanzleistelle_text_hash: string | null
         }
         Insert: {
           id?: string
@@ -212,6 +215,9 @@ export type Database = {
           updated_at?: string
           kanzleistelle_job_id?: string | null
           extra?: Json
+          kanzleistelle_anforderungen?: string[] | null
+          kanzleistelle_aufgaben?: string[] | null
+          kanzleistelle_text_hash?: string | null
         }
         Update: {
           id?: string
@@ -236,6 +242,9 @@ export type Database = {
           updated_at?: string
           kanzleistelle_job_id?: string | null
           extra?: Json
+          kanzleistelle_anforderungen?: string[] | null
+          kanzleistelle_aufgaben?: string[] | null
+          kanzleistelle_text_hash?: string | null
         }
         Relationships: [
           {
@@ -757,6 +766,7 @@ export type Database = {
           created_by: string | null
           removed_at: string | null
           campaign_id: string | null
+          client_touched_at: string | null
         }
         Insert: {
           id?: string
@@ -767,6 +777,7 @@ export type Database = {
           created_by?: string | null
           removed_at?: string | null
           campaign_id?: string | null
+          client_touched_at?: string | null
         }
         Update: {
           id?: string
@@ -777,6 +788,7 @@ export type Database = {
           created_by?: string | null
           removed_at?: string | null
           campaign_id?: string | null
+          client_touched_at?: string | null
         }
         Relationships: [
           {

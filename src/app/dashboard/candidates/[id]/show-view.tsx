@@ -12,7 +12,7 @@ import type { CustomFieldDefinition } from "./profile-tab"
 
 // Vorführansicht eines Kandidaten im Show-Modus (Paket 29, T-110): nur, was man einer
 // Kanzlei zeigen darf - Kennung statt Name, Profil wie im anonymisierten Lebenslauf und die
-// Beschreibung (Kontaktdaten darin ausgeblendet). Keine Kontaktdaten, kein Wohnort, keine
+// Beschreibung (Kontaktdaten darin ausgeblendet). PLZ ja; keine Kontaktdaten, keine
 // Reiter, kein Verlauf, keine Kanzlei-Notizen, keine internen Tags.
 export function CandidateShowView({
   candidate,
@@ -34,7 +34,7 @@ export function CandidateShowView({
 }) {
   const router = useRouter()
   const cv = buildCv({ ...candidate, email: null, phone: null }, customFieldDefinitions, true)
-  const facts = cv.facts.filter((f) => f.label !== "Wohnort")
+  const facts = cv.facts
   const tags = visibleTags(candidate.tags, true)
 
   return (
@@ -98,7 +98,7 @@ export function CandidateShowView({
             </div>
           )}
           <p className="rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#7c3aed14", color: "#5b21b6" }}>
-            Show-Modus: Name, Kontaktdaten, Wohnort und interne Angaben sind ausgeblendet.
+            Show-Modus: Name, Kontaktdaten und interne Angaben sind ausgeblendet.
           </p>
         </div>
       </div>

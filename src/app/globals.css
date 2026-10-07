@@ -123,6 +123,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Lange Wörter, Links und Kampagnennamen umbrechen statt überlaufen (Paket 30, T-121). */
+    overflow-wrap: break-word;
   }
   html {
     @apply font-sans;

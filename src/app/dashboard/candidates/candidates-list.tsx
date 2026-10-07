@@ -286,7 +286,7 @@ export function CandidatesList({
       </div>
       {showMode && (
         <p className="rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#7c3aed14", color: "#5b21b6" }}>
-          Show-Modus: Namen, Kontaktdaten, Wohnort und interne Tags sind ausgeblendet.
+          Show-Modus: Namen, Kontaktdaten und interne Tags sind ausgeblendet.
         </p>
       )}
 

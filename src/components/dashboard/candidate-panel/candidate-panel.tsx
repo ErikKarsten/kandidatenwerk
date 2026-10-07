@@ -20,7 +20,7 @@ import { PERSONAL_FIELD_KEYS, anonymousName, maskContactData } from "@/lib/show-
 // Mit campaign (Kanzlei-Kampagne) gibt es zusätzlich "Zuordnen". Ohne abdunkelnden
 // Hintergrund, damit man direkt den nächsten Kandidaten anklicken kann; z-index über
 // den Leaflet-Bedienelementen (1000). anonymize = Show-Modus (Paket 28, T-110): ohne Name,
-// Kontaktdaten, PLZ, Erreichbarkeit, Zuordnungen zu Kanzleien und interne Tags; Lebenslauf
+// Kontaktdaten, Erreichbarkeit (PLZ bleibt), Zuordnungen zu Kanzleien und interne Tags; Lebenslauf
 // nur anonymisiert.
 export function CandidatePanel({
   candidateId,
@@ -93,8 +93,8 @@ export function CandidatePanel({
             </h2>
             {current && (
               <p className="text-xs text-gray-500">
-                {anonymize ? "" : current.plz ? `PLZ ${current.plz}` : "Wohnort unbekannt"}
-                {current.origin ? `${anonymize ? "" : " · "}über ${current.origin}` : ""}
+                {current.plz ? `PLZ ${current.plz}` : "Wohnort unbekannt"}
+                {current.origin ? ` · über ${current.origin}` : ""}
                 {` · seit ${new Date(current.createdAt).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`}
               </p>
             )}

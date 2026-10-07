@@ -30,11 +30,11 @@ describe("Lebenslauf", () => {
     expect(JSON.stringify(cv)).not.toContain("intern")
   })
 
-  it("anonymisiert Name, Kontakt, Erreichbarkeit und PLZ", () => {
+  it("anonymisiert Name, Kontakt und Erreichbarkeit, PLZ bleibt", () => {
     const cv = buildCv(candidate, defs, true)
     const all = JSON.stringify(cv)
     expect(cv.title).toBe(`Kandidat:in ${cvReference(candidate.id)}`)
-    for (const secret of ["Erika", "Muster", "erika@example.com", "0151", "ab 17 Uhr", "50668"]) expect(all).not.toContain(secret)
-    expect(cv.facts).toContainEqual({ label: "Wohnort", value: "PLZ-Gebiet 50xxx" })
+    for (const secret of ["Erika", "Muster", "erika@example.com", "0151", "ab 17 Uhr"]) expect(all).not.toContain(secret)
+    expect(cv.facts).toContainEqual({ label: "PLZ", value: "50668" })
   })
 })

@@ -1,12 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { pollRecentMeetings, processPendingMeetings } from "@/lib/close-meetings"
+import { pollRecentActivities, processPendingActivities } from "@/lib/close-sync"
+import { processOnboarding } from "@/lib/close-onboarding"
 import { runTrackedCronJob } from "@/lib/cron/job-runs"
 import { isCronAuthorized } from "@/lib/cron-auth"
 
-// Aufgerufen vom Cloudflare Cron Trigger (custom-worker.ts, alle 5 Minuten): fasst
-// vorgemerkte Close-Besprechungen zusammen und legt sie als Kommentar beim Kunden an.
+// Aufgerufen vom Cloudflare Cron Trigger (custom-worker.ts, alle 5 Minuten): Übernahme neuer
+// Kunden aus Close (close-onboarding.ts) und Close-Aktivitäten als Kommentar beim Kunden
+// (close-sync.ts, Telefonate mit Transkription). Arbeitet höchstens 4 Minuten, damit sich
+// Läufe nicht überschneiden.
+const RUN_BUDGET_MS = 4 * 60_000
 export async function POST(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -14,9 +18,12 @@ export async function POST(request: NextRequest) {
 
   const supabase = createSupabaseAdminClient()
   const result = await runTrackedCronJob(supabase, "close-meetings", async () => {
-    const polled = await pollRecentMeetings(supabase as unknown as SupabaseClient)
-    const r = await processPendingMeetings(supabase as unknown as SupabaseClient)
-    return { result: { ...r, polled }, ok: r.failed === 0 }
+    const db = supabase as unknown as SupabaseClient
+    const deadline = Date.now() + RUN_BUDGET_MS
+    const onboarding = await processOnboarding(db, deadline)
+    const polled = await pollRecentActivities(db)
+    const r = await processPendingActivities(db, deadline)
+    return { result: { ...r, polled, onboarding }, ok: r.failed === 0 && onboarding.failed === 0 }
   })
   return NextResponse.json(result)
 }

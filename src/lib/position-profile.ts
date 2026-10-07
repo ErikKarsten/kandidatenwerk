@@ -1,11 +1,8 @@
 // Vollständiges Stellenprofil (Paket 17, T-79): Pflichtangaben je gesuchter Stelle und
-// Textbausteine je Berufsbild. Aufgaben und Anforderungen werden zeilenweise gepflegt
+// Textbausteine je Berufsbild (ohne Mindestanzahl, T-123). Aufgaben und Anforderungen werden zeilenweise gepflegt
 // (eine Zeile = ein Punkt) - so entstehen auf Kanzleistelle24 Aufzählungen bzw.
 // Anforderungs-Chips. Das Kanzleiprofil lässt sich erst abschließen, wenn jede Stelle
 // vollständig ist.
-
-export const MIN_AUFGABEN = 4
-export const MIN_ANFORDERUNGEN = 3
 
 export interface PositionLike {
   title?: string | null
@@ -60,11 +57,9 @@ export function missingPositionItems(p: PositionLike, rules: PositionFieldRule[]
   if (!filled(p.plz)) missing.push("Standort")
   for (const r of rules.filter((x) => x.required)) {
     const value = r.custom ? extra[r.key] : (p as Record<string, unknown>)[r.key]
-    if (r.key === "aufgaben" || r.key === "anforderungen") {
-      const min = r.key === "aufgaben" ? MIN_AUFGABEN : MIN_ANFORDERUNGEN
-      const count = countPoints(typeof value === "string" ? value : null)
-      if (count < min) missing.push(`${r.label} (${count}/${min})`)
-    } else if (!filled(value)) {
+    // Keine Mindestanzahl bei Aufgaben/Anforderungen mehr (Entscheidung 07.10.2026, T-123) -
+    // Pflichtfelder müssen nur ausgefüllt sein.
+    if (!filled(value)) {
       missing.push(r.label)
     }
   }

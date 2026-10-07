@@ -26,6 +26,7 @@ export function TaskFormModal({
   clientId,
   onClose,
   onCreated,
+  initial,
 }: {
   profiles: ProfileOption[]
   candidateId?: string
@@ -35,11 +36,13 @@ export function TaskFormModal({
   // Optional statt immer router.refresh(): die Kandidatenseite zeigt selbst keine
   // Aufgabenliste an, für die ein Refresh nötig wäre (siehe candidate-detail.tsx).
   onCreated?: () => void
+  // Vorbelegung, z.B. aus einem Punkt einer Gesprächszusammenfassung (Paket 30, T-120).
+  initial?: { title?: string; description?: string; assignedTo?: string }
 }) {
   const router = useRouter()
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [assignedTo, setAssignedTo] = useState("")
+  const [title, setTitle] = useState(initial?.title ?? "")
+  const [description, setDescription] = useState(initial?.description ?? "")
+  const [assignedTo, setAssignedTo] = useState(initial?.assignedTo ?? "")
   const [dueDate, setDueDate] = useState("")
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)

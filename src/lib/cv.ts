@@ -1,7 +1,8 @@
 // Lebenslauf-Export (Paket 24, T-97): baut aus Stammdaten und Zusatzfeldern eines
 // Kandidaten einen gegliederten Lebenslauf für Kanzleien - wie man ihn kennt (Profil,
 // Fachliches, aktuelle Situation, Wechselmotivation, Rahmen), ohne Beschreibung/Notizen.
-// Anonymisiert: ohne Name, Kontaktdaten, Erreichbarkeit und genaue PLZ.
+// Anonymisiert: ohne Name, Kontaktdaten und Erreichbarkeit; die PLZ bleibt sichtbar
+// (Entscheidung 07.10.2026).
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 
 export interface CvCandidate {
@@ -77,10 +78,9 @@ export function buildCv(c: CvCandidate, definitions: { key: string; label: strin
   const used = new Set<string>()
 
   const plz = c.plz?.trim() || value("wohnort_plz")
-  const wohnort = plz ? (anonym ? `PLZ-Gebiet ${plz.slice(0, 2)}xxx` : plz) : ""
   const facts: CvItem[] = [
     { label: "Berufsbild", value: berufsbild ?? "" },
-    { label: "Wohnort", value: wohnort },
+    { label: "PLZ", value: plz },
     { label: "Alter", value: value("alter") ? `${value("alter").replace(/\s*jahre?$/i, "")} Jahre` : "" },
     { label: "Kündigungsfrist", value: value("verfuegbar_ab") },
   ].filter((f) => f.value)
