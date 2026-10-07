@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Inbox, Send, ClipboardCheck, Search } from "lucide-react"
+import { Send, ClipboardCheck, Search, UserCheck } from "lucide-react"
 import {
   updateClientAction,
   archiveClientAction,
@@ -24,7 +24,7 @@ import { PROJECT_PHASES } from "@/lib/client-project"
 import { PortalAccessSection, type PortalUser } from "./portal-access-section"
 import type { ClientFileItem } from "./client-files-tab"
 import { KpiCard } from "@/components/dashboard/kpi-card"
-import type { DashboardKpis } from "@/lib/kpis"
+import type { ClientKpis } from "@/lib/kpis"
 import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import {
   Table,
@@ -121,7 +121,7 @@ interface ClientDetailProps {
   kanzleiCampaigns: KanzleiCampaign[]
   adCoverage: CoverageArea[]
   adAreasKnown: boolean
-  kpis: DashboardKpis
+  kpis: ClientKpis
   tasks: ClientTask[]
   project: {
     meta: ProjectMeta
@@ -374,7 +374,7 @@ export function ClientDetail({
               style={{ borderColor: "#dde3ea", backgroundColor: "#fff" }}
             />
           )}
-          <h1 className="text-2xl font-bold text-gray-900">{client.name}</h1>
+          <h1 className="min-w-0 text-2xl font-bold text-gray-900 [overflow-wrap:anywhere]">{client.name}</h1>
 
           {project.meta.close_url && (
             <a
@@ -387,10 +387,6 @@ export function ClientDetail({
             >
               Close ↗
             </a>
-          )}
-
-          {adAreasKnown && client.lat !== null && client.lng !== null && (
-            <AdCoverageBadge clientName={client.name} lat={client.lat} lng={client.lng} areas={adCoverage} />
           )}
 
           <span
@@ -444,9 +440,15 @@ export function ClientDetail({
 
       {/* ── KPIs ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <KpiCard icon={Inbox} label="Neue Eingänge heute" value={kpis.newToday} iconColor="#4ba3c3" />
         <KpiCard icon={Send} label="Weitergeleitet" value={kpis.forwarded} iconColor="#8b5cf6" />
-        <KpiCard icon={ClipboardCheck} label="Bearbeitet" value={kpis.processed} iconColor="#1a9a6a" />
+        <KpiCard
+          icon={ClipboardCheck}
+          label="Bearbeitet vom Kunden"
+          value={kpis.touchedByClient}
+          iconColor="#1e56a0"
+          hint={kpis.forwarded > 0 ? `${Math.round((kpis.touchedByClient / kpis.forwarded) * 100)} % der weitergeleiteten Kandidaten` : undefined}
+        />
+        <KpiCard icon={UserCheck} label="Eingestellt" value={kpis.hired} iconColor="#1a9a6a" />
       </div>
 
       {/* ── Tabs + Kommentare (auf jedem Reiter sichtbar, Paket 13) ── */}
@@ -481,6 +483,11 @@ export function ClientDetail({
         </div>
 
         <div className="mt-4">
+          {tab === "projekt" && adAreasKnown && client.lat !== null && client.lng !== null && (
+            <div className="mb-4">
+              <AdCoverageBadge clientName={client.name} lat={client.lat} lng={client.lng} areas={adCoverage} />
+            </div>
+          )}
           {tab === "projekt" && (
             <ProjectTab
               clientId={client.id}
@@ -716,7 +723,7 @@ function KampagnenTab({
                   style={{ borderColor: "#dde3ea" }}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-sm font-medium leading-snug text-gray-900">{c.title}</h3>
+                    <h3 className="min-w-0 text-sm font-medium leading-snug text-gray-900 [overflow-wrap:anywhere]">{c.title}</h3>
                     <span
                       className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
                       style={{ backgroundColor: s.bg, color: s.text }}

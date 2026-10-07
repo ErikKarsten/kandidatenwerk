@@ -75,17 +75,25 @@ export async function getCampaignCandidatesForExport(campaignId: string): Promis
   }
 }
 
+// Wohin nach Löschen/Archivieren (Paket 30, T-124): Kanzlei-Kampagne zurück zum Kunden,
+// Lead-Kampagne in die Einstellungen (Lead-Anbindung). Die Kampagnenübersicht gibt es nicht mehr.
+async function campaignReturnPath(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, campaignId: string): Promise<string> {
+  const { data } = await supabase.from("campaigns").select("client_id").eq("id", campaignId).maybeSingle()
+  return data?.client_id ? `/dashboard/clients/${data.client_id}` : "/dashboard/einstellungen"
+}
+
 export async function deleteCampaignWithCandidatesAction(campaignId: string): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
   // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
   const staffError = await requireStaffUser(supabase)
   if (staffError) return staffError
+  const returnPath = await campaignReturnPath(supabase, campaignId)
   const { error: candidateErr } = await supabase.from("candidates").delete().eq("campaign_id", campaignId)
   if (candidateErr) return { error: candidateErr.message }
   const { error } = await supabase.from("campaigns").delete().eq("id", campaignId)
   if (error) return { error: error.message }
-  revalidatePath("/dashboard/campaigns")
-  redirect("/dashboard/campaigns")
+  revalidatePath(returnPath)
+  redirect(returnPath)
 }
 
 export async function archiveCampaignAction(campaignId: string): Promise<{ error: string } | null> {
@@ -93,13 +101,14 @@ export async function archiveCampaignAction(campaignId: string): Promise<{ error
   // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
   const staffError = await requireStaffUser(supabase)
   if (staffError) return staffError
+  const returnPath = await campaignReturnPath(supabase, campaignId)
   const { error } = await supabase
     .from("campaigns")
     .update({ status: "Archiviert" })
     .eq("id", campaignId)
   if (error) return { error: error.message }
-  revalidatePath("/dashboard/campaigns")
-  redirect("/dashboard/campaigns")
+  revalidatePath(returnPath)
+  redirect(returnPath)
 }
 
 export async function deleteCampaignAction(campaignId: string): Promise<{ error: string } | null> {
@@ -107,11 +116,12 @@ export async function deleteCampaignAction(campaignId: string): Promise<{ error:
   // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
   const staffError = await requireStaffUser(supabase)
   if (staffError) return staffError
+  const returnPath = await campaignReturnPath(supabase, campaignId)
   // ON DELETE SET NULL handles candidates automatically
   const { error } = await supabase.from("campaigns").delete().eq("id", campaignId)
   if (error) return { error: error.message }
-  revalidatePath("/dashboard/campaigns")
-  redirect("/dashboard/campaigns")
+  revalidatePath(returnPath)
+  redirect(returnPath)
 }
 
 export async function updateCampaignTitleAction(

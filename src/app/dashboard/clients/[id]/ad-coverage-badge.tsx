@@ -24,9 +24,9 @@ export interface CoverageArea {
 
 const AD_AREA_COLOR = "#f59e0b"
 
-// Kompakter Werbegebiet-Hinweis im Kopf der Kundenseite (Paket 13): nur die Anzahl;
-// ein Klick öffnet ein Fenster mit Karte, Kanzleistandort und den Radien, die ihn
-// einschließen.
+// Werbegebiet-Hinweis (Paket 13): nur die Anzahl; ein Klick öffnet ein Fenster mit Karte,
+// Kanzleistandort und den Radien, die ihn einschließen. Seit Paket 30 (T-122) als Leiste im
+// Reiter Projekt, farbig nach Status (grün = abgedeckt, gelb = kein Werbegebiet).
 export function AdCoverageBadge({
   clientName,
   lat,
@@ -64,12 +64,17 @@ export function AdCoverageBadge({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium hover:bg-gray-50"
-        style={covered ? { borderColor: "#1a9a6a55", color: "#1a9a6a" } : { borderColor: "#f59e0b66", color: "#b45309" }}
+        className="flex w-full flex-wrap items-center gap-2 rounded-xl border px-4 py-3 text-left text-sm font-medium transition-colors hover:brightness-95"
+        style={covered ? { borderColor: "#1a9a6a55", backgroundColor: "#1a9a6a12", color: "#13784f" } : { borderColor: "#f59e0b66", backgroundColor: "#f59e0b12", color: "#b45309" }}
         title="Werbegebiete laufender Meta-Kampagnen auf der Karte anzeigen"
       >
-        <Megaphone size={12} />
-        {covered ? `Im Werbegebiet von ${campaignCount} Meta-Kampagne${campaignCount === 1 ? "" : "n"}` : "In keinem Werbegebiet"}
+        <Megaphone size={16} className="shrink-0" />
+        <span className="min-w-0 flex-1">
+          {covered
+            ? `Kanzleistandort liegt im Werbegebiet von ${campaignCount} laufenden Meta-Kampagne${campaignCount === 1 ? "" : "n"}`
+            : "Kanzleistandort liegt in keinem Werbegebiet einer laufenden Meta-Kampagne"}
+        </span>
+        <span className="shrink-0 text-xs font-normal underline">Auf der Karte ansehen</span>
       </button>
 
       {open && (

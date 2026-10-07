@@ -6,7 +6,7 @@ import Link from "next/link"
 import { Copy, MapPinPlus, Pencil, Plus, Trash2 } from "lucide-react"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import type { ClientLocation } from "@/lib/client-locations"
-import { MIN_ANFORDERUNGEN, MIN_AUFGABEN, appendPoint, countPoints, missingPositionItems } from "@/lib/position-profile"
+import { appendPoint, countPoints, missingPositionItems } from "@/lib/position-profile"
 import { fieldValue, snippetsFor, type PositionSnippet, type ResolvedField } from "@/lib/profile-fields"
 import {
   createCampaignFromPositionsAction,
@@ -326,13 +326,13 @@ function LocationPicks({ locations, onPick }: { locations: ClientLocation[]; onP
 // Zeilenweise gepflegtes Feld mit Zähler und Textbausteinen je Berufsbild (Paket 17, T-79).
 function PointsField({
   label,
-  min,
+  required,
   value,
   snippets,
   onChange,
 }: {
   label: string
-  min: number
+  required: boolean
   value: string | null
   snippets: string[]
   onChange: (text: string) => void
@@ -344,10 +344,10 @@ function PointsField({
       <label className="flex items-center justify-between text-xs font-medium text-gray-600">
         <span>
           {label}
-          {min > 0 ? " *" : ""} – ein Punkt pro Zeile
+          {required ? " *" : ""} – ein Punkt pro Zeile
         </span>
-        <span style={{ color: count >= min ? "#1a9a6a" : "#dc2626" }}>
-          {min > 0 ? `${count}/${min}` : count}
+        <span className="text-gray-400">
+          {count} {count === 1 ? "Punkt" : "Punkte"}
         </span>
       </label>
       <textarea className="w-full rounded-md border px-2 py-1.5 text-sm" style={{ borderColor: "#dde3ea" }} rows={Math.max(4, count + 1)} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
@@ -450,7 +450,7 @@ function PositionForm({
             <PointsField
               key={f.key}
               label={f.label}
-              min={f.required ? (f.key === "aufgaben" ? MIN_AUFGABEN : MIN_ANFORDERUNGEN) : 0}
+              required={f.required}
               value={f.key === "aufgaben" ? v.aufgaben : v.anforderungen}
               snippets={snippetsFor(snippets, v.berufsbild)[f.key as "aufgaben" | "anforderungen"]}
               onChange={(text) => setV({ ...v, [f.key]: text })}

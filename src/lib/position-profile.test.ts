@@ -7,13 +7,12 @@ describe("Stellenprofil", () => {
     expect(countPoints(null)).toBe(0)
   })
 
-  it("meldet fehlende Pflichtangaben mit Zähler", () => {
-    expect(missingPositionItems({ berufsbild: "steuerfachangestellte", plz: "50668", aufgaben: "a\nb" })).toEqual([
+  it("meldet fehlende Pflichtangaben ohne Mindestanzahl", () => {
+    expect(missingPositionItems({ berufsbild: "steuerfachangestellte", plz: "50668", aufgaben: "a" })).toEqual([
       "Arbeitszeit",
       "Berufserfahrung",
       "Start",
-      "Aufgaben (2/4)",
-      "Anforderungen (0/3)",
+      "Anforderungen",
     ])
   })
 

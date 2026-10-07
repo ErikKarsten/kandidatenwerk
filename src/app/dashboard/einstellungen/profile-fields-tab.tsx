@@ -109,7 +109,7 @@ export function ProfileFieldsEditor({ scope, settings }: { scope: FieldScope; se
     <div className="flex flex-col gap-2">
       <p className="text-xs text-gray-500">
         {scope === "stelle"
-          ? "Bezeichnung, Berufsbild und Standort sind immer Pflicht. Pflichtangaben müssen gefüllt sein, bevor sich das Kanzleiprofil abschließen lässt; bei Aufgaben und Anforderungen heißt Pflicht mindestens 4 bzw. 3 Punkte."
+          ? "Bezeichnung, Berufsbild und Standort sind immer Pflicht. Pflichtangaben müssen gefüllt sein, bevor sich das Kanzleiprofil abschließen lässt."
           : "Pflichtangaben müssen gefüllt sein, bevor sich das Kanzleiprofil abschließen lässt. Ausgeblendete Felder behalten ihre Werte."}
       </p>
       {fields.map((f) =>

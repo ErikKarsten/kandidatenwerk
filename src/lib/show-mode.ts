@@ -1,7 +1,7 @@
 "use client"
 
 // Show-Modus (Paket 28, T-110): Kandidaten vor Kunden vorführen wie in einer Banking-App
-// mit ausgeblendeten Beträgen - Name wird zur Kennung, Kontakt, PLZ/Wohnort, Erreichbarkeit
+// mit ausgeblendeten Beträgen - Name wird zur Kennung, Kontakt, Erreichbarkeit
 // und interne Tags (Musterdatensatz) verschwinden. Gilt in "Alle Kandidaten" und im
 // Seitenfenster; Einstellung je Browser.
 import { cvReference } from "@/lib/cv"
@@ -16,7 +16,7 @@ export function anonymousName(candidateId: string): string {
 }
 
 // Zusatzfelder, die im Show-Modus nie gezeigt werden.
-export const PERSONAL_FIELD_KEYS = new Set(["erreichbarkeit", "wohnort_plz"])
+export const PERSONAL_FIELD_KEYS = new Set(["erreichbarkeit"])
 
 // E-Mail-Adressen und Telefonnummern in Freitexten (Beschreibung) ausblenden.
 export function maskContactData(text: string): string {

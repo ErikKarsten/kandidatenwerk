@@ -13,7 +13,6 @@ test("Dashboard und Hauptbereiche laden", async ({ page }) => {
   for (const [path, heading] of [
     ["/dashboard/candidates", "Kandidaten"],
     ["/dashboard/clients", "Kunden"],
-    ["/dashboard/campaigns", "Kampagnen"],
     ["/dashboard/tasks", "Aufgaben"],
     ["/dashboard/einstellungen", "Einstellungen"],
   ]) {

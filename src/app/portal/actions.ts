@@ -74,7 +74,8 @@ export async function updatePortalAssignmentStatusAction(
 
   const { data: updated, error: updateError } = await supabase
     .from("client_assignments")
-    .update({ status: newStatus })
+    // client_touched_at: für "Bearbeitet vom Kunden" (Paket 30, T-126).
+    .update({ status: newStatus, client_touched_at: new Date().toISOString() })
     .eq("id", clientAssignmentId)
     .select("id")
 
@@ -122,7 +123,7 @@ export async function removePortalAssignmentAction(clientAssignmentId: string): 
 
   const { error: updateError } = await admin
     .from("client_assignments")
-    .update({ removed_at: new Date().toISOString() })
+    .update({ removed_at: new Date().toISOString(), client_touched_at: new Date().toISOString() })
     .eq("id", assignment.id)
     .is("removed_at", null)
   if (updateError) return { error: updateError.message }
