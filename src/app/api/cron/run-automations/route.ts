@@ -3,15 +3,13 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { runAutomations } from "@/lib/cron/run-automations"
 import { runTrackedCronJob } from "@/lib/cron/job-runs"
 import { sendLeadConfirmations } from "@/lib/lead-confirmation"
+import { isCronAuthorized } from "@/lib/cron-auth"
 
 // Aufgerufen vom Cloudflare Cron Trigger (custom-worker.ts, alle 5 Minuten).
 // ?dryRun=1: zeigt nur, was verschickt würde (kein Versand, kein DB-Schreiben) - zum
 // gefahrlosen Prüfen des Endpunkts.
 export async function POST(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET
-  const providedSecret = request.headers.get("x-cron-secret")
-
-  if (!cronSecret || providedSecret !== cronSecret) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

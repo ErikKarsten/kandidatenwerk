@@ -72,12 +72,15 @@ export async function updatePortalAssignmentStatusAction(
   if (!assignment) return { error: "Zuordnung nicht gefunden." }
   if (assignment.status === newStatus) return null
 
-  const { error: updateError } = await supabase
+  const { data: updated, error: updateError } = await supabase
     .from("client_assignments")
     .update({ status: newStatus })
     .eq("id", clientAssignmentId)
+    .select("id")
 
   if (updateError) return { error: updateError.message }
+  // RLS lehnt still ab (0 Zeilen) - dann auch keinen Verlaufseintrag schreiben.
+  if (!updated?.length) return { error: "Status konnte nicht geändert werden." }
 
   const admin = createSupabaseAdminClient()
   const { error: historyError } = await admin.from("candidate_history").insert({
