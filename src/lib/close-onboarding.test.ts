@@ -25,6 +25,22 @@ describe("Übernahme aus Close", () => {
     expect(p).toMatchObject({ close_lead_id: "lead_1", firma: "Muster Steuerberatung", plz: "50667", ort: "Köln", ansprechpartner_name: "Anna Muster", close_status: "Gewonnen" })
   })
 
+  it("nimmt den ersten Kontakt mit E-Mail als Hauptkontakt", () => {
+    const p = payloadFromLead(
+      {
+        id: "lead_2",
+        display_name: "Aupperle & Partner",
+        contacts: [
+          { name: "Ulrich Aupperle", title: "Herr", emails: [], phones: [{ phone: "+49 1" }] },
+          { name: "Manuel Aupperle", title: "Herr", emails: [{ email: "info@aupperle.de" }], phones: [] },
+        ],
+      },
+      "Gewonnen"
+    )
+    expect(p).toMatchObject({ ansprechpartner_name: "Manuel Aupperle", email: "info@aupperle.de", telefon: "+49 1" })
+    expect(p.ansprechpartner_position).toBeUndefined()
+  })
+
   it("liest die KI-Antwort nur mit bekannten Feldern", () => {
     const p = payloadFromAnswer(
       'Hier: {"profil": {"intro": "Wir sind ...", "erfunden": "x", "ansprechpartner_bewerbung": "Frau X", "vertriebsnotizen": "Termin Portaleinweisung", "painpoints": "Keine Berufsanfänger"}, "benefits": ["Firmenwagen nach Absprache"], "laufzeit_monate": "12", "vertragsstart": "2026-11-01", "stellen": [{"titel": "StFA (m/w/d)", "berufsbild": "steuerfachangestellte", "aufgaben": "a\\nb"}, {"berufsbild": "x"}]}'

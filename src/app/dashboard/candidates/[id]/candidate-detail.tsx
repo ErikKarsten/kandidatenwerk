@@ -6,6 +6,7 @@ import { ListTodo } from "lucide-react"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import {
   saveDescriptionAction,
+  saveOpenQuestionsAction,
   addNoteAction,
   archiveCandidateAction,
   deleteCandidateAction,
@@ -53,6 +54,7 @@ interface Candidate {
   status: string
   source: string
   notes: string | null
+  offene_fragen: string | null
   tags: string[]
   description: string | null
   berufsbild: string | null
@@ -97,14 +99,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
   const [showMode, setShowMode] = useShowMode()
 
   const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
-
-  // Berufsbild-Herkunft (Atlas T-34): gleich wie das der Herkunfts-Kampagne = übernommen.
-  const campaignBerufsbild = candidate.campaigns?.berufsbild ?? null
-  const berufsbildOrigin = !candidate.berufsbild
-    ? null
-    : campaignBerufsbild && campaignBerufsbild === candidate.berufsbild
-      ? "aus Kampagne übernommen"
-      : "manuell gesetzt"
 
   function handleBerufsbildChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value || null
@@ -154,7 +148,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
     })
   }
 
-  // Show-Modus (Paket 29): eigene Vorführansicht ohne personenbezogene Daten.
+  // Anonymisierter Modus (Paket 29): eigene Vorführansicht ohne personenbezogene Daten.
   if (showMode) {
     return <CandidateShowView candidate={candidate} customFieldDefinitions={customFieldDefinitions} onShowModeChange={setShowMode} />
   }
@@ -258,7 +252,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
               defaultValue={candidate.status}
               onChange={handleStatusChange}
               disabled={statusPending}
-              className="rounded-full px-3 py-1 text-xs font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 disabled:opacity-50"
+              className="rounded-full px-3 py-1.5 text-sm font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 disabled:opacity-50"
               style={{ backgroundColor: colors.bg, color: colors.text }}
             >
               {STATUS_OPTIONS.map((opt) => (
@@ -273,7 +267,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                 onChange={handleBerufsbildChange}
                 disabled={berufsbildPending}
                 aria-label="Berufsbild"
-                className="rounded-full border px-3 py-1 text-xs font-semibold focus:outline-none focus:ring-1 disabled:opacity-50"
+                className="rounded-full border px-3 py-1.5 text-sm font-semibold focus:outline-none focus:ring-1 disabled:opacity-50"
                 style={
                   candidate.berufsbild
                     ? { borderColor: "#1e56a0", color: "#1e56a0", backgroundColor: "#1e56a010" }
@@ -285,7 +279,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
-              {berufsbildOrigin && <span className="text-xs text-gray-400">{berufsbildOrigin}</span>}
             </div>
             <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} />
           </div>
@@ -400,6 +393,13 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
           </button>
           <ClientNotesSection notes={clientNotes} />
           <DescriptionSection candidateId={candidate.id} notes={candidate.notes} />
+          <DescriptionSection
+            candidateId={candidate.id}
+            notes={candidate.offene_fragen}
+            label="Offene Fragen aus Bewerberrunde"
+            placeholder="Was möchte der Kandidat vom neuen Arbeitgeber wissen?"
+            save={saveOpenQuestionsAction}
+          />
           <NoteSection candidateId={candidate.id} />
           <HistorySection
             history={history}
@@ -482,9 +482,15 @@ function ContactChips({
 function DescriptionSection({
   candidateId,
   notes,
+  label = "Beschreibung",
+  placeholder = "Notizen zum Kandidaten…",
+  save = saveDescriptionAction,
 }: {
   candidateId: string
   notes: string | null
+  label?: string
+  placeholder?: string
+  save?: (candidateId: string, text: string) => Promise<{ error: string } | null>
 }) {
   const router = useRouter()
   const [value, setValue] = useState(notes ?? "")
@@ -503,7 +509,7 @@ function DescriptionSection({
   function handleSave() {
     setError(null)
     startTransition(async () => {
-      const result = await saveDescriptionAction(candidateId, value)
+      const result = await save(candidateId, value)
       if (result?.error) {
         setError(result.error)
         return
@@ -514,7 +520,7 @@ function DescriptionSection({
 
   return (
     <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
-      <label className="mb-2 block text-sm font-semibold text-gray-700">Beschreibung</label>
+      <label className="mb-2 block text-sm font-semibold text-gray-700">{label}</label>
       <textarea
         ref={textarea}
         rows={4}
@@ -522,7 +528,7 @@ function DescriptionSection({
         onChange={(e) => setValue(e.target.value)}
         className="w-full resize-none overflow-hidden rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
         style={{ borderColor: "#dde3ea" }}
-        placeholder="Notizen zum Kandidaten…"
+        placeholder={placeholder}
       />
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
       <button

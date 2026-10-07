@@ -38,7 +38,7 @@ export function PortalStatusSelector({
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-2">
         <span
-          className="rounded-full px-3 py-1 text-xs font-medium"
+          className="rounded-full px-3.5 py-1.5 text-sm font-semibold"
           style={{ backgroundColor: assignmentStatusLabel(currentStatus).bg, color: assignmentStatusLabel(currentStatus).text }}
         >
           {assignmentStatusLabel(currentStatus).label}
@@ -47,7 +47,7 @@ export function PortalStatusSelector({
           defaultValue=""
           onChange={handleChange}
           disabled={pending}
-          className="rounded-md border px-2 py-1 text-xs focus:outline-none focus:ring-1 disabled:opacity-50"
+          className="rounded-md border bg-white px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-1 disabled:opacity-50"
           style={{ borderColor: "#dde3ea" }}
         >
           <option value="">{pending ? "Wird gespeichert…" : "Status ändern…"}</option>

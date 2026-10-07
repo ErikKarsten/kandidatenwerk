@@ -50,7 +50,7 @@ export function AssignmentStatusSelect({
         onChange={(e) => change(e.target.value)}
         title={title ?? "Status beim Kunden"}
         aria-label={title ?? "Status beim Kunden"}
-        className={`cursor-pointer rounded-full border-0 font-medium focus:outline-none focus:ring-1 disabled:opacity-50 ${size === "md" ? "px-3 py-1 text-xs" : "px-2 py-0.5 text-xs"}`}
+        className={`cursor-pointer rounded-full border-0 font-medium focus:outline-none focus:ring-1 disabled:opacity-50 ${size === "md" ? "px-3 py-1.5 text-sm" : "px-2.5 py-1 text-xs"}`}
         style={{ backgroundColor: colors.bg, color: colors.text }}
       >
         {ASSIGNMENT_STATUS_OPTIONS.map((o) => (

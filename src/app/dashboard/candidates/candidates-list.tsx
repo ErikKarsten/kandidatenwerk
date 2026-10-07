@@ -15,13 +15,11 @@ import {
 import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
-import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { TagChip } from "@/components/dashboard/tag-editor"
 import { anonymousName, useShowMode } from "@/lib/show-mode"
 import { visibleTags } from "@/lib/candidate-tags"
-import { ASSIGNMENT_STATUS_OPTIONS, assignmentStatusLabel } from "@/lib/assignment-status"
-import { Building2 } from "lucide-react"
+import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 
 const STATUS_LABEL = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o.label]))
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -68,7 +66,6 @@ interface CandidatesListProps {
   search: string
   statusFilter: string
   berufsbildFilter: string
-  sourceFilter: string
   tagFilter: string
   knownTags: string[]
   sort: CandidatesSortOption
@@ -89,7 +86,6 @@ export function CandidatesList({
   search,
   statusFilter,
   berufsbildFilter,
-  sourceFilter,
   tagFilter,
   knownTags,
   sort,
@@ -150,10 +146,6 @@ export function CandidatesList({
     updateParams({ berufsbild: value === "alle" ? null : value, page: null })
   }
 
-  function handleSourceFilterChange(value: string) {
-    updateParams({ source: value === "alle" ? null : value, page: null })
-  }
-
   function handleTagFilterChange(value: string) {
     updateParams({ tag: value === "alle" ? null : value, page: null })
   }
@@ -182,13 +174,11 @@ export function CandidatesList({
               <TableHead className="text-gray-600">E-Mail</TableHead>
               <TableHead className="text-gray-600">Erstellt am</TableHead>
               <TableHead className="text-gray-600">Ausbildung</TableHead>
-              <TableHead className="text-gray-600">Kampagne</TableHead>
-              <TableHead className="text-gray-600">Kunde</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             <TableRow>
-              <TableCell colSpan={7} className="py-12 text-center text-gray-400">
+              <TableCell colSpan={5} className="py-12 text-center text-gray-400">
                 {showArchived ? "Keine archivierten Kandidaten vorhanden." : "Noch keine Kandidaten vorhanden."}
               </TableCell>
             </TableRow>
@@ -250,19 +240,6 @@ export function CandidatesList({
             </option>
           ))}
         </select>
-        <select
-          value={sourceFilter}
-          onChange={(e) => handleSourceFilterChange(e.target.value)}
-          className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
-          style={{ borderColor: "#dde3ea" }}
-        >
-          <option value="alle">Alle Herkünfte</option>
-          {SOURCE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
         {knownTags.length > 0 && (
           <select
             value={tagFilter}
@@ -299,7 +276,7 @@ export function CandidatesList({
       </div>
       {showMode && (
         <p className="rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#7c3aed14", color: "#5b21b6" }}>
-          Show-Modus: Namen, Kontaktdaten und interne Tags sind ausgeblendet.
+          Anonymisierter Modus: Namen, Kontaktdaten und interne Tags sind ausgeblendet.
         </p>
       )}
 
@@ -315,19 +292,14 @@ export function CandidatesList({
                 <TableRow style={{ borderColor: "#dde3ea" }}>
                   <TableHead className="text-gray-600">Name</TableHead>
                   <TableHead className="text-gray-600">Status</TableHead>
-                  <TableHead className="text-gray-600">Status Zuordnung</TableHead>
                   {!showMode && <TableHead className="text-gray-600">E-Mail</TableHead>}
                   <TableHead className="text-gray-600">Erstellt am</TableHead>
                   <TableHead className="text-gray-600">Ausbildung</TableHead>
-                  <TableHead className="text-gray-600">Kampagne</TableHead>
-                  {!showMode && <TableHead className="text-gray-600">Kunde</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {candidates.map((c) => {
                   const colors = STATUS_COLORS[c.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
-                  const campaign = c.campaigns
-                  const client = campaign?.clients ?? null
                   return (
                     <TableRow key={c.id} style={{ borderColor: "#dde3ea" }}>
                       <TableCell className="font-medium">
@@ -355,26 +327,6 @@ export function CandidatesList({
                           {STATUS_LABEL[c.status] ?? c.status}
                         </span>
                       </TableCell>
-                      <TableCell>
-                        {c.assignments.length === 0 ? (
-                          <span className="text-gray-300">—</span>
-                        ) : (
-                          <span className="flex flex-col gap-1">
-                            {c.assignments.map((a) => (
-                              <span
-                                key={a.client_id}
-                                className="inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-                                style={{ backgroundColor: assignmentStatusLabel(a.status).bg, color: assignmentStatusLabel(a.status).text }}
-                                title={showMode ? "Status beim Kunden" : `Status bei ${a.client_name}`}
-                              >
-                                <Building2 size={11} />
-                                {showMode ? "" : `${a.client_name}: `}
-                                {assignmentStatusLabel(a.status).label}
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </TableCell>
                       {!showMode && (
                         <TableCell className="text-gray-600">
                           {c.email ? (
@@ -390,22 +342,6 @@ export function CandidatesList({
                       <TableCell className="text-gray-600">
                         {c.custom_fields?.ausbildung ?? "—"}
                       </TableCell>
-                      <TableCell className="text-gray-600">
-                        {campaign ? (
-                          <Link href={`/dashboard/campaigns/${campaign.id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
-                            {campaign.title}
-                          </Link>
-                        ) : "—"}
-                      </TableCell>
-                      {!showMode && (
-                        <TableCell className="text-gray-600">
-                          {client ? (
-                            <Link href={`/dashboard/clients/${client.id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
-                              {client.name}
-                            </Link>
-                          ) : "—"}
-                        </TableCell>
-                      )}
                     </TableRow>
                   )
                 })}

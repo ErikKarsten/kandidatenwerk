@@ -16,6 +16,7 @@ export interface CandidatePanelData {
   phone: string | null
   plz: string | null
   notes: string | null
+  offeneFragen: string | null
   createdAt: string
   origin: string | null
   stammdaten: { key: string; label: string; value: string }[]
@@ -33,7 +34,7 @@ export async function getCandidatePanelDataAction(candidateId: string): Promise<
   const [{ data: c }, { data: assignments }, { data: definitions }, { data: templates }, { data: tagRows }] = await Promise.all([
     supabase
       .from("candidates")
-      .select("id, first_name, last_name, status, berufsbild, email, phone, plz, notes, created_at, custom_fields, tags, campaigns(title)")
+      .select("id, first_name, last_name, status, berufsbild, email, phone, plz, notes, offene_fragen, created_at, custom_fields, tags, campaigns(title)")
       .eq("id", candidateId)
       .maybeSingle(),
     supabase
@@ -70,6 +71,7 @@ export async function getCandidatePanelDataAction(candidateId: string): Promise<
       phone: c.phone,
       plz: c.plz,
       notes: c.notes,
+      offeneFragen: c.offene_fragen,
       createdAt: c.created_at,
       origin: one(c.campaigns as { title: string } | null)?.title ?? null,
       stammdaten: withValue(defs.filter((d) => d.section === "stammdaten")),

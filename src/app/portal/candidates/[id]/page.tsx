@@ -194,6 +194,12 @@ export default async function PortalCandidateDetailPage({
             ) : (
               <p className="mt-3 text-sm text-gray-400">Noch keine Beschreibung hinterlegt.</p>
             )}
+            {candidate.offene_fragen?.trim() && (
+              <div className="mt-6 border-t pt-4" style={{ borderColor: "#eef2f6" }}>
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Offene Fragen aus Bewerberrunde</span>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{candidate.offene_fragen.trim()}</p>
+              </div>
+            )}
           </div>
         </aside>
       </div>

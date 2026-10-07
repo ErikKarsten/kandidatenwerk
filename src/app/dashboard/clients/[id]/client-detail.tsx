@@ -858,7 +858,7 @@ function KandidatenTab({
                   <TableCell className="text-gray-600">{c.assignmentCampaignTitle ?? "Kanzlei allgemein"}</TableCell>
                   <TableCell className="text-gray-400">{c.campaignTitle || "—"}</TableCell>
                   <TableCell>
-                    <AssignmentStatusSelect assignmentId={c.assignmentId} status={c.assignmentStatus} />
+                    <AssignmentStatusSelect assignmentId={c.assignmentId} status={c.assignmentStatus} size="md" />
                   </TableCell>
                   <TableCell className="text-gray-500">
                     {new Date(c.assignedSince).toLocaleDateString("de-DE", {

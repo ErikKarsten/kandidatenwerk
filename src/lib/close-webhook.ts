@@ -234,6 +234,9 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
   }
   const clientId = client!.id as string
 
+  // Zapier schickt den Kontakt teils als Block (siehe parseContactBlock).
+  const block = text(payload.ansprechpartner_name) ? parseContactBlock(text(payload.ansprechpartner_name)!) : null
+
   // 2. Kundendaten: nur leere Felder füllen.
   const updates: Record<string, unknown> = {}
   const fill = (column: string, value: unknown, label: string) => {
@@ -251,6 +254,7 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
     updates.close_status_at = new Date().toISOString()
   }
   fill("close_url", text(payload.close_url) ?? closeLeadUrl(closeLeadId), "Close-Link")
+  fill("contact_name", block ? text(block.name) : text(payload.ansprechpartner_name), "Kontakt")
   fill("contact_email", text(payload.email), "E-Mail")
   fill("phone", text(payload.telefon), "Telefon")
   const plz = text(payload.plz)?.match(/\d{5}/)?.[0] ?? null
@@ -325,7 +329,6 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
   if (after > before) filled.push(`${after - before} Standort(e)`)
 
   // 4. Ansprechpartner als Kontakt (falls E-Mail noch nicht vorhanden).
-  const block = text(payload.ansprechpartner_name) ? parseContactBlock(text(payload.ansprechpartner_name)!) : null
   const contactName = block ? text(block.name) : text(payload.ansprechpartner_name)
   const contactEmail = (text(payload.ansprechpartner_email) ?? text(block?.email))?.toLowerCase() ?? null
   const contactPhone = text(payload.ansprechpartner_telefon) ?? text(block?.phone)

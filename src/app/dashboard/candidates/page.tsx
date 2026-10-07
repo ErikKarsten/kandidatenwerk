@@ -179,7 +179,6 @@ export default async function CandidatesPage({
         search={search}
         statusFilter={statusFilter}
         berufsbildFilter={berufsbildFilter}
-        sourceFilter={sourceFilter}
         tagFilter={tagFilter}
         knownTags={knownTags}
         sort={sort}

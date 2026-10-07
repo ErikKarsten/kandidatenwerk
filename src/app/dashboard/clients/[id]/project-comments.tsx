@@ -280,43 +280,75 @@ function CommentItem({
   )
 }
 
-// Kommentartext mit klickbaren, umbrechenden Links. Bei Gesprächszusammenfassungen hat
-// jeder Punkt unter "Vereinbart / nächste Schritte" und "Offene Fragen" einen Knopf
-// "Aufgabe" (Paket 30, T-119/T-120).
-function CommentBody({ comment, onCreateTask }: { comment: ProjectComment; onCreateTask: (line: string) => void }) {
-  const lines = parseCommentLines(comment.content, comment.kind === "gespraech")
+// Kommentartext mit klickbaren, umbrechenden Links. Gespräche und Telefonate aus Close
+// werden gegliedert (Paket 35): Titelzeile, Zwischenüberschriften (Kurzfazit, Besprochen,
+// Vereinbart / nächste Schritte, Offene Fragen), Aufzählungen und "In Close ansehen" als
+// Link. Punkte unter nächsten Schritten und offenen Fragen haben einen Knopf "Aufgabe".
+function LinkedText({ text }: { text: string }) {
   return (
-    <div className={`min-w-0 text-sm [overflow-wrap:anywhere] ${comment.kind === "system" ? "italic text-gray-500" : "text-gray-700"}`}>
-      {lines.map((line, i) =>
-        line.text.trim() === "" ? (
-          <div key={i} className="h-2" />
+    <>
+      {splitLinks(text).map((part, j) =>
+        part.type === "link" ? (
+          <a key={j} href={part.value} target="_blank" rel="noopener noreferrer" className="break-all hover:underline" style={{ color: "#1e56a0" }}>
+            {part.value}
+          </a>
         ) : (
-          <div key={i} className="group flex items-start gap-2">
-            <p className="min-w-0 flex-1 whitespace-pre-wrap">
-              {splitLinks(line.text).map((part, j) =>
-                part.type === "link" ? (
-                  <a key={j} href={part.value} target="_blank" rel="noopener noreferrer" className="break-all hover:underline" style={{ color: "#1e56a0" }}>
-                    {part.value}
-                  </a>
-                ) : (
-                  <span key={j}>{part.value}</span>
-                )
-              )}
-            </p>
-            {line.actionable && (
-              <button
-                type="button"
-                onClick={() => onCreateTask(line.text)}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-                style={{ borderColor: "#dde3ea" }}
-                title="Als Aufgabe anlegen"
-              >
-                <ListPlus size={12} /> Aufgabe
-              </button>
-            )}
-          </div>
+          <span key={j}>{part.value}</span>
         )
       )}
+    </>
+  )
+}
+
+function CommentBody({ comment, onCreateTask }: { comment: ProjectComment; onCreateTask: (line: string) => void }) {
+  const structured = comment.kind === "gespraech" || comment.kind === "telefonat"
+  const lines = parseCommentLines(comment.content, structured)
+  return (
+    <div className={`min-w-0 text-sm [overflow-wrap:anywhere] ${comment.kind === "system" ? "italic text-gray-500" : "text-gray-700"}`}>
+      {lines.map((line, i) => {
+        if (line.kind === "blank") return structured ? null : <div key={i} className="h-2" />
+        if (line.kind === "title") return <p key={i} className="mb-1 text-[15px] font-semibold text-gray-900">{line.text}</p>
+        if (line.kind === "heading")
+          return (
+            <div key={i} className="mt-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#1e56a0" }}>
+                {line.text}
+              </p>
+              {line.rest && <p className="mt-0.5 whitespace-pre-wrap">{line.rest}</p>}
+            </div>
+          )
+        if (line.kind === "link")
+          return (
+            <a key={i} href={line.text} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-xs hover:underline" style={{ color: "#1e56a0" }}>
+              In Close ansehen ↗
+            </a>
+          )
+        if (line.kind === "bullet")
+          return (
+            <div key={i} className="group mt-1 flex items-start gap-2">
+              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400" />
+              <p className="min-w-0 flex-1 whitespace-pre-wrap">
+                <LinkedText text={line.text} />
+              </p>
+              {line.actionable && (
+                <button
+                  type="button"
+                  onClick={() => onCreateTask(line.text)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                  style={{ borderColor: "#dde3ea" }}
+                  title="Als Aufgabe anlegen"
+                >
+                  <ListPlus size={12} /> Aufgabe
+                </button>
+              )}
+            </div>
+          )
+        return (
+          <p key={i} className="whitespace-pre-wrap">
+            <LinkedText text={line.text} />
+          </p>
+        )
+      })}
     </div>
   )
 }

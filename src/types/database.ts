@@ -845,6 +845,7 @@ export type Database = {
           meta_lead_id: string | null
           is_demo: boolean
           tags: string[]
+          offene_fragen: string | null
         }
         Insert: {
           id?: string
@@ -869,6 +870,7 @@ export type Database = {
           meta_lead_id?: string | null
           is_demo?: boolean
           tags?: string[]
+          offene_fragen?: string | null
         }
         Update: {
           id?: string
@@ -893,6 +895,7 @@ export type Database = {
           meta_lead_id?: string | null
           is_demo?: boolean
           tags?: string[]
+          offene_fragen?: string | null
         }
         Relationships: [
           {

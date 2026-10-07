@@ -104,7 +104,7 @@ export function MapOverview({
   const [accuracyFilter, setAccuracyFilter] = useState<AccuracyFilter>("all")
   // Kandidat im Seitenfenster statt Seitenwechsel (Paket 13, T-55).
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
-  // Show-Modus (Paket 29): Kandidaten nur mit Kennung und Berufsbild, Kanzleien ohne Namen,
+  // Anonymisierter Modus (Paket 29): Kandidaten nur mit Kennung und Berufsbild, Kanzleien ohne Namen,
   // Seitenfenster anonymisiert - zum Vorführen beim Kunden.
   const [showMode, setShowMode] = useShowMode()
 
