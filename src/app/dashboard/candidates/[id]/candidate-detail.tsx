@@ -124,7 +124,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
     startArchiveTransition(async () => {
       const result = await archiveCandidateAction(candidate.id)
       if (result?.error) { setModalError(result.error); return }
-      window.location.href = "/dashboard/candidates"
+      router.push("/dashboard/candidates")
     })
   }
 
@@ -132,7 +132,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
     startDeleteTransition(async () => {
       const result = await deleteCandidateAction(candidate.id)
       if (result?.error) { setModalError(result.error); return }
-      window.location.href = "/dashboard/candidates"
+      router.push("/dashboard/candidates")
     })
   }
 

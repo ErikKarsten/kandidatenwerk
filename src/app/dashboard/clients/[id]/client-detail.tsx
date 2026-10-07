@@ -190,7 +190,7 @@ export function ClientDetail({
     startArchiveTransition(async () => {
       const result = await archiveClientAction(client.id)
       if (result?.error) { setModalError(result.error); return }
-      window.location.href = "/dashboard/clients"
+      router.push("/dashboard/clients")
     })
   }
 
@@ -208,7 +208,7 @@ export function ClientDetail({
         setModalError(result.error)
         return
       }
-      window.location.href = "/dashboard/clients"
+      router.push("/dashboard/clients")
     })
   }
 
