@@ -17,11 +17,11 @@ import { createHmac, timingSafeEqual } from "node:crypto"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { summarizeCall } from "@/lib/call-summary"
 import { closeLeadUrl } from "@/lib/close-webhook"
-import { closeConfigured, closeGet, closeList, customActivityLabels, downloadCallRecording, type CloseActivity } from "@/lib/close-api"
+import { closeConfigured, closeGet, closeList, customActivityLabels, openCallRecording, type CloseActivity } from "@/lib/close-api"
 import { transcribeAudio } from "@/lib/transcribe"
 
 const MAX_ATTEMPTS = 3
-const BATCH = 20
+const BATCH = 60
 // Telefonate unter einer Minute ohne Notiz (nicht erreicht, Mailbox) werden nicht übernommen.
 const MIN_CALL_SECONDS = 60
 
@@ -266,7 +266,7 @@ async function transcribeCall(db: SupabaseClient, row: QueueRow, clientName: str
   if ((row.call_duration ?? 0) < MIN_CALL_SECONDS) return null
   const call = await closeGet<CloseActivity>(`/activity/call/${row.close_activity_id}/`)
   if (!call?.recording_url || !call.has_recording) return null
-  const transcript = await transcribeAudio(await downloadCallRecording(call.recording_url), `Telefonat mit der Steuerkanzlei ${clientName}.`)
+  const transcript = await transcribeAudio(await openCallRecording(call.recording_url), `Telefonat mit der Steuerkanzlei ${clientName}.`)
   await db.from("close_meeting_summaries").update({ transcript }).eq("close_activity_id", row.close_activity_id)
   return transcript
 }
@@ -301,8 +301,74 @@ async function commentContent(db: SupabaseClient, row: QueueRow, clientName: str
   return `${header}\n\n${summary}${link}`
 }
 
-// Arbeitet die Warteschlange ab, bis deadline (ms seit Epoch) erreicht ist. Telefonate mit
-// Transkription brauchen 1-3 Minuten; ein neues wird nur begonnen, wenn genug Zeit bleibt.
+// Telefonate mit Transkription brauchen je nach Länge bis ca. 2,5 Minuten (38 Min. Audio).
+const TRANSCRIBE_RESERVE_MS = 200_000
+// Höchstens so viele Telefonate gleichzeitig (Aufnahmen werden gestreamt, kein Speicherproblem).
+const MAX_PARALLEL_TRANSCRIPTIONS = 10
+
+function needsTranscript(row: QueueRow): boolean {
+  return row.activity_type === "call" && !row.transcript && (row.call_duration ?? 0) >= MIN_CALL_SECONDS
+}
+
+// Eine Aktivität komplett verarbeiten: sperren, ggf. transkribieren, Kommentar anlegen bzw.
+// nur als Grundlage fürs Profil abhaken. Liefert true bei Erfolg, null wenn schon gesperrt.
+async function processRow(db: SupabaseClient, row: QueueRow): Promise<boolean | null> {
+  const rel = row.clients
+  const clientName = (Array.isArray(rel) ? rel[0]?.name : rel?.name) ?? "Kanzlei"
+  // Sperren - ein paralleler Lauf hat sie evtl. schon übernommen.
+  const { data: claimed } = await db
+    .from("close_meeting_summaries")
+    .update({ status: "in_arbeit", locked_at: new Date().toISOString() })
+    .eq("close_activity_id", row.close_activity_id)
+    .eq("status", "offen")
+    .select("close_activity_id")
+  if (!claimed?.length) return null
+  try {
+    if (!row.create_comment) {
+      // Nur Grundlage für das KI-Profil: Telefonat transkribieren, kein Kommentar.
+      if (needsTranscript(row)) await transcribeCall(db, row, clientName)
+      await db
+        .from("close_meeting_summaries")
+        .update({ status: "erledigt", processed_at: new Date().toISOString(), error: null, locked_at: null })
+        .eq("close_activity_id", row.close_activity_id)
+      return true
+    }
+    const content = await commentContent(db, row, clientName)
+    // Kommentar dem Bearbeiter in Close zuordnen, wenn er ein Team-Profil hat.
+    const { data: author } = row.user_name
+      ? await db.from("profiles").select("id").ilike("full_name", row.user_name).in("role", ["agency_admin", "agency_member"]).limit(1).maybeSingle()
+      : { data: null }
+    const { data: comment, error: commentError } = await db
+      .from("client_comments")
+      .insert({
+        client_id: row.client_id,
+        author_id: author?.id ?? null,
+        kind: KIND[row.activity_type],
+        content,
+        // Chronologisch wie in Close einsortieren.
+        ...(row.activity_at ? { created_at: row.activity_at } : {}),
+      })
+      .select("id")
+      .single()
+    if (commentError) throw new Error(commentError.message)
+    await db
+      .from("close_meeting_summaries")
+      .update({ status: "erledigt", comment_id: comment.id, processed_at: new Date().toISOString(), error: null, locked_at: null })
+      .eq("close_activity_id", row.close_activity_id)
+    return true
+  } catch (err) {
+    const attempts = row.attempts + 1
+    await db
+      .from("close_meeting_summaries")
+      .update({ attempts, status: attempts >= MAX_ATTEMPTS ? "fehler" : "offen", locked_at: null, error: err instanceof Error ? err.message : String(err) })
+      .eq("close_activity_id", row.close_activity_id)
+    return false
+  }
+}
+
+// Arbeitet die Warteschlange ab, bis deadline (ms seit Epoch) erreicht ist (Paket 33):
+// zuerst alle Telefonate mit Transkription gleichzeitig, dann der Rest nacheinander - so ist
+// die Übernahme eines Kunden meist in einem einzigen Lauf durch.
 export async function processPendingActivities(db: SupabaseClient, deadline: number): Promise<CloseActivitiesResult> {
   // Hängengebliebene Sperren (Lauf abgebrochen) wieder freigeben.
   await db
@@ -318,64 +384,21 @@ export async function processPendingActivities(db: SupabaseClient, deadline: num
     .order("activity_at", { ascending: true, nullsFirst: true })
     .limit(BATCH)
   if (error) throw new Error(error.message)
+  const rows = (data ?? []) as unknown as QueueRow[]
 
   const result: CloseActivitiesResult = { processed: 0, failed: 0 }
-  for (const row of (data ?? []) as unknown as QueueRow[]) {
-    const needsTranscript = row.activity_type === "call" && !row.transcript && (row.call_duration ?? 0) >= MIN_CALL_SECONDS
-    const remaining = deadline - Date.now()
-    if (remaining < (needsTranscript ? 200_000 : 40_000)) break
-    const rel = row.clients
-    const clientName = (Array.isArray(rel) ? rel[0]?.name : rel?.name) ?? "Kanzlei"
-    // Sperren - ein paralleler Lauf hat sie evtl. schon übernommen.
-    const { data: claimed } = await db
-      .from("close_meeting_summaries")
-      .update({ status: "in_arbeit", locked_at: new Date().toISOString() })
-      .eq("close_activity_id", row.close_activity_id)
-      .eq("status", "offen")
-      .select("close_activity_id")
-    if (!claimed?.length) continue
-    try {
-      if (!row.create_comment) {
-        // Nur Grundlage für das KI-Profil: Telefonat transkribieren, kein Kommentar.
-        if (needsTranscript) await transcribeCall(db, row, clientName)
-        await db
-          .from("close_meeting_summaries")
-          .update({ status: "erledigt", processed_at: new Date().toISOString(), error: null, locked_at: null })
-          .eq("close_activity_id", row.close_activity_id)
-        result.processed++
-        continue
-      }
-      const content = await commentContent(db, row, clientName)
-      // Kommentar dem Bearbeiter in Close zuordnen, wenn er ein Team-Profil hat.
-      const { data: author } = row.user_name
-        ? await db.from("profiles").select("id").ilike("full_name", row.user_name).in("role", ["agency_admin", "agency_member"]).limit(1).maybeSingle()
-        : { data: null }
-      const { data: comment, error: commentError } = await db
-        .from("client_comments")
-        .insert({
-          client_id: row.client_id,
-          author_id: author?.id ?? null,
-          kind: KIND[row.activity_type],
-          content,
-          // Chronologisch wie in Close einsortieren.
-          ...(row.activity_at ? { created_at: row.activity_at } : {}),
-        })
-        .select("id")
-        .single()
-      if (commentError) throw new Error(commentError.message)
-      await db
-        .from("close_meeting_summaries")
-        .update({ status: "erledigt", comment_id: comment.id, processed_at: new Date().toISOString(), error: null, locked_at: null })
-        .eq("close_activity_id", row.close_activity_id)
-      result.processed++
-    } catch (err) {
-      const attempts = row.attempts + 1
-      await db
-        .from("close_meeting_summaries")
-        .update({ attempts, status: attempts >= MAX_ATTEMPTS ? "fehler" : "offen", locked_at: null, error: err instanceof Error ? err.message : String(err) })
-        .eq("close_activity_id", row.close_activity_id)
-      result.failed++
-    }
+  const count = (ok: boolean | null) => {
+    if (ok === true) result.processed++
+    else if (ok === false) result.failed++
+  }
+
+  const calls = rows.filter(needsTranscript).slice(0, MAX_PARALLEL_TRANSCRIPTIONS)
+  if (calls.length > 0 && deadline - Date.now() >= TRANSCRIBE_RESERVE_MS) {
+    for (const ok of await Promise.all(calls.map((row) => processRow(db, row)))) count(ok)
+  }
+  for (const row of rows.filter((r) => !needsTranscript(r))) {
+    if (deadline - Date.now() < 40_000) break
+    count(await processRow(db, row))
   }
   return result
 }

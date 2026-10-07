@@ -226,21 +226,36 @@ async function step(db: SupabaseClient, row: OnboardingRow): Promise<string> {
   return "Profil befüllt"
 }
 
+// Schritte je Kunde, solange es vorangeht und Zeit bleibt (Paket 33): "aktivitaeten" ->
+// "profil" -> "erledigt" laufen im selben Cron-Lauf, sobald alle Aktivitäten fertig sind.
 export async function processOnboarding(db: SupabaseClient, deadline: number): Promise<{ steps: number; failed: number }> {
-  const { data } = await db.from("close_onboarding").select("lead_id, client_id, trigger_status, triggered_at, status, attempts").in("status", ["offen", "aktivitaeten", "profil"]).order("created_at").limit(5)
+  const { data } = await db
+    .from("close_onboarding")
+    .select("lead_id, client_id, trigger_status, triggered_at, status, attempts")
+    .in("status", ["offen", "aktivitaeten", "profil"])
+    .order("created_at")
+    .limit(10)
   const result = { steps: 0, failed: 0 }
-  for (const row of (data ?? []) as OnboardingRow[]) {
-    if (deadline - Date.now() < (row.status === "profil" ? 120_000 : 60_000)) break
-    try {
-      await step(db, row)
-      result.steps++
-    } catch (err) {
-      const attempts = row.attempts + 1
-      await db
-        .from("close_onboarding")
-        .update({ attempts, status: attempts >= MAX_ATTEMPTS ? "fehler" : row.status, error: err instanceof Error ? err.message : String(err), updated_at: new Date().toISOString() })
-        .eq("lead_id", row.lead_id)
-      result.failed++
+  for (const initial of (data ?? []) as OnboardingRow[]) {
+    let row = initial
+    for (let i = 0; i < 3; i++) {
+      if (deadline - Date.now() < (row.status === "profil" ? 80_000 : 30_000)) return result
+      try {
+        await step(db, row)
+        result.steps++
+      } catch (err) {
+        const attempts = row.attempts + 1
+        await db
+          .from("close_onboarding")
+          .update({ attempts, status: attempts >= MAX_ATTEMPTS ? "fehler" : row.status, error: err instanceof Error ? err.message : String(err), updated_at: new Date().toISOString() })
+          .eq("lead_id", row.lead_id)
+        result.failed++
+        break
+      }
+      const { data: next } = await db.from("close_onboarding").select("lead_id, client_id, trigger_status, triggered_at, status, attempts").eq("lead_id", row.lead_id).single()
+      // Weiter nur, wenn sich der Schritt geändert hat (sonst warten Aktivitäten noch).
+      if (!next || next.status === row.status || next.status === "erledigt" || next.status === "fehler") break
+      row = next as OnboardingRow
     }
   }
   return result

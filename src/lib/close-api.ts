@@ -83,15 +83,15 @@ export async function leadFieldLabels(): Promise<Map<string, string>> {
   return new Map(fields.map((f) => [f.id, f.name]))
 }
 
-// Aufnahme eines Telefonats (MP3). Close leitet auf eine signierte S3-Adresse weiter. Der
+// Aufnahme eines Telefonats (MP3) als Datenstrom. Close leitet auf eine signierte S3-Adresse weiter. Der
 // Weiterleitung selbst folgen: Workers schicken den Authorization-Header sonst mit, und S3
 // lehnt zwei Anmeldeverfahren mit 400 ab (live gesehen 07.10.2026).
-export async function downloadCallRecording(recordingUrl: string): Promise<ArrayBuffer> {
+export async function openCallRecording(recordingUrl: string): Promise<Response> {
   const auth = authHeader()
   if (!auth) throw new Error("CLOSE_API_KEY fehlt.")
   const first = await fetch(recordingUrl, { headers: { Authorization: auth }, redirect: "manual" })
   const location = first.status >= 300 && first.status < 400 ? first.headers.get("location") : null
   const res = location ? await fetch(location) : first
   if (!res.ok) throw new Error(`Aufnahme ${res.status}`)
-  return res.arrayBuffer()
+  return res
 }
