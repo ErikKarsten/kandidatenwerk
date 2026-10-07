@@ -1,7 +1,8 @@
 // Zusammenfassung von Close-Gesprächen (Paket 17, T-54). Der Close-Notetaker liefert zu
 // Besprechungen eine lange, rohe Mitschrift-Zusammenfassung (teils mit Erkennungsfehlern);
-// Claude fasst sie knapp für den Projekt-Reiter des Kunden zusammen.
-import Anthropic from "@anthropic-ai/sdk"
+// Claude (über kie.ai bzw. Anthropic, src/lib/llm.ts) fasst sie knapp für den
+// Projekt-Reiter des Kunden zusammen.
+import { generateText } from "@/lib/llm"
 
 export interface CallForSummary {
   clientName: string
@@ -30,10 +31,6 @@ Offene Fragen: nur wenn es welche gibt.
 // Liefert den Zusammenfassungstext. Wirft bei API-Fehlern oder Ablehnung - der Aufrufer
 // markiert den Anruf dann als fehlgeschlagen und versucht es später erneut.
 export async function summarizeCall(call: CallForSummary): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY fehlt.")
-  const client = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 })
-
   const meta = [
     `Kanzlei: ${call.clientName}`,
     call.date && `Datum: ${call.date}`,
@@ -46,28 +43,11 @@ export async function summarizeCall(call: CallForSummary): Promise<string> {
     .filter(Boolean)
     .join("\n")
 
-  const response = await client.beta.messages.create({
-    model: "claude-opus-5-5",
-    max_tokens: 4000,
-    // Bei einer Ablehnung durch Sicherheitsfilter übernimmt serverseitig ein anderes Modell.
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    output_config: { effort: "low" },
+  return generateText({
+    tier: "smart",
     system: SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `${meta}\n\n${call.closeNote?.trim() ? `<notiz_aus_close>\n${call.closeNote.trim()}\n</notiz_aus_close>\n\n` : ""}<gespraech>\n${call.transcript.trim()}\n</gespraech>`,
-      },
-    ],
+    maxTokens: 4000,
+    timeoutMs: 120_000,
+    prompt: `${meta}\n\n${call.closeNote?.trim() ? `<notiz_aus_close>\n${call.closeNote.trim()}\n</notiz_aus_close>\n\n` : ""}<gespraech>\n${call.transcript.trim()}\n</gespraech>`,
   })
-
-  if (response.stop_reason === "refusal") throw new Error("Zusammenfassung wurde abgelehnt.")
-  const text = response.content
-    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim()
-  if (!text) throw new Error("Leere Zusammenfassung.")
-  return text
 }

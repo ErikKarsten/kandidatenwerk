@@ -18,8 +18,10 @@ export interface CandidatePanelData {
   notes: string | null
   createdAt: string
   origin: string | null
-  stammdaten: { label: string; value: string }[]
-  zusatzfelder: { label: string; value: string }[]
+  stammdaten: { key: string; label: string; value: string }[]
+  zusatzfelder: { key: string; label: string; value: string }[]
+  tags: string[]
+  knownTags: string[]
   assignments: { id: string; clientId: string; clientName: string; campaignId: string | null; campaignTitle: string | null; status: string }[]
 }
 
@@ -28,10 +30,10 @@ export async function getCandidatePanelDataAction(candidateId: string): Promise<
   const ctx = await getStaffContext(supabase)
   if ("error" in ctx) return ctx
 
-  const [{ data: c }, { data: assignments }, { data: definitions }, { data: templates }] = await Promise.all([
+  const [{ data: c }, { data: assignments }, { data: definitions }, { data: templates }, { data: tagRows }] = await Promise.all([
     supabase
       .from("candidates")
-      .select("id, first_name, last_name, status, berufsbild, email, phone, plz, notes, created_at, custom_fields, campaigns(title)")
+      .select("id, first_name, last_name, status, berufsbild, email, phone, plz, notes, created_at, custom_fields, tags, campaigns(title)")
       .eq("id", candidateId)
       .maybeSingle(),
     supabase
@@ -41,6 +43,7 @@ export async function getCandidatePanelDataAction(candidateId: string): Promise<
       .is("removed_at", null),
     supabase.from("custom_field_definitions").select("key, label, section, sort_order").eq("active", true).order("sort_order"),
     supabase.from("field_templates").select("id, field_keys, is_default"),
+    supabase.from("candidate_tag_list").select("tag").order("tag"),
   ])
   if (!c) return { error: "Kandidat nicht gefunden." }
 
@@ -54,7 +57,7 @@ export async function getCandidatePanelDataAction(candidateId: string): Promise<
   const zusatz = defs.filter((d) => d.section !== "stammdaten")
   const shown = templateKeys ? templateKeys.map((k) => zusatz.find((d) => d.key === k)).filter((d): d is (typeof zusatz)[number] => !!d) : zusatz
   const withValue = (list: typeof defs) =>
-    list.filter((d) => (values[d.key] ?? "").trim()).map((d) => ({ label: d.label, value: values[d.key].trim() }))
+    list.filter((d) => (values[d.key] ?? "").trim()).map((d) => ({ key: d.key, label: d.label, value: values[d.key].trim() }))
 
   return {
     data: {
@@ -71,6 +74,8 @@ export async function getCandidatePanelDataAction(candidateId: string): Promise<
       origin: one(c.campaigns as { title: string } | null)?.title ?? null,
       stammdaten: withValue(defs.filter((d) => d.section === "stammdaten")),
       zusatzfelder: withValue(shown),
+      tags: c.tags ?? [],
+      knownTags: (tagRows ?? []).map((r) => r.tag).filter((t): t is string => !!t),
       assignments: (assignments ?? []).map((a) => ({
         id: a.id,
         clientId: a.client_id,

@@ -47,7 +47,7 @@ export function buildDemoCandidate(target: DemoTarget) {
     custom_fields: {
       ausbildung: `Abgeschlossene Ausbildung als ${label}`,
       erreichbarkeit: "Werktags ab 17 Uhr",
-      verfuegbar_ab: "In 3 Monaten (Kündigungsfrist)",
+      verfuegbar_ab: "3 Monate zum Monatsende",
       wechselgrund: "Wünscht sich mehr Wertschätzung und flexiblere Arbeitszeiten",
       erwartungen_neuer_ag: "Homeoffice-Tage, modernes Arbeiten mit DATEV, gutes Team",
       bevorzugter_bereich: "Finanzbuchhaltung und Jahresabschlüsse",

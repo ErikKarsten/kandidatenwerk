@@ -3,6 +3,8 @@
 // Karte, Badge mit Aktentasche, Schriftzug "Kandidatenwerk", Fußzeile. sendEmail legt es
 // um jede Mail, die es noch nicht hat (Erkennung über data-kw-layout).
 
+import { DATENSCHUTZ_URL, IMPRESSUM_URL } from "@/lib/legal-links"
+
 export const EMAIL_LAYOUT_MARKER = "data-kw-layout"
 const BLUE = "#1e56a0"
 
@@ -46,6 +48,7 @@ export function renderEmailLayout(o: EmailLayoutOptions): string {
     </div>
     <div style="padding:20px 32px 24px;margin-top:16px;border-top:1px solid #e5e7eb;text-align:center;">
       <div style="font-size:11px;color:#9ca3af;line-height:1.6;">${footer}</div>
+      <div style="font-size:11px;color:#9ca3af;line-height:1.6;margin-top:8px;"><a href="${IMPRESSUM_URL}" style="color:#9ca3af;">Impressum</a> &middot; <a href="${DATENSCHUTZ_URL}" style="color:#9ca3af;">Datenschutz</a></div>
     </div>
   </div>
 </div>`.trim()

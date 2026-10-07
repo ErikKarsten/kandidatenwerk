@@ -17,6 +17,10 @@ import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 import { CandidatePanel } from "@/components/dashboard/candidate-panel/candidate-panel"
+import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
+import { TagChip } from "@/components/dashboard/tag-editor"
+import { anonymousName, useShowMode } from "@/lib/show-mode"
+import { visibleTags } from "@/lib/candidate-tags"
 
 const STATUS_LABEL = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o.label]))
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -42,6 +46,7 @@ export interface CandidateListItem {
   source: string
   created_at: string
   custom_fields: Record<string, string> | null
+  tags: string[]
   campaigns: {
     id: string
     title: string
@@ -61,6 +66,8 @@ interface CandidatesListProps {
   statusFilter: string
   berufsbildFilter: string
   sourceFilter: string
+  tagFilter: string
+  knownTags: string[]
   sort: CandidatesSortOption
 }
 
@@ -80,8 +87,11 @@ export function CandidatesList({
   statusFilter,
   berufsbildFilter,
   sourceFilter,
+  tagFilter,
+  knownTags,
   sort,
 }: CandidatesListProps) {
+  const [showMode, setShowMode] = useShowMode()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -142,6 +152,10 @@ export function CandidatesList({
 
   function handleSourceFilterChange(value: string) {
     updateParams({ source: value === "alle" ? null : value, page: null })
+  }
+
+  function handleTagFilterChange(value: string) {
+    updateParams({ tag: value === "alle" ? null : value, page: null })
   }
 
   function handleSortChange(value: string) {
@@ -240,6 +254,21 @@ export function CandidatesList({
             </option>
           ))}
         </select>
+        {knownTags.length > 0 && (
+          <select
+            value={tagFilter}
+            onChange={(e) => handleTagFilterChange(e.target.value)}
+            className="rounded-md border px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
+            style={{ borderColor: "#dde3ea" }}
+          >
+            <option value="alle">Alle Tags</option>
+            {visibleTags(knownTags, showMode).map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={sort}
           onChange={(e) => handleSortChange(e.target.value)}
@@ -255,7 +284,15 @@ export function CandidatesList({
         <span className="text-sm text-gray-500">
           {totalCount} Kandidat{totalCount !== 1 ? "en" : ""}
         </span>
+        <div className="ml-auto">
+          <ShowModeToggle on={showMode} onChange={setShowMode} />
+        </div>
       </div>
+      {showMode && (
+        <p className="rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#7c3aed14", color: "#5b21b6" }}>
+          Show-Modus: Namen, Kontaktdaten, Wohnort und interne Tags sind ausgeblendet.
+        </p>
+      )}
 
       {candidates.length === 0 ? (
         <div className="rounded-xl border bg-white py-12 text-center text-sm text-gray-400" style={{ borderColor: "#dde3ea" }}>
@@ -269,11 +306,11 @@ export function CandidatesList({
                 <TableRow style={{ borderColor: "#dde3ea" }}>
                   <TableHead className="text-gray-600">Name</TableHead>
                   <TableHead className="text-gray-600">Status</TableHead>
-                  <TableHead className="text-gray-600">E-Mail</TableHead>
+                  {!showMode && <TableHead className="text-gray-600">E-Mail</TableHead>}
                   <TableHead className="text-gray-600">Erstellt am</TableHead>
                   <TableHead className="text-gray-600">Ausbildung</TableHead>
                   <TableHead className="text-gray-600">Kampagne</TableHead>
-                  <TableHead className="text-gray-600">Kunde</TableHead>
+                  {!showMode && <TableHead className="text-gray-600">Kunde</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -294,8 +331,15 @@ export function CandidatesList({
                           className="hover:underline"
                           style={{ color: "#1e56a0" }}
                         >
-                          {c.first_name} {c.last_name}
+                          {showMode ? anonymousName(c.id) : `${c.first_name} ${c.last_name}`}
                         </Link>
+                        {visibleTags(c.tags, showMode).length > 0 && (
+                          <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+                            {visibleTags(c.tags, showMode).map((t) => (
+                              <TagChip key={t} tag={t} />
+                            ))}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <span
@@ -306,11 +350,13 @@ export function CandidatesList({
                           {STATUS_LABEL[c.status] ?? c.status}
                         </span>
                       </TableCell>
-                      <TableCell className="text-gray-600">
-                        {c.email ? (
-                          <a href={`mailto:${c.email}`} className="hover:underline" style={{ color: "#1e56a0" }}>{c.email}</a>
-                        ) : "—"}
-                      </TableCell>
+                      {!showMode && (
+                        <TableCell className="text-gray-600">
+                          {c.email ? (
+                            <a href={`mailto:${c.email}`} className="hover:underline" style={{ color: "#1e56a0" }}>{c.email}</a>
+                          ) : "—"}
+                        </TableCell>
+                      )}
                       <TableCell className="text-gray-500 text-sm">
                         {new Date(c.created_at).toLocaleDateString("de-DE", {
                           day: "2-digit", month: "2-digit", year: "numeric",
@@ -326,13 +372,15 @@ export function CandidatesList({
                           </Link>
                         ) : "—"}
                       </TableCell>
-                      <TableCell className="text-gray-600">
-                        {client ? (
-                          <Link href={`/dashboard/clients/${client.id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
-                            {client.name}
-                          </Link>
-                        ) : "—"}
-                      </TableCell>
+                      {!showMode && (
+                        <TableCell className="text-gray-600">
+                          {client ? (
+                            <Link href={`/dashboard/clients/${client.id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
+                              {client.name}
+                            </Link>
+                          ) : "—"}
+                        </TableCell>
+                      )}
                     </TableRow>
                   )
                 })}
@@ -349,7 +397,7 @@ export function CandidatesList({
           />
         </div>
       )}
-      {selectedId && <CandidatePanel candidateId={selectedId} onClose={() => setSelectedId(null)} />}
+      {selectedId && <CandidatePanel candidateId={selectedId} onClose={() => setSelectedId(null)} anonymize={showMode} />}
     </div>
   )
 }

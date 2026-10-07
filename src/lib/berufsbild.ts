@@ -8,3 +8,8 @@ export const BERUFSBILD_OPTIONS = [
 ] as const
 
 export type Berufsbild = (typeof BERUFSBILD_OPTIONS)[number]["value"]
+
+export function berufsbildLabel(value: string | null | undefined): string | null {
+  if (!value) return null
+  return BERUFSBILD_OPTIONS.find((o) => o.value === value)?.label ?? value
+}

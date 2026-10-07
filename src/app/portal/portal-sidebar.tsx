@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { LegalLinks } from "@/components/legal-links"
 import { usePathname, useRouter } from "next/navigation"
 import { Briefcase, LayoutDashboard, Users, Megaphone, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -93,6 +94,7 @@ export function PortalSidebar({
           <LogOut size={18} className="shrink-0" />
           <span>Abmelden</span>
         </button>
+        <LegalLinks className="mt-2" linkClassName="hover:text-white" style={{ color: "rgba(219, 234, 254, 0.5)" }} />
       </div>
     </aside>
   )

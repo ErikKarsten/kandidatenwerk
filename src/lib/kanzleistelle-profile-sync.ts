@@ -8,6 +8,7 @@
 // kampagnenbasierte Veröffentlichung (sync-kanzleistelle-jobs.ts) bleibt für Bestände.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
+import { benefitSourceHash, prepareBenefits, type PreparedBenefits } from "@/lib/kanzleistelle-benefits"
 
 type Db = SupabaseClient<Database>
 
@@ -75,7 +76,9 @@ export function buildJobPayload(
   client: { name: string },
   profile: Partial<Profile> | null,
   position: Position,
-  companyId: string
+  companyId: string,
+  // Per KI aufbereitete Benefits (kanzleistelle-benefits.ts); ohne gelten die Rohangaben.
+  prepared: PreparedBenefits | null = null
 ): Record<string, unknown> {
   return {
     title: position.title,
@@ -87,17 +90,40 @@ export function buildJobPayload(
     latitude: position.lat,
     longitude: position.lng,
     employment_type: employmentType(position.arbeitszeit),
-    working_model: workingModel(profile?.homeoffice),
+    working_model: prepared?.workingModel ?? workingModel(profile?.homeoffice),
     // Gehalt nie übertragen - explizit leeren, falls es früher schon drin war.
     salary_min: null,
     salary_max: null,
     salary_range: null,
     description: buildJobDescription(profile, position),
     requirements: buildRequirements(position) || null,
-    benefits: buildBenefits(profile),
+    benefits: prepared?.benefits ?? buildBenefits(profile),
     is_active: true,
     status: "published",
     updated_at: new Date().toISOString(),
+  }
+}
+
+// Aufbereitete Benefits vom Profil lesen bzw. bei geänderten Angaben neu erzeugen und
+// speichern. KI-Fehler verhindern das Veröffentlichen nicht (dann Rohangaben).
+async function resolvePreparedBenefits(db: Db, profile: Profile): Promise<PreparedBenefits | null> {
+  const stored = profile as Profile & { kanzleistelle_benefits?: string[] | null; kanzleistelle_working_model?: string | null; kanzleistelle_benefits_hash?: string | null }
+  const hash = benefitSourceHash(profile)
+  if (stored.kanzleistelle_benefits_hash === hash && stored.kanzleistelle_benefits?.length) {
+    return { benefits: stored.kanzleistelle_benefits, workingModel: (stored.kanzleistelle_working_model as PreparedBenefits["workingModel"]) ?? null }
+  }
+  try {
+    const prepared = await prepareBenefits(profile)
+    if (!prepared) return null
+    const { error } = await (db as unknown as SupabaseClient)
+      .from("client_profiles")
+      .update({ kanzleistelle_benefits: prepared.benefits, kanzleistelle_working_model: prepared.workingModel, kanzleistelle_benefits_hash: hash })
+      .eq("client_id", profile.client_id)
+    if (error) console.error("Aufbereitete Benefits nicht gespeichert:", error.message)
+    return prepared
+  } catch (err) {
+    console.error("Benefits-Aufbereitung fehlgeschlagen:", err instanceof Error ? err.message : err)
+    return null
   }
 }
 
@@ -145,9 +171,10 @@ export async function publishClientProfileToKanzleistelle(clientId: string, db: 
     if (linkError) throw new Error(linkError.message)
   }
 
+  const prepared = await resolvePreparedBenefits(db, profile)
   const result: ProfileSyncResult = { firstPublish, created: 0, updated: 0 }
   for (const position of positions ?? []) {
-    const payload = buildJobPayload(client, profile, position, companyId!)
+    const payload = buildJobPayload(client, profile, position, companyId!, prepared)
     if (position.kanzleistelle_job_id) {
       const { error } = await ks.from("jobs").update(payload).eq("id", position.kanzleistelle_job_id)
       if (error) throw new Error(`Stelle „${position.title}“: ${error.message}`)

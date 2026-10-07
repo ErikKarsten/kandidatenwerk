@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
+import { PortalCandidateRow } from "@/components/portal/portal-candidate-row"
+import { berufsbildLabel } from "@/lib/berufsbild"
 import { ArrowLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { assignmentStatusLabel } from "@/lib/assignment-status"
@@ -82,27 +84,14 @@ export default async function PortalCampaignDetailPage({
           {rows.map((a) => {
             const c = a.candidates!
             return (
-              <Link
+              <PortalCandidateRow
                 key={a.id}
+                assignmentId={a.id}
                 href={`/portal/candidates/${c.id}`}
-                className="flex items-center justify-between rounded-xl border bg-white p-4 hover:shadow-sm transition-shadow"
-                style={{ borderColor: "#dde3ea" }}
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {c.first_name} {c.last_name}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {[c.berufsbild, c.plz].filter(Boolean).join(" · ") || "—"}
-                  </p>
-                </div>
-                <span
-                  className="rounded-full px-2.5 py-1 text-xs font-medium"
-                  style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}
-                >
-                  {assignmentStatusLabel(a.status).label}
-                </span>
-              </Link>
+                name={`${c.first_name} ${c.last_name}`.trim()}
+                meta={[berufsbildLabel(c.berufsbild), c.plz].filter(Boolean).join(" · ")}
+                status={assignmentStatusLabel(a.status)}
+              />
             )
           })}
         </div>

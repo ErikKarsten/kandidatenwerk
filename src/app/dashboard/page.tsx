@@ -1,10 +1,11 @@
 import Link from "next/link"
-import { Users, Megaphone, UserSearch, UserX, Inbox, Euro, Target, Coins } from "lucide-react"
+import { Users, Megaphone, UserSearch, UserX, Inbox, Euro, Target, Coins, BadgeCheck } from "lucide-react"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import {
   addDays,
   berlinToday,
+  countQualifiedMetaLeads,
   getApplicationStats,
   getMetaAdStats,
   parseDateRange,
@@ -51,7 +52,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   ] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "active"),
     supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("kind", "lead").eq("status", "active"),
-    supabase.from("candidates").select("*", { count: "exact", head: true }).eq("is_demo", false),
+    supabase.from("candidates").select("*", { count: "exact", head: true }).eq("is_demo", false).not("tags", "cs", "{Musterdatensatz}"),
     countAssignedCandidates(supabase),
     getApplicationStats(supabase, range),
     getMetaAdStats(range),
@@ -74,6 +75,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const kamName = (id: string | null) => (teamRows ?? []).find((t) => t.id === id)?.full_name ?? null
   const campaignIdByMetaId = new Map((leadCampaigns ?? []).map((c) => [c.meta_campaign_id as string, c.id as string]))
   const costPerLead = ads.ok && ads.leads > 0 ? ads.spend / ads.leads : null
+  // Kosten pro qualifiziertem Lead (Paket 28, T-116): nur Kandidaten aus den ausgewerteten
+  // Meta-Kampagnen (dieselben wie bei den Werbeausgaben).
+  const evaluatedCampaignIds = ads.ok ? ads.campaigns.map((c) => campaignIdByMetaId.get(c.metaCampaignId)).filter((id): id is string => !!id) : []
+  const qualifiedLeads = ads.ok ? await countQualifiedMetaLeads(supabase, range, evaluatedCampaignIds) : 0
+  const costPerQualifiedLead = ads.ok && qualifiedLeads > 0 ? ads.spend / qualifiedLeads : null
   const maxPerDay = Math.max(1, ...applications.byDay.map((d) => d.count))
   const activePreset = presets().find((p) => p.range.from === range.from && p.range.to === range.to)?.label
 
@@ -150,11 +156,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <KpiCard icon={Inbox} label="Eingegangene Bewerbungen" value={applications.total} iconColor="#4ba3c3" />
           <KpiCard icon={Euro} label="Werbeausgaben (Meta)" value={ads.ok ? eur.format(ads.spend) : "–"} iconColor="#1e56a0" />
           <KpiCard icon={Target} label="Leads laut Meta" value={ads.ok ? ads.leads : "–"} iconColor="#8b5cf6" />
           <KpiCard icon={Coins} label="Ø Kosten pro Lead" value={costPerLead !== null ? eur.format(costPerLead) : "–"} iconColor="#1a9a6a" />
+          <KpiCard
+            icon={BadgeCheck}
+            label="Ø Kosten pro qualifiziertem Lead"
+            value={costPerQualifiedLead !== null ? eur.format(costPerQualifiedLead) : "–"}
+            hint={ads.ok ? `${qualifiedLeads} qualifiziert (vorqualifiziert oder zugeordnet)` : undefined}
+            iconColor="#0369a1"
+          />
         </div>
         {!ads.ok && <p className="text-xs text-amber-700">{ads.error}</p>}
 

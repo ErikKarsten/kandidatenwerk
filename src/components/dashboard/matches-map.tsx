@@ -158,6 +158,24 @@ function PointDetails({ point }: { point: MapPoint }) {
 // PLZ/Ort-Suche in dashboard/map/map-overview.tsx) - bewusst nicht über einen weiteren
 // Prop gelöst, da eine reine Props-Änderung nicht zwischen "einmalig hinzoomen" und
 // "Kandidat für die Bounds-Berechnung" unterscheiden könnte.
+// Gesuchter Ort auf der Karte (Paket 28, T-112): Stecknadel plus dezente Entfernungsringe,
+// damit man abschätzen kann, wie weit Kandidaten und Kanzleien entfernt sind.
+export interface SearchPin {
+  lat: number
+  lng: number
+  label: string
+}
+
+const SEARCH_PIN_RINGS_KM = [10, 25, 50]
+
+const searchPinIcon = L.divIcon({
+  className: "",
+  html: `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 30 40"><path d="M15 1C7.3 1 1 7.2 1 14.9 1 25.3 15 39 15 39s14-13.7 14-24.1C29 7.2 22.7 1 15 1z" fill="#dc2626" stroke="#fff" stroke-width="2"/><circle cx="15" cy="15" r="5" fill="#fff"/></svg>`,
+  iconSize: [30, 40],
+  iconAnchor: [15, 39],
+  popupAnchor: [0, -36],
+})
+
 export interface MatchesMapHandle {
   flyTo(lat: number, lng: number, zoom?: number): void
 }
@@ -170,7 +188,8 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
   // Kartenausschnitt auch nach den Kreisen richten (z.B. Werbegebiete am Kanzleistandort,
   // Paket 13) - sonst zoomt die Karte bei nur einem Punkt ganz nah heran.
   fitCircles?: boolean
-}>(function MatchesMap({ points, circles = [], height = "280px", scrollWheelZoom = false, fitCircles = false }, ref) {
+  searchPin?: SearchPin | null
+}>(function MatchesMap({ points, circles = [], height = "280px", scrollWheelZoom = false, fitCircles = false, searchPin = null }, ref) {
   const validPoints = useMemo(() => points.filter(hasCoords), [points])
   const groups = useMemo(() => groupByLocation(validPoints), [validPoints])
   // Referenziell stabil, solange sich die Punktmenge nicht ändert - sonst würde JEDER
@@ -256,6 +275,25 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
             </Popup>
           </Circle>
         ))}
+        {searchPin && (
+          <>
+            {SEARCH_PIN_RINGS_KM.map((km) => (
+              <Circle
+                key={`pin-ring-${km}`}
+                center={[searchPin.lat, searchPin.lng]}
+                radius={km * 1000}
+                interactive={false}
+                pathOptions={{ color: "#dc2626", weight: 1, opacity: 0.45, dashArray: "4 6", fill: false }}
+              />
+            ))}
+            <Marker position={[searchPin.lat, searchPin.lng]} icon={searchPinIcon} zIndexOffset={1000}>
+              <Popup>
+                <p className="text-sm font-semibold text-gray-900">{searchPin.label}</p>
+                <p className="text-xs text-gray-500">Gestrichelte Ringe: {SEARCH_PIN_RINGS_KM.join(" / ")} km</p>
+              </Popup>
+            </Marker>
+          </>
+        )}
         {groups.map((group) => {
           // Einzelner Punkt an diesem Standort: Verhalten exakt wie vor der Gruppierung.
           if (group.points.length === 1) {

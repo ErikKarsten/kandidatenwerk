@@ -1,7 +1,8 @@
 // Live-Datenbank vor dem Launch leeren (Entscheidung 07.10.2026): löscht alle Kandidaten,
 // Kunden, Kampagnen, Zuordnungen, Aufgaben, Mails, Verläufe, Portal-Zugänge und deren
 // Dateien. Bleibt: Agentur, Team, E-Mail-Vorlagen und Sets, Felder, Textbausteine, Logo,
-// Meta-Lead-Formulare, PLZ-Bereiche, Fehlermeldungen (ohne Kundenbezug), Cron-Protokoll.
+// Meta-Lead-Formulare, PLZ-Bereiche, Fehlermeldungen (ohne Kundenbezug), Cron-Protokoll und
+// die Musterkandidaten (Tag "Musterdatensatz", Paket 28).
 //
 // Vorher wird alles Gelöschte (Tabellen als JSON, Dateien) nach
 // ~/Kandidatenwerk-Sicherungen/<Zeitpunkt>/ gesichert - außerhalb des Repos, enthält
@@ -58,11 +59,16 @@ const DELETE_TABLES = [
 // Spalte, die in jeder Zeile gesetzt ist (PostgREST verlangt einen Filter beim Löschen).
 const KEY_COLUMN: Record<string, string> = {}
 const DELETE_BUCKETS = ["candidate-files", "client-files", "client-logos"]
+// Musterkandidaten bleiben (nur ihre Zuordnungen, Verläufe usw. werden mit geleert).
+const KEEP_TAG = "Musterdatensatz"
+const KEEP_FILTER = `{${KEEP_TAG}}`
 // Team-Konten mit dieser Kennung sind Testzugänge (scripts/live-testbereich.ts).
 const TEST_TAG = "+kw-test"
 
 async function count(table: string): Promise<number> {
-  const { count: n, error } = await db.from(table).select("*", { count: "exact", head: true })
+  let query = db.from(table).select("*", { count: "exact", head: true })
+  if (table === "candidates") query = query.not("tags", "cs", KEEP_FILTER)
+  const { count: n, error } = await query
   if (error) throw new Error(`${table}: ${error.message}`)
   return n ?? 0
 }
@@ -70,7 +76,9 @@ async function count(table: string): Promise<number> {
 async function fetchAll(table: string): Promise<unknown[]> {
   const rows: unknown[] = []
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from(table).select("*").range(from, from + 999)
+    let query = db.from(table).select("*")
+    if (table === "candidates") query = query.not("tags", "cs", KEEP_FILTER)
+    const { data, error } = await query.range(from, from + 999)
     if (error) throw new Error(`${table}: ${error.message}`)
     rows.push(...(data ?? []))
     if (!data || data.length < 1000) return rows
@@ -114,7 +122,7 @@ async function main() {
   }
 
   if (!execute) {
-    console.log("\nBleibt erhalten: Agentur, Team, Vorlagen, Sets, Felder, Textbausteine, Logo, Meta-Formulare.")
+    console.log("\nBleibt erhalten: Agentur, Team, Vorlagen, Sets, Felder, Textbausteine, Logo, Meta-Formulare, Musterkandidaten.")
     console.log("Ausführen: BESTAETIGUNG=LIVE-LEEREN npx tsx scripts/live-bereinigen.ts --ausfuehren")
     return
   }
@@ -141,7 +149,9 @@ async function main() {
   for (let round = 1; pending.length && round <= 5; round++) {
     const failed: string[] = []
     for (const t of pending) {
-      const { error } = await db.from(t).delete().not(KEY_COLUMN[t] ?? "id", "is", null)
+      let query = db.from(t).delete().not(KEY_COLUMN[t] ?? "id", "is", null)
+      if (t === "candidates") query = query.not("tags", "cs", KEEP_FILTER)
+      const { error } = await query
       if (error) {
         failed.push(t)
         if (round === 5) console.error(`  ${t}: ${error.message}`)

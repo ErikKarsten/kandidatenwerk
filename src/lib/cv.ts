@@ -43,7 +43,7 @@ const LABELS: Record<string, string> = {
   anzahl_ag_5_jahre: "Arbeitgeber in den letzten 5 Jahren",
   wechselgrund: "Wechselgrund",
   erwartungen_neuer_ag: "Erwartungen an den neuen Arbeitgeber",
-  verfuegbar_ab: "Verfügbar ab",
+  verfuegbar_ab: "Kündigungsfrist",
   gehaltsvorstellung: "Gehaltsvorstellung",
   alter: "Alter",
   erreichbarkeit: "Erreichbarkeit",
@@ -82,7 +82,7 @@ export function buildCv(c: CvCandidate, definitions: { key: string; label: strin
     { label: "Berufsbild", value: berufsbild ?? "" },
     { label: "Wohnort", value: wohnort },
     { label: "Alter", value: value("alter") ? `${value("alter").replace(/\s*jahre?$/i, "")} Jahre` : "" },
-    { label: "Verfügbar ab", value: value("verfuegbar_ab") },
+    { label: "Kündigungsfrist", value: value("verfuegbar_ab") },
   ].filter((f) => f.value)
   used.add("alter")
 
