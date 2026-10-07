@@ -150,7 +150,8 @@ function ProjectMetaCard({ clientId, meta, team }: { clientId: string; meta: Pro
   const [pending, startTransition] = useTransition()
   const end = contractEnd(v.contract_start, v.contract_term_months)
   const dirty = JSON.stringify(v) !== JSON.stringify(meta)
-  const input = "w-full rounded-md border px-2 py-1.5 text-sm"
+  // Einheitliche Höhe für Auswahl-, Datums- und Zahlenfelder (Paket 32).
+  const input = "h-9 w-full rounded-md border bg-white px-2 text-sm"
 
   function save() {
     setError(null)
@@ -281,7 +282,9 @@ function ProfileCard({
   const [newBenefit, setNewBenefit] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
-  const input = "w-full rounded-md border px-2 py-1.5 text-sm"
+  // Einheitliche Höhe für Auswahl-, Datums- und Zahlenfelder (Paket 32).
+  const input = "h-9 w-full rounded-md border bg-white px-2 text-sm"
+  const textarea = "w-full rounded-md border bg-white px-2 py-1.5 text-sm"
 
   function startEdit() {
     setV({ ...(profile ?? {}), benefits: [...(profile?.benefits ?? [])], extra: { ...(profile?.extra ?? {}) } })
@@ -338,7 +341,7 @@ function ProfileCard({
                         {f.required ? " *" : ""}
                       </span>
                       {f.multiline ? (
-                        <textarea className={input} style={style} rows={f.key === "gehaltsgefuege" ? 3 : 4} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
+                        <textarea className={textarea} style={style} rows={f.key === "gehaltsgefuege" ? 3 : 4} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
                       ) : (
                         <input className={input} style={style} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
                       )}

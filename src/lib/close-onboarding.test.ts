@@ -57,3 +57,12 @@ describe("Close-Aktivitäten", () => {
     expect(text).toBe("Budget vorhanden: Ja\nSoftware: DATEV, Addison")
   })
 })
+
+describe("Kommentare erst ab Gewonnen", () => {
+  it("Folgebesprechung bekommt noch keine Kommentare", async () => {
+    const { closeStatusAllowsComments } = await import("./close-sync")
+    expect(closeStatusAllowsComments("Gewonnen")).toBe(true)
+    expect(closeStatusAllowsComments(null)).toBe(true)
+    expect(closeStatusAllowsComments("Folgebesprechung zum SC vereinbart")).toBe(false)
+  })
+})
