@@ -18,7 +18,7 @@ import { HistorySection, type HistoryEntry } from "./history-section"
 import { ClientNotesSection, type ClientNote } from "./client-notes-section"
 import { type ClientOption } from "./client-assignment-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
-import { assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
+import { type ActiveAssignment } from "./matches-section"
 import { AssignmentTab, type KanzleiCampaignOption } from "./assignment-tab"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
@@ -27,6 +27,7 @@ import { CommunicationTab, type CandidateMessage, type MessageTemplate } from ".
 import type { TemplateVars } from "@/lib/automation-engine"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
 import { TagEditor } from "@/components/dashboard/tag-editor"
+import { AssignmentStatusSelect } from "@/components/dashboard/assignment-status-select"
 import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { useShowMode } from "@/lib/show-mode"
 import { CandidateShowView } from "./show-view"
@@ -254,19 +255,32 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             <h1 className="text-2xl font-bold text-gray-900">
               {candidate.first_name} {candidate.last_name}
             </h1>
-            <select
-              defaultValue={candidate.status}
-              onChange={handleStatusChange}
-              disabled={statusPending}
-              className="rounded-full px-3 py-1 text-xs font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 disabled:opacity-50"
-              style={{ backgroundColor: colors.bg, color: colors.text }}
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            {/* Ab der Zuordnung gilt der Status beim Kunden statt des internen (Paket 31). */}
+            {activeAssignments.length > 0 ? (
+              activeAssignments.map((a) => (
+                <AssignmentStatusSelect
+                  key={a.id}
+                  assignmentId={a.id}
+                  status={a.status}
+                  size="md"
+                  title={`Status bei ${clients.find((c) => c.id === a.clientId)?.name ?? "der Kanzlei"}`}
+                />
+              ))
+            ) : (
+              <select
+                defaultValue={candidate.status}
+                onChange={handleStatusChange}
+                disabled={statusPending}
+                className="rounded-full px-3 py-1 text-xs font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 disabled:opacity-50"
+                style={{ backgroundColor: colors.bg, color: colors.text }}
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            )}
             <div className="flex items-center gap-1.5">
               <select
                 value={candidate.berufsbild ?? ""}
@@ -307,24 +321,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
           </p>
         )}
         {berufsbildError && <p className="mt-2 text-xs text-red-600">{berufsbildError}</p>}
-        {activeAssignments.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {activeAssignments.map((a) => {
-              const client = clients.find((c) => c.id === a.clientId)
-              const colors = assignmentStatusLabel(a.status)
-              return (
-                <span
-                  key={a.id}
-                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
-                  style={{ backgroundColor: colors.bg, color: colors.text }}
-                >
-                  {client?.name ?? "Unbekannter Kunde"}
-                  {a.campaignTitle ? ` · ${a.campaignTitle}` : ""}: {colors.label}
-                </span>
-              )
-            })}
-          </div>
-        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[60%_minmax(0,1fr)]">

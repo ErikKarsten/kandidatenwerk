@@ -3,13 +3,18 @@ import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
+import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { CandidatesList, type CandidateListItem, type CandidatesSortOption } from "./candidates-list"
 
 const ARCHIVED_STATUS = "Archiviert"
-const VALID_STATUSES: Set<string> = new Set(CANDIDATE_STATUS_OPTIONS.map((o) => o.value))
+// Interner Status oder - mit Präfix "kunde:" - Status beim Kunden (Paket 31).
+const VALID_STATUSES: Set<string> = new Set([
+  ...CANDIDATE_STATUS_OPTIONS.map((o) => o.value),
+  ...ASSIGNMENT_STATUS_OPTIONS.map((o) => `kunde:${o.value}`),
+])
 const VALID_BERUFSBILDER: Set<string> = new Set(BERUFSBILD_OPTIONS.map((o) => o.value))
 const VALID_SOURCES: Set<string> = new Set(SOURCE_OPTIONS.map((o) => o.value))
 const PAGE_SIZES: readonly PageSize[] = [10, 20, 50]
@@ -56,12 +61,13 @@ export default async function CandidatesPage({
   let query = supabase
     .from("candidate_list_rows")
     .select(
-      "id, first_name, last_name, email, status, berufsbild, source, created_at, custom_fields, campaign_id, campaign_title, client_id, client_name, tags",
+      "id, first_name, last_name, email, status, berufsbild, source, created_at, custom_fields, campaign_id, campaign_title, client_id, client_name, tags, assignment_status",
       { count: "exact" }
     )
 
   query = showArchived ? query.eq("status", ARCHIVED_STATUS) : query.neq("status", ARCHIVED_STATUS)
-  if (statusFilter !== "alle") query = query.eq("status", statusFilter)
+  if (statusFilter.startsWith("kunde:")) query = query.eq("assignment_status", statusFilter.slice("kunde:".length))
+  else if (statusFilter !== "alle") query = query.eq("status", statusFilter)
   if (berufsbildFilter !== "alle") query = query.eq("berufsbild", berufsbildFilter)
   if (sourceFilter !== "alle") query = query.eq("source", sourceFilter)
   if (tagFilter !== "alle") query = query.contains("tags", [tagFilter])
@@ -111,6 +117,7 @@ export default async function CandidatesPage({
     created_at: c.created_at ?? "",
     custom_fields: (c.custom_fields as Record<string, string> | null) ?? null,
     tags: c.tags ?? [],
+    assignmentStatus: c.assignment_status ?? null,
     campaigns: c.campaign_id
       ? {
           id: c.campaign_id,

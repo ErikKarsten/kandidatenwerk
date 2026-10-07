@@ -12,6 +12,7 @@ import { assignCandidateToCampaignAction } from "@/app/dashboard/campaigns/[id]/
 import { getCandidatePanelDataAction, type CandidatePanelData } from "./actions"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
 import { TagChip, TagEditor } from "@/components/dashboard/tag-editor"
+import { AssignmentStatusSelect } from "@/components/dashboard/assignment-status-select"
 import { visibleTags } from "@/lib/candidate-tags"
 import { PERSONAL_FIELD_KEYS, anonymousName, maskContactData } from "@/lib/show-mode"
 
@@ -110,20 +111,39 @@ export function CandidatePanel({
           {current && (
             <div className="flex flex-col gap-5">
               <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={current.status}
-                  disabled={pending}
-                  onChange={(e) => run(() => updateCandidateStatusAction(current.id, e.target.value))}
-                  className="rounded-md border px-2 py-1.5 text-sm"
-                  style={{ borderColor: "#dde3ea" }}
-                  aria-label="Status"
-                >
-                  {CANDIDATE_STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                {/* Ab der Zuordnung gilt der Status beim Kunden (Paket 31). */}
+                {current.assignments.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {current.assignments.map((a) => (
+                      <AssignmentStatusSelect
+                        key={a.id}
+                        assignmentId={a.id}
+                        status={a.status}
+                        size="md"
+                        title={anonymize ? "Status beim Kunden" : `Status bei ${a.clientName}`}
+                        onChanged={() => {
+                          setReload((n) => n + 1)
+                          onChanged?.()
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <select
+                    value={current.status}
+                    disabled={pending}
+                    onChange={(e) => run(() => updateCandidateStatusAction(current.id, e.target.value))}
+                    className="rounded-md border px-2 py-1.5 text-sm"
+                    style={{ borderColor: "#dde3ea" }}
+                    aria-label="Status"
+                  >
+                    {CANDIDATE_STATUS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <select
                   value={current.berufsbild ?? ""}
                   disabled={pending}

@@ -1,12 +1,14 @@
 import { Badge } from "@/components/ui/badge"
-import { CANDIDATE_STATUS_OPTIONS, type CandidateStatusValue } from "@/lib/candidate-status"
+import { ASSIGNMENT_STATUS_OPTIONS, type AssignmentStatusValue } from "@/lib/assignment-status"
 
+// Pipeline nach dem Status beim Kunden (Paket 31) - zugeordnete Kandidaten sind intern
+// immer "vorqualifiziert", entscheidend ist, was der Kunde gesetzt hat.
 const STATUS_COLORS = Object.fromEntries(
-  CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, { bar: o.dot, label: o.label }])
-) as Record<CandidateStatusValue, { bar: string; label: string }>
+  ASSIGNMENT_STATUS_OPTIONS.map((o) => [o.value, { bar: o.text, label: o.label }])
+) as Record<AssignmentStatusValue, { bar: string; label: string }>
 
 export interface PipelineSegment {
-  status: CandidateStatusValue
+  status: AssignmentStatusValue
   count: number
 }
 
@@ -18,7 +20,7 @@ export interface ClientCardProps {
   stats: {
     kandidaten: number
     kampagnen: number
-    platzierungen: number
+    eingestellt: number
   }
   pipeline: PipelineSegment[]
   // Projekt-Infos (Paket 13): Phase, Key Account Manager, Kanzleiprofil final?
@@ -80,7 +82,7 @@ export function ClientCard({ name, active, tags, stats, pipeline, project }: Cli
         <div className="grid grid-cols-3 gap-2 pt-1">
           <Stat label="Kandidaten" value={stats.kandidaten} />
           <Stat label="Kampagnen" value={stats.kampagnen} />
-          <Stat label="Platzierungen" value={stats.platzierungen} />
+          <Stat label="Eingestellt" value={stats.eingestellt} />
         </div>
       </div>
 

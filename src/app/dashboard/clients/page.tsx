@@ -2,14 +2,15 @@ import Link from "next/link"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
-import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
+import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 import { PROJECT_PHASES } from "@/lib/client-project"
 import { type PipelineSegment } from "@/components/dashboard/client-card"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { ClientsList, type ClientListItem, type ClientsSortOption, type ClientsStatusFilter } from "./clients-list"
 
 const ARCHIVED_STATUS = "Archiviert"
-const VALID_STATUSES: Set<string> = new Set(CANDIDATE_STATUS_OPTIONS.map((o) => o.value))
+// Pipeline nach Status beim Kunden (Paket 31).
+const VALID_STATUSES: Set<string> = new Set(ASSIGNMENT_STATUS_OPTIONS.map((o) => o.value))
 const PAGE_SIZES: readonly PageSize[] = [10, 20, 50]
 const DEFAULT_PAGE_SIZE: PageSize = 10
 
@@ -104,7 +105,7 @@ export default async function ClientsPage({
       stats: {
         kandidaten: client.candidate_count ?? 0,
         kampagnen: client.campaign_count ?? 0,
-        platzierungen: client.placement_count ?? 0,
+        eingestellt: client.placement_count ?? 0,
       },
       pipeline,
       project: (() => {
