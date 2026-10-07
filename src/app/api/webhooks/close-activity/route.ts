@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       const leadId = ev.data?.lead_id ?? ev.lead_id
       const label = ev.data?.new_status_label
       if (leadId && label && isOnboardingStatus(label)) {
-        await queueOnboarding(db, leadId, label)
+        await queueOnboarding(db, leadId, label, ev.data?.date_created ?? null)
         onboarding = true
       }
     }

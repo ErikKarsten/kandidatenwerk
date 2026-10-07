@@ -9,8 +9,10 @@
 //    Besprechungen fasst die KI zusammen, Telefonate werden erst transkribiert (Workers AI)
 //    und dann zusammengefasst, Notizen/eigene Aktivitäten/Statuswechsel werden lesbar
 //    übernommen. Ergebnis: ein Kommentar im Projekt, datiert auf den Zeitpunkt in Close.
-// Laufend nur Aktivitäten ab Start der Anbindung (CLOSE_MEETINGS_SINCE); bei der Übernahme
-// eines Kunden (close-onboarding.ts) der komplette Verlauf des Leads.
+// Kommentare gibt es nur für Telefonate und Besprechungen ab dem Status "Gewonnen" - davor
+// schaut das Team ohnehin in Close (Entscheidung 07.10.2026). Bei der Übernahme eines Kunden
+// (close-onboarding.ts) wird der Verlauf trotzdem gelesen und Telefonate transkribiert, aber
+// ohne Kommentar: nur als Grundlage für das KI-Kanzleiprofil (create_comment = false).
 import { createHmac, timingSafeEqual } from "node:crypto"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { summarizeCall } from "@/lib/call-summary"
@@ -84,10 +86,22 @@ export function customActivityText(a: CloseActivity, fieldNames: Map<string, str
   return lines.join("\n")
 }
 
+// Arten, die als Kommentar im Projekt landen.
+const COMMENT_TYPES = new Set<ActivityType>(["call", "meeting"])
+
+// Kunde in Close noch nicht gewonnen (nur Folgebesprechung) -> noch keine Kommentare.
+export function closeStatusAllowsComments(closeStatus: string | null | undefined): boolean {
+  return !/^folgebe/i.test((closeStatus ?? "").trim())
+}
+
 interface RecordOptions {
-  // Auch Aktivitäten vor CLOSE_MEETINGS_SINCE (Übernahme eines neuen Kunden).
+  // Verlauf bei der Übernahme eines neuen Kunden: alle Arten (außer Statuswechsel), auch vor
+  // CLOSE_MEETINGS_SINCE; Kommentar nur für Telefonate/Besprechungen ab commentsFrom.
   includeHistory?: boolean
+  commentsFrom?: string | null
   clientId?: string
+  // Laufend: darf der Kunde schon Kommentare bekommen (Status "Gewonnen")?
+  clientWon?: boolean
   labels?: { types: Map<string, string>; fields: Map<string, string> }
 }
 
@@ -98,6 +112,8 @@ export async function recordActivity(db: SupabaseClient, a: CloseActivity, opts:
   if (!a.id || !a.lead_id) return "ohne ID"
   const at = activityDate(a)
   if (!opts.includeHistory && at && at < CLOSE_MEETINGS_SINCE) return "vor Start der Anbindung"
+  // Laufend nur Telefonate und Besprechungen; im Verlauf alles außer Statuswechseln.
+  if (opts.includeHistory ? type === "status" : !COMMENT_TYPES.has(type)) return "Art wird nicht übernommen"
 
   let raw: string | null = null
   let title: string | null = a.title ?? null
@@ -123,11 +139,16 @@ export async function recordActivity(db: SupabaseClient, a: CloseActivity, opts:
   }
 
   let clientId = opts.clientId ?? null
+  let clientWon = opts.clientWon ?? true
   if (!clientId) {
-    const { data: client } = await db.from("clients").select("id").eq("close_lead_id", a.lead_id).maybeSingle()
+    const { data: client } = await db.from("clients").select("id, close_status").eq("close_lead_id", a.lead_id).maybeSingle()
     if (!client) return "Lead gehört zu keinem Kunden"
     clientId = client.id as string
+    clientWon = closeStatusAllowsComments(client.close_status as string | null)
   }
+  const createComment = opts.includeHistory
+    ? COMMENT_TYPES.has(type) && !!opts.commentsFrom && !!at && at >= opts.commentsFrom
+    : clientWon
 
   const attendees = (a.attendees ?? []).map((x) => x.name || x.email).filter(Boolean).join(", ")
   const { error } = await db.from("close_meeting_summaries").upsert(
@@ -143,6 +164,7 @@ export async function recordActivity(db: SupabaseClient, a: CloseActivity, opts:
       attendees: attendees || null,
       raw_summary: raw,
       call_duration: type === "call" ? (a.duration ?? null) : null,
+      create_comment: createComment,
     },
     { onConflict: "close_activity_id", ignoreDuplicates: true }
   )
@@ -162,12 +184,13 @@ export async function recordActivityFromWebhook(db: SupabaseClient, payload: Clo
   return recordActivity(db, fresh ?? ev?.data ?? ({} as CloseActivity))
 }
 
-// Kompletter Verlauf eines Leads (Übernahme eines neuen Kunden). Liefert die Anzahl.
-export async function importLeadHistory(db: SupabaseClient, leadId: string, clientId: string): Promise<number> {
+// Kompletter Verlauf eines Leads (Übernahme eines neuen Kunden). Kommentare nur für
+// Telefonate/Besprechungen ab commentsFrom (Zeitpunkt "Gewonnen"). Liefert die Anzahl.
+export async function importLeadHistory(db: SupabaseClient, leadId: string, clientId: string, commentsFrom: string | null): Promise<number> {
   const [activities, labels] = await Promise.all([closeList<CloseActivity>(`/activity/?lead_id=${encodeURIComponent(leadId)}`, 1000), customActivityLabels()])
   let found = 0
   for (const a of activities) {
-    if ((await recordActivity(db, a, { includeHistory: true, clientId, labels })) === "vorgemerkt") found++
+    if ((await recordActivity(db, a, { includeHistory: true, commentsFrom, clientId, labels })) === "vorgemerkt") found++
   }
   return found
 }
@@ -179,15 +202,13 @@ export async function importLeadHistory(db: SupabaseClient, leadId: string, clie
 const POLL: { path: string; filter: string; hours: number }[] = [
   { path: "meeting", filter: "date_updated__gte", hours: 72 },
   { path: "call", filter: "date_created__gte", hours: 2 },
-  { path: "note", filter: "date_created__gte", hours: 2 },
-  { path: "custom", filter: "date_created__gte", hours: 2 },
-  { path: "status_change/lead", filter: "date_created__gte", hours: 2 },
 ]
 
 export async function pollRecentActivities(db: SupabaseClient): Promise<number> {
   if (!closeConfigured()) return 0
-  const { data: clients } = await db.from("clients").select("id, close_lead_id").not("close_lead_id", "is", null)
+  const { data: clients } = await db.from("clients").select("id, close_lead_id, close_status").not("close_lead_id", "is", null)
   const clientByLead = new Map((clients ?? []).map((c) => [c.close_lead_id as string, c.id as string]))
+  const wonByLead = new Map((clients ?? []).map((c) => [c.close_lead_id as string, closeStatusAllowsComments(c.close_status as string | null)]))
   if (clientByLead.size === 0) return 0
   const lists = await Promise.all(
     POLL.map((p) => {
@@ -203,10 +224,9 @@ export async function pollRecentActivities(db: SupabaseClient): Promise<number> 
     .in("close_activity_id", relevant.map((a) => a.id).slice(0, 500))
   const knownIds = new Set((known ?? []).map((k) => k.close_activity_id as string))
   const fresh = relevant.filter((a) => !knownIds.has(a.id))
-  const labels = fresh.some((a) => a._type === "CustomActivity") ? await customActivityLabels() : undefined
   let found = 0
   for (const a of fresh) {
-    if ((await recordActivity(db, a, { clientId: clientByLead.get(a.lead_id!), labels })) === "vorgemerkt") found++
+    if ((await recordActivity(db, a, { clientId: clientByLead.get(a.lead_id!), clientWon: wonByLead.get(a.lead_id!) })) === "vorgemerkt") found++
   }
   return found
 }
@@ -233,14 +253,25 @@ interface QueueRow {
   raw_summary: string | null
   transcript: string | null
   call_duration: number | null
+  create_comment: boolean
   attempts: number
   clients: { name: string } | { name: string }[] | null
 }
 
 const KIND: Record<ActivityType, string> = { meeting: "gespraech", call: "telefonat", note: "notiz", custom: "notiz", status: "system" }
 
-// Text des Kommentars je Art. Telefonate werden dafür transkribiert (Transkript gespeichert,
-// damit ein zweiter Versuch nicht erneut transkribiert).
+// Aufnahme eines Telefonats holen und transkribieren (Transkript gespeichert, damit ein
+// zweiter Versuch nicht erneut transkribiert). null ohne Aufnahme.
+async function transcribeCall(db: SupabaseClient, row: QueueRow, clientName: string): Promise<string | null> {
+  if ((row.call_duration ?? 0) < MIN_CALL_SECONDS) return null
+  const call = await closeGet<CloseActivity>(`/activity/call/${row.close_activity_id}/`)
+  if (!call?.recording_url || !call.has_recording) return null
+  const transcript = await transcribeAudio(await downloadCallRecording(call.recording_url), `Telefonat mit der Steuerkanzlei ${clientName}.`)
+  await db.from("close_meeting_summaries").update({ transcript }).eq("close_activity_id", row.close_activity_id)
+  return transcript
+}
+
+// Text des Kommentars je Art.
 async function commentContent(db: SupabaseClient, row: QueueRow, clientName: string): Promise<string> {
   const date = formatDate(row.activity_at ?? row.starts_at)
   const link = `\n\nIn Close ansehen: ${closeLeadUrl(row.lead_id)}`
@@ -250,14 +281,7 @@ async function commentContent(db: SupabaseClient, row: QueueRow, clientName: str
 
   let source = row.raw_summary ?? ""
   if (row.activity_type === "call") {
-    let transcript = row.transcript
-    if (!transcript && (row.call_duration ?? 0) >= MIN_CALL_SECONDS) {
-      const call = await closeGet<CloseActivity>(`/activity/call/${row.close_activity_id}/`)
-      if (call?.recording_url) {
-        transcript = await transcribeAudio(await downloadCallRecording(call.recording_url), `Telefonat mit der Steuerkanzlei ${clientName}.`)
-        await db.from("close_meeting_summaries").update({ transcript }).eq("close_activity_id", row.close_activity_id)
-      }
-    }
+    const transcript = row.transcript ?? (await transcribeCall(db, row, clientName))
     if (!transcript) return `${["Telefonat", row.user_name, date].filter(Boolean).join(" · ")}\n\n${row.raw_summary ?? "Ohne Aufnahme."}${link}`
     source = transcript
   }
@@ -289,7 +313,7 @@ export async function processPendingActivities(db: SupabaseClient, deadline: num
 
   const { data, error } = await db
     .from("close_meeting_summaries")
-    .select("close_activity_id, lead_id, client_id, activity_type, activity_at, title, starts_at, user_name, attendees, raw_summary, transcript, call_duration, attempts, clients(name)")
+    .select("close_activity_id, lead_id, client_id, activity_type, activity_at, title, starts_at, user_name, attendees, raw_summary, transcript, call_duration, create_comment, attempts, clients(name)")
     .eq("status", "offen")
     .order("activity_at", { ascending: true, nullsFirst: true })
     .limit(BATCH)
@@ -311,6 +335,16 @@ export async function processPendingActivities(db: SupabaseClient, deadline: num
       .select("close_activity_id")
     if (!claimed?.length) continue
     try {
+      if (!row.create_comment) {
+        // Nur Grundlage für das KI-Profil: Telefonat transkribieren, kein Kommentar.
+        if (needsTranscript) await transcribeCall(db, row, clientName)
+        await db
+          .from("close_meeting_summaries")
+          .update({ status: "erledigt", processed_at: new Date().toISOString(), error: null, locked_at: null })
+          .eq("close_activity_id", row.close_activity_id)
+        result.processed++
+        continue
+      }
       const content = await commentContent(db, row, clientName)
       // Kommentar dem Bearbeiter in Close zuordnen, wenn er ein Team-Profil hat.
       const { data: author } = row.user_name

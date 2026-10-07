@@ -25,10 +25,15 @@ export function isOnboardingStatus(label: string | null | undefined): boolean {
   return l === "gewonnen" || l.startsWith("folgebesprechung zum sc") || l.startsWith("folgebescprechung zum sc")
 }
 
-export async function queueOnboarding(db: SupabaseClient, leadId: string, statusLabel: string): Promise<void> {
+// triggeredAt: Zeitpunkt des Statuswechsels - ab "Gewonnen" entstehen Kommentare.
+export async function queueOnboarding(db: SupabaseClient, leadId: string, statusLabel: string, triggeredAt?: string | null): Promise<void> {
+  const now = new Date().toISOString()
   const { error } = await db
     .from("close_onboarding")
-    .upsert({ lead_id: leadId, trigger_status: statusLabel, status: "offen", attempts: 0, error: null, updated_at: new Date().toISOString() }, { onConflict: "lead_id" })
+    .upsert(
+      { lead_id: leadId, trigger_status: statusLabel, triggered_at: triggeredAt ?? now, status: "offen", attempts: 0, error: null, updated_at: now },
+      { onConflict: "lead_id" }
+    )
   if (error) throw new Error(error.message)
 }
 
@@ -182,6 +187,7 @@ interface OnboardingRow {
   lead_id: string
   client_id: string | null
   trigger_status: string | null
+  triggered_at: string | null
   status: string
   attempts: number
 }
@@ -192,7 +198,9 @@ async function step(db: SupabaseClient, row: OnboardingRow): Promise<string> {
 
   if (row.status === "offen") {
     const result = await processCloseWebhook(db, payloadFromLead(lead, row.trigger_status))
-    const found = await importLeadHistory(db, lead.id, result.clientId)
+    // Kommentare erst ab "Gewonnen"; bei "Folgebesprechung" nur Grundlage fürs Profil.
+    const commentsFrom = /gewonnen/i.test(row.trigger_status ?? "") ? row.triggered_at : null
+    const found = await importLeadHistory(db, lead.id, result.clientId, commentsFrom)
     await db.from("close_onboarding").update({ client_id: result.clientId, status: "aktivitaeten", updated_at: new Date().toISOString() }).eq("lead_id", row.lead_id)
     return `Kunde ${result.outcome}, ${found} Aktivitäten vorgemerkt`
   }
@@ -219,7 +227,7 @@ async function step(db: SupabaseClient, row: OnboardingRow): Promise<string> {
 }
 
 export async function processOnboarding(db: SupabaseClient, deadline: number): Promise<{ steps: number; failed: number }> {
-  const { data } = await db.from("close_onboarding").select("lead_id, client_id, trigger_status, status, attempts").in("status", ["offen", "aktivitaeten", "profil"]).order("created_at").limit(5)
+  const { data } = await db.from("close_onboarding").select("lead_id, client_id, trigger_status, triggered_at, status, attempts").in("status", ["offen", "aktivitaeten", "profil"]).order("created_at").limit(5)
   const result = { steps: 0, failed: 0 }
   for (const row of (data ?? []) as OnboardingRow[]) {
     if (deadline - Date.now() < (row.status === "profil" ? 120_000 : 60_000)) break
