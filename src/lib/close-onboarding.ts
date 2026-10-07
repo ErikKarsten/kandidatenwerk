@@ -43,6 +43,13 @@ const text = (v: unknown): string | undefined => {
   return t || undefined
 }
 
+// In Close steht im Feld "Titel" oft nur die Anrede - die ist keine Position.
+export function positionOf(title: string | null | undefined): string | undefined {
+  const t = text(title)
+  if (!t || /^(herr|frau|hr\.?|fr\.?|divers|mr\.?|mrs\.?|ms\.?)$/i.test(t)) return undefined
+  return t
+}
+
 // Stammdaten direkt aus dem Lead (ohne KI).
 export function payloadFromLead(lead: CloseLead, statusLabel: string | null): CloseWebhookPayload {
   const address = lead.addresses?.[0]
@@ -61,7 +68,7 @@ export function payloadFromLead(lead: CloseLead, statusLabel: string | null): Cl
     ansprechpartner_name: text(contact?.name),
     ansprechpartner_email: text(contact?.emails?.[0]?.email),
     ansprechpartner_telefon: text(contact?.phones?.[0]?.phone),
-    ansprechpartner_position: text(contact?.title),
+    ansprechpartner_position: positionOf(contact?.title),
   }
 }
 
@@ -73,8 +80,8 @@ function leadFieldsText(lead: CloseLead, labels: Map<string, string>): string {
 }
 
 // Feldbeschreibungen nach dem bisherigen Zapier-Prompt (07.10.2026). Bewusst NICHT
-// automatisch: Vertragsstart, Laufzeit und Ansprechpartner für Bewerbungsgespräche - die
-// pflegt der Key Account Manager im Projekt-Reiter (Entscheidung 07.10.2026).
+// automatisch: Vertragsstart, Laufzeit, Ansprechpartner für Bewerbungsgespräche und Notizen
+// aus dem Vertrieb - die pflegt der Key Account Manager im Projekt-Reiter (Entscheidung 07.10.2026).
 const PROFILE_FIELD_GUIDE: Record<string, string> = {
   kurzbeschreibung: "Ein Satz über die Kanzlei: Art, Größe, Ort, Besonderheit. Beispiel: Moderne Steuerkanzlei mit 15 Mitarbeitenden in Köln, spezialisiert auf Ärzte.",
   intro: "3–5 Sätze, mit denen wir die Kanzlei einem Bewerber vorstellen: wer sie ist, was sie ausmacht, Arbeitsweise und Kultur. Positiv formuliert, nur Fakten aus den Gesprächen.",
@@ -85,9 +92,10 @@ const PROFILE_FIELD_GUIDE: Record<string, string> = {
   arbeitszeiten: "Arbeitszeitmodell. Beispiel: Gleitzeit, Teilzeit ab 25 Std. möglich, Freitag ab 13 Uhr frei",
   homeoffice: "Regelung zu Homeoffice bzw. mobilem Arbeiten. Beispiel: 2 Tage pro Woche nach Einarbeitung",
   gehaltsgefuege: "Intern: was die Kanzlei zahlt (Spannen je Rolle/Erfahrung, 13. Gehalt, Bonus, Gehaltsrunden), Beträge genau. Beispiel: Steuerfachangestellte 42.000–52.000 € brutto/Jahr je nach Erfahrung, 13. Monatsgehalt",
-  painpoints: "Intern: Warum arbeitet die Kanzlei mit uns? Probleme bei der Personalsuche (Stellen lange offen, Überlastung, Portale erfolglos, Wachstum, Ruhestand). Stichpunkte, jede Zeile beginnt mit \"- \".",
-  ziele_zusammenarbeit: "Intern: Was erwartet die Kanzlei konkret von uns: Anzahl Einstellungen, Zeitrahmen, gewünschtes Profil inkl. Ausschlüsse (z.B. keine Berufsanfänger), woran sie Erfolg misst. Stichpunkte, jede Zeile beginnt mit \"- \".",
-  vertriebsnotizen: "Intern: weitere relevante Absprachen aus dem Vertrieb (z.B. Referenzen, vereinbarte Abläufe), die in keinem anderen Feld stehen. Stichpunkte.",
+  painpoints:
+    "Intern für den Key Account Manager: Warum arbeitet die Kanzlei mit uns? Probleme bei der Personalsuche (Stellen lange offen, Überlastung, Portale erfolglos, Wachstum, Ruhestand). Stichpunkte, jede Zeile beginnt mit \"- \".",
+  ziele_zusammenarbeit:
+    "Intern für den Key Account Manager: Was erwartet die Kanzlei konkret von uns: Anzahl Einstellungen, Zeitrahmen, gewünschtes Profil inkl. Ausschlüsse (z.B. keine Berufsanfänger), woran sie Erfolg misst. Stichpunkte, jede Zeile beginnt mit \"- \".",
 }
 
 const SYSTEM = `Du bist Assistent eines Recruiting-Dienstleisters für Steuerkanzleien (Endlich Mitarbeiter). Du bekommst alle Informationen aus unserem Vertriebs-CRM Close zu einer Steuerkanzlei: Lead-Felder, Notizen, Formulare aus Gesprächen, Zusammenfassungen von Besprechungen und automatische Transkripte von Telefonaten (mit Erkennungsfehlern, ohne Sprecherangaben).
@@ -100,7 +108,8 @@ REGELN
 3. Schreibe auf Deutsch, sachlich und konkret. Übernimm Zahlen, Namen, Programme und Beträge genau so, wie sie genannt wurden.
 4. Gibt es widersprüchliche Aussagen, gilt die Aussage aus der neuesten Quelle (Datum steht an jeder Quelle).
 5. Jedes Feld enthält nur den reinen Inhalt – keine Feldnamen, keine Einleitung, keine Anführungszeichen drumherum.
-6. Interne Wünsche und Ausschlüsse der Kanzlei (z.B. "keine Berufsanfänger", Gehaltsgrenzen, Gründe für die Suche) gehören in painpoints oder ziele_zusammenarbeit - nie in aufgaben oder anforderungen einer Stelle.
+6. Nur Inhalte, die für die Betreuung der Kanzlei und die Kandidatensuche relevant sind. Weglassen: Abläufe aus dem Vertrieb und Organisatorisches wie Termine (z.B. Portaleinweisung, Folgetermine), Zahlungen, Karriereseite, Referenzen, Marketingmaterial, Vertragsdetails.
+7. Interne Wünsche und Ausschlüsse der Kanzlei (z.B. "keine Berufsanfänger", Gehaltsgrenzen, Gründe für die Suche) gehören in painpoints oder ziele_zusammenarbeit - nie in aufgaben oder anforderungen einer Stelle.
 
 FELDER FÜR "profil"
 #FELDER#

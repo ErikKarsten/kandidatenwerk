@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isOnboardingStatus, payloadFromAnswer, payloadFromLead } from "./close-onboarding"
+import { isOnboardingStatus, payloadFromAnswer, payloadFromLead, positionOf } from "./close-onboarding"
 import { activityTypeOf, customActivityText } from "./close-sync"
 
 describe("Übernahme aus Close", () => {
@@ -27,7 +27,7 @@ describe("Übernahme aus Close", () => {
 
   it("liest die KI-Antwort nur mit bekannten Feldern", () => {
     const p = payloadFromAnswer(
-      'Hier: {"profil": {"intro": "Wir sind ...", "erfunden": "x", "ansprechpartner_bewerbung": "Frau X", "painpoints": "Keine Berufsanfänger"}, "benefits": ["Firmenwagen nach Absprache"], "laufzeit_monate": "12", "vertragsstart": "2026-11-01", "stellen": [{"titel": "StFA (m/w/d)", "berufsbild": "steuerfachangestellte", "aufgaben": "a\\nb"}, {"berufsbild": "x"}]}'
+      'Hier: {"profil": {"intro": "Wir sind ...", "erfunden": "x", "ansprechpartner_bewerbung": "Frau X", "vertriebsnotizen": "Termin Portaleinweisung", "painpoints": "Keine Berufsanfänger"}, "benefits": ["Firmenwagen nach Absprache"], "laufzeit_monate": "12", "vertragsstart": "2026-11-01", "stellen": [{"titel": "StFA (m/w/d)", "berufsbild": "steuerfachangestellte", "aufgaben": "a\\nb"}, {"berufsbild": "x"}]}'
     ) as Record<string, unknown>
     expect(p.intro).toBe("Wir sind ...")
     expect(p.painpoints).toBe("Keine Berufsanfänger")
@@ -37,8 +37,17 @@ describe("Übernahme aus Close", () => {
     expect(p.laufzeit_monate).toBeUndefined()
     expect(p.vertragsstart).toBeUndefined()
     expect(p.ansprechpartner_bewerbung).toBeUndefined()
+    expect(p.vertriebsnotizen).toBeUndefined()
     expect(p.stellen_json).toEqual([{ titel: "StFA (m/w/d)", berufsbild: "steuerfachangestellte", aufgaben: "a\nb" }])
     expect(payloadFromAnswer("kein JSON")).toEqual({})
+  })
+})
+
+describe("Ansprechpartner aus Close", () => {
+  it("übernimmt keine Anrede als Position", () => {
+    expect(positionOf("Herr")).toBeUndefined()
+    expect(positionOf("Frau")).toBeUndefined()
+    expect(positionOf("Partnerin")).toBe("Partnerin")
   })
 })
 

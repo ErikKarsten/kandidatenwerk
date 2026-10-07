@@ -1583,6 +1583,7 @@ export type Database = {
           client_name: string | null
           tags: string[] | null
           assignment_status: string | null
+          assignments: Json | null
         }
         Insert: {
           id?: string | null
@@ -1601,6 +1602,7 @@ export type Database = {
           client_name?: string | null
           tags?: string[] | null
           assignment_status?: string | null
+          assignments?: Json | null
         }
         Update: {
           id?: string | null
@@ -1619,6 +1621,7 @@ export type Database = {
           client_name?: string | null
           tags?: string[] | null
           assignment_status?: string | null
+          assignments?: Json | null
         }
         Relationships: [
           {
