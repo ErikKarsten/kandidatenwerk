@@ -41,6 +41,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true })
 
 const EXECUTE = process.argv.includes("--ausfuehren")
+// Testlauf mit einem einzelnen Kunden: --nur=<Close-Lead-ID>
+const ONLY = process.argv.find((a) => a.startsWith("--nur="))?.slice("--nur=".length) ?? null
 const RELOAD = process.argv.includes("--neu-laden")
 const OUT = path.resolve(__dirname, "../neuimport")
 const CACHE = path.join(OUT, "leadtable-cache.json")
@@ -48,7 +50,10 @@ const POOL = /kanzleistelle24/i
 const SKIP_STATUS = new Set(["Absage", "Absage mit Mitteilung"])
 const STATUS_MAP: Record<string, string> = { ...LEADTABLE_STATUS_MAP, "On Hold": "in_pruefung" }
 const ASSIGN_STATUS: Record<string, string> = { Vorqualifiziert: "inbox", "Vorstellungsgespräch": "vg", Eingestellt: "ja" }
-const CLICKUP_LIST = "account management - übersicht"
+// ClickUp: Space "Account Management", Liste "Übersicht" (277 Einträge, 08.10.2026).
+const CLICKUP_SPACE = "account management"
+const CLICKUP_LIST = "übersicht"
+const CLICKUP_ACTIVE = new Set(["aktive kunden", "anstehende kunden"])
 
 const db: SupabaseClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, { auth: { persistSession: false } })
 fs.mkdirSync(OUT, { recursive: true })
@@ -118,8 +123,16 @@ interface ClickupTask {
   id: string
   name: string
   description?: string
+  status?: { status?: string }
   custom_fields?: { name: string; value?: unknown }[]
 }
+
+const clickupField = (t: ClickupTask, name: string) => {
+  const v = t.custom_fields?.find((f) => f.name === name)?.value
+  return typeof v === "string" ? v : ""
+}
+const clickupStatus = (t: ClickupTask) => (t.status?.status ?? "").toLowerCase()
+const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g
 
 async function clickup<T>(p: string): Promise<T> {
   const res = await fetch(`https://api.clickup.com/api/v2${p}`, { headers: { Authorization: process.env.CLICKUP_API_TOKEN! } })
@@ -135,8 +148,8 @@ async function loadClickup(): Promise<ClickupTask[] | null> {
   if (!process.env.CLICKUP_API_TOKEN) return null
   const { teams } = await clickup<{ teams: { id: string }[] }>("/team")
   for (const team of teams) {
-    const { spaces } = await clickup<{ spaces: { id: string }[] }>(`/team/${team.id}/space?archived=false`)
-    for (const space of spaces) {
+    const { spaces } = await clickup<{ spaces: { id: string; name: string }[] }>(`/team/${team.id}/space?archived=false`)
+    for (const space of spaces.filter((sp) => sp.name.trim().toLowerCase() === CLICKUP_SPACE)) {
       const { folders } = await clickup<{ folders: { lists: { id: string; name: string }[] }[] }>(`/space/${space.id}/folder?archived=false`)
       const { lists } = await clickup<{ lists: { id: string; name: string }[] }>(`/space/${space.id}/list?archived=false`)
       const all = [...lists, ...folders.flatMap((f) => f.lists)]
@@ -151,7 +164,7 @@ async function loadClickup(): Promise<ClickupTask[] | null> {
       return tasks
     }
   }
-  throw new Error(`ClickUp-Liste „${CLICKUP_LIST}“ nicht gefunden.`)
+  throw new Error(`ClickUp-Liste „${CLICKUP_SPACE} / ${CLICKUP_LIST}“ nicht gefunden.`)
 }
 
 function clickupText(t: ClickupTask): string {
@@ -204,7 +217,9 @@ async function main() {
   // Sicherheitsnetz: nur auf geleerter Datenbank ausführen.
   const { count: clientCount } = await db.from("clients").select("id", { count: "exact", head: true })
   const { count: candidateCount } = await db.from("candidates").select("id", { count: "exact", head: true }).not("tags", "cs", "{Musterdatensatz}")
-  if (EXECUTE && ((clientCount ?? 0) > 0 || (candidateCount ?? 0) > 0)) {
+  // Erlaubt: Kunden aus einem vorherigen Testlauf (mit Close-Lead, werden wiederverwendet).
+  const { count: clientsWithoutClose } = await db.from("clients").select("id", { count: "exact", head: true }).is("close_lead_id", null)
+  if (EXECUTE && !ONLY && ((clientsWithoutClose ?? 0) > 0 || (candidateCount ?? 0) > 0)) {
     throw new Error(`Datenbank ist nicht leer (${clientCount} Kunden, ${candidateCount} Kandidaten) - erst scripts/live-bereinigen.ts.`)
   }
 
@@ -223,11 +238,23 @@ async function main() {
   }
   const planned: PlannedClient[] = []
   const usedClose = new Set<string>()
-  const findClickup = (name: string, closeId: string | null): ClickupTask | null => {
+  // Close-Kontakt-E-Mails je Lead (für den Abgleich über "Ansprechpartner Sales").
+  const closeEmailCache = new Map<string, string[]>()
+  const closeEmails = async (leadId: string) => {
+    if (!closeEmailCache.has(leadId)) {
+      const lead = await closeGet<CloseLead>(`/lead/${encodeURIComponent(leadId)}/?_fields=id,contacts`).catch(() => null)
+      closeEmailCache.set(leadId, (lead?.contacts ?? []).flatMap((c) => (c.emails ?? []).map((e) => e.email.toLowerCase())))
+    }
+    return closeEmailCache.get(leadId)!
+  }
+  const findClickup = async (name: string, closeId: string | null): Promise<ClickupTask | null> => {
     if (!clickupTasks) return null
     if (closeId) {
-      const byId = clickupTasks.find((t) => clickupText(t).includes(closeId))
+      const byId = clickupTasks.find((t) => clickupField(t, "Close Lead-ID").includes(closeId) || clickupText(t).includes(closeId))
       if (byId) return byId
+      const emails = await closeEmails(closeId)
+      const byEmail = clickupTasks.find((t) => (clickupField(t, "Ansprechpartner Sales").match(EMAIL_RE) ?? []).some((e) => emails.includes(e.toLowerCase())))
+      if (byEmail) return byEmail
     }
     const m = matchByName(name, clickupTasks, (t) => t.name)
     return m.kind === "sicher" || m.kind === "wahrscheinlich" ? m.best : null
@@ -242,23 +269,37 @@ async function main() {
       leadtableId: c.id,
       close,
       closeMatch: m.kind === "mehrdeutig" ? `mehrdeutig: ${m.options.map((o) => o.display_name).join(" | ")}` : m.kind,
-      clickup: findClickup(c.name, close?.id ?? null),
+      clickup: await findClickup(c.name, close?.id ?? null),
       source: "leadtable",
     })
   }
+  // Close-Kunden ohne Leadtable: nur wenn sie in ClickUp aktiv oder anstehend sind.
   const closeOnly = won.filter((l) => !usedClose.has(l.id))
   const closeOnlyInClickup: typeof closeOnly = []
+  const closeOnlyOld: string[] = []
   for (const l of closeOnly) {
-    const task = findClickup(l.display_name, l.id)
+    const task = await findClickup(l.display_name, l.id)
     if (!task) continue
+    if (!CLICKUP_ACTIVE.has(clickupStatus(task))) {
+      closeOnlyOld.push(`${l.display_name} (${clickupStatus(task)})`)
+      continue
+    }
     closeOnlyInClickup.push(l)
     planned.push({ name: l.display_name, leadtableId: null, close: l, closeMatch: "nur Close", clickup: task, source: "close+clickup" })
+  }
+  // Testlauf: nur ein Kunde.
+  if (ONLY) {
+    const keep = planned.filter((p) => p.close?.id === ONLY)
+    if (keep.length === 0) throw new Error(`--nur=${ONLY}: Kunde nicht in der Planung (kein aktiver Leadtable-Kunde und nicht aktiv in ClickUp?).`)
+    planned.splice(0, planned.length, ...keep)
   }
 
   // 2. Kandidaten planen
   const byKey = new Map<string, PlannedCandidate>()
   const skipped = { absage: 0, test: 0, ohneKontakt: 0, geloescht: 0 }
+  const onlyLeadtableIds = ONLY ? new Set(planned.map((p) => p.leadtableId).filter(Boolean)) : null
   for (const customer of customers) {
+    if (onlyLeadtableIds && !onlyLeadtableIds.has(customer.id)) continue
     for (const camp of customer.campaigns) {
       for (const lead of camp.leads) {
         const ltStatus = lead.status ?? ""
@@ -289,11 +330,12 @@ async function main() {
 
   // Bericht
   const report = [
-    `# Neuimport ${EXECUTE ? "(ausgeführt)" : "(Probelauf)"} – ${new Date().toISOString().slice(0, 16)}`,
+    `# Neuimport ${EXECUTE ? "(ausgeführt)" : "(Probelauf)"}${ONLY ? ` – nur ${ONLY}` : ""} – ${new Date().toISOString().slice(0, 16)}`,
     "",
     `Kunden: ${planned.length} (aus Leadtable ${planned.filter((p) => p.source === "leadtable").length}, nur Close + ClickUp ${closeOnlyInClickup.length})`,
     `- mit Close verknüpft: ${planned.filter((p) => p.close).length}`,
     `- mit ClickUp-Kommentaren: ${planned.filter((p) => p.clickup).length}${clickupTasks ? ` (ClickUp-Liste: ${clickupTasks.length} Einträge)` : " – ClickUp nicht verbunden (CLICKUP_API_TOKEN fehlt)"}`,
+    `- Close-Kunden ohne Leadtable, in ClickUp nur „alte Kunden“ (nicht angelegt): ${closeOnlyOld.length}`,
     `Kandidaten: ${candidates.length} (Status: ${Object.entries(statusCount).map(([k, v]) => `${k} ${v}`).join(", ")})`,
     `- Zuordnungen zu Kunden: ${assignmentCount}`,
     `- übersprungen: Absagen ${skipped.absage}, ohne E-Mail und Telefon ${skipped.ohneKontakt}, Testleads ${skipped.test}, in Leadtable gelöscht ${skipped.geloescht}`,
@@ -329,7 +371,8 @@ async function main() {
       if (error) throw new Error(`${p.name}: ${error.message}`)
       clientId = data.id
     }
-    await db.from("clients").update({ project_phase: "live" }).eq("id", clientId)
+    // ClickUp "anstehende Kunden" starten im Onboarding, alle anderen sind live.
+    await db.from("clients").update({ project_phase: p.clickup && clickupStatus(p.clickup) === "anstehende kunden" ? "onboarding" : "live" }).eq("id", clientId)
     if (p.leadtableId) clientIdByLeadtable.set(p.leadtableId, clientId)
     if (p.clickup) {
       try {
