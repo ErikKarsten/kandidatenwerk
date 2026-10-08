@@ -8,6 +8,7 @@ import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { CandidatesList, type CandidateListItem, type CandidatesSortOption } from "./candidates-list"
+import { SampleCandidatesButton } from "./sample-candidates-button"
 
 const ARCHIVED_STATUS = "Archiviert"
 // Interner Status oder - mit Präfix "kunde:" - Status beim Kunden (Paket 31).
@@ -159,6 +160,7 @@ export default async function CandidatesPage({
             <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: showArchived ? "#1e56a0" : "#d1d5db" }} />
             Archivierte anzeigen
           </Link>
+          <SampleCandidatesButton />
           <Button asChild style={{ backgroundColor: "#1e56a0" }}>
             <Link href="/dashboard/candidates/new">
               <Plus size={16} />
