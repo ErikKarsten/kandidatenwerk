@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getAutomationTemplates } from "../../einstellungen/automation-template-actions"
 import { CampaignDetail } from "./campaign-detail"
+import { campaignPoints } from "@/lib/campaign-locations"
 
 export default async function CampaignDetailPage({
   params,
@@ -81,6 +82,9 @@ export default async function CampaignDetailPage({
         lat: campaign.lat ?? null,
         lng: campaign.lng ?? null,
         radius_km: campaign.radius_km ?? null,
+        extra_plz: campaign.extra_plz ?? [],
+        // Weitere Standorte mit Koordinaten für die Karte (PLZ-Daten bleiben auf dem Server).
+        extra_points: campaignPoints(campaign).filter((p) => p.plz !== campaign.plz),
         leadtable_campaign_id: campaign.leadtable_campaign_id ?? null,
         kanzleistelle_job_id: campaign.kanzleistelle_job_id ?? null,
         kind: campaign.kind,

@@ -88,6 +88,8 @@ interface Campaign {
   lat: number | null
   lng: number | null
   radius_km: number | null
+  extra_plz: string[]
+  extra_points: { lat: number; lng: number; plz?: string | null }[]
   leadtable_campaign_id: string | null
   kanzleistelle_job_id: string | null
   meta_webhook_last_test_at: string | null
@@ -894,6 +896,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
               radius_km: campaign.radius_km,
               lat: campaign.lat,
               lng: campaign.lng,
+              extra_points: campaign.extra_points,
             }}
           />
       )}
@@ -914,6 +917,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
             berufsbild={campaign.berufsbild}
             plz={campaign.plz}
             radiusKm={campaign.radius_km}
+            extraPlz={campaign.extra_plz}
             metaWebhookLastTestAt={campaign.meta_webhook_last_test_at}
             kind={campaign.kind}
             fieldTemplateId={campaign.field_template_id ?? null}

@@ -12,6 +12,7 @@ import {
   type CandidateRow,
 } from "@/lib/available-candidates"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { campaignPoints, parsePlzList } from "@/lib/campaign-locations"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { matchCampaignToCandidates } from "@/lib/matching"
@@ -173,7 +174,7 @@ export async function updateCampaignSettingsAction(
 
   const { data: before } = await supabase
     .from("campaigns")
-    .select("berufsbild, plz, radius_km, title")
+    .select("berufsbild, plz, radius_km, title, extra_plz")
     .eq("id", campaignId)
     .single()
 
@@ -198,6 +199,11 @@ export async function updateCampaignSettingsAction(
       berufsbildInput ??
       (!before?.berufsbild && before?.title ? mapKanzleistelleBerufsbild(before.title) : null)
     if (update.berufsbild !== (before?.berufsbild ?? null)) matchingRelevantChanged = true
+  }
+  if (formData.has("extra_plz")) {
+    const mainPlz = formData.has("plz") ? (formData.get("plz") as string) || null : (before?.plz ?? null)
+    update.extra_plz = parsePlzList(formData.get("extra_plz") as string, mainPlz)
+    if (update.extra_plz.join() !== (before?.extra_plz ?? []).join()) matchingRelevantChanged = true
   }
   if (formData.has("plz")) {
     const plz = (formData.get("plz") as string) || ""
@@ -527,7 +533,7 @@ const MAX_CANDIDATE_ROWS = 3000
 async function loadKanzleiCampaign(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, campaignId: string) {
   const { data } = await supabase
     .from("campaigns")
-    .select("id, title, berufsbild, lat, lng, radius_km, kind, client_id")
+    .select("id, title, berufsbild, plz, lat, lng, radius_km, kind, client_id, extra_plz")
     .eq("id", campaignId)
     .eq("kind", "kanzlei")
     .maybeSingle()
@@ -586,8 +592,7 @@ export async function searchAvailableCandidatesAction(
   const effectiveRadiusKm =
     filters.radius === "kampagne" ? campaign.radius_km : filters.radius === "alle" ? null : filters.radius
   const ranked = rankAvailableCandidates((rows ?? []) as CandidateRow[], new Set((assigned ?? []).map((a) => a.candidate_id)), {
-    clientLat: campaign.lat,
-    clientLng: campaign.lng,
+    points: campaignPoints(campaign),
     radiusKm: effectiveRadiusKm,
     sort: filters.sort,
     page: filters.page,
@@ -597,7 +602,7 @@ export async function searchAvailableCandidatesAction(
   return {
     ...ranked,
     truncated: (rows ?? []).length >= MAX_CANDIDATE_ROWS,
-    campaignHasLocation: campaign.lat !== null && campaign.lng !== null,
+    campaignHasLocation: campaignPoints(campaign).length > 0,
     effectiveRadiusKm,
   }
 }

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation"
+import { campaignPoints } from "@/lib/campaign-locations"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CandidateDetail } from "./candidate-detail"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
@@ -63,7 +64,7 @@ export default async function CandidateDetailPage({
     // Ziele für "Weiterschieben" im Reiter Zuordnung: alle aktiven Kanzlei-Kampagnen.
     supabase
       .from("campaigns")
-      .select("id, title, berufsbild, client_id, lat, lng, clients(name)")
+      .select("id, title, berufsbild, client_id, plz, lat, lng, extra_plz, clients(name)")
       .eq("kind", "kanzlei")
       .eq("status", "active")
       .eq("is_demo", false)
@@ -184,6 +185,8 @@ export default async function CandidateDetailPage({
       clientName: client?.name ?? "Unbekannter Kunde",
       lat: c.lat ?? null,
       lng: c.lng ?? null,
+      // Weitere Standorte zusammengeführter Stellen (Paket 40) als eigene Kartenpunkte.
+      extraPoints: campaignPoints(c).filter((p) => p.plz !== c.plz),
     }
   })
 

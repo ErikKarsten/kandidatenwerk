@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { rankAvailableCandidates, type CandidateRow } from "@/lib/available-candidates"
 
 // Kunde in Braunschweig (38100)
-const client = { clientLat: 52.2647, clientLng: 10.5233 }
+const client = { points: [{ lat: 52.2647, lng: 10.5233 }] }
 function row(id: string, lat: number | null, lng: number | null, created_at: string): CandidateRow {
   return { id, first_name: id, last_name: "", email: null, plz: null, lat, lng, berufsbild: null, status: "neu", source: "manual", created_at }
 }
@@ -36,7 +36,7 @@ describe("rankAvailableCandidates", () => {
   })
 
   it("ignoriert den Umkreis, wenn der Kunde keinen Standort hat", () => {
-    const r = rankAvailableCandidates(rows, new Set(), { clientLat: null, clientLng: null, radiusKm: 25, sort: "distance", page: 1, pageSize: 10 })
+    const r = rankAvailableCandidates(rows, new Set(), { points: [], radiusKm: 25, sort: "distance", page: 1, pageSize: 10 })
     expect(r.total).toBe(4)
     expect(r.items.every((c) => c.distanceKm === null)).toBe(true)
   })
@@ -46,5 +46,13 @@ describe("rankAvailableCandidates", () => {
     expect(r.totalPages).toBe(2)
     expect(r.page).toBe(2)
     expect(r.items.map((c) => c.id)).toEqual(["ohne-standort"])
+  })
+
+  it("zählt bei mehreren Standorten den nächstgelegenen (zusammengeführte Stellen)", () => {
+    const zweiStandorte = { points: [...client.points, { lat: 53.5511, lng: 9.9937 }] } // + Hamburg
+    const r = rankAvailableCandidates(rows, new Set(), { ...zweiStandorte, radiusKm: 30, sort: "distance", page: 1, pageSize: 10 })
+    // Beide 0 km vom jeweils nächsten Standort - dann entscheidet der Eingang.
+    expect(r.items.map((c) => c.id)).toEqual(["hamburg", "braunschweig"])
+    expect(r.items.map((c) => c.distanceKm)).toEqual([0, 0])
   })
 })

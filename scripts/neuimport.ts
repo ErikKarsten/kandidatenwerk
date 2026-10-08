@@ -10,7 +10,8 @@
 //    Kommentar im Projekt. Zuordnung über Close-Lead-ID, sonst E-Mail, sonst Name.
 // 3. Kandidaten: Leads aller Leadtable-Kunden (auch archivierter) außer Absagen; ohne E-Mail
 //    nur mit Telefon. Dubletten über E-Mail, sonst Telefon. Status per LEADTABLE_STATUS_MAP,
-//    Zusatzfelder aus den Formularantworten, Bewerbungsdatum aus Leadtable.
+//    Zusatzfelder aus den Formularantworten, Bewerbungsdatum aus Leadtable, Beschreibung aus
+//    dem Beschreibungsfeld, Notizen als Verlaufseinträge.
 // 4. Zuordnung: Leads eines importierten Kunden (nicht Sammelpool) mit Status
 //    Vorqualifiziert/Vorstellungsgespräch/Eingestellt -> Zuordnung zu diesem Kunden mit
 //    Status Neu/Vorstellungsgespräch/Eingestellt. Alles andere ordnet das Team von Hand zu.
@@ -19,6 +20,9 @@
 //   npx tsx scripts/neuimport.ts                 Probelauf (lädt Leadtable einmal, Cache)
 //   npx tsx scripts/neuimport.ts --neu-laden     Probelauf mit frischen Leadtable-Daten
 //   npx tsx scripts/neuimport.ts --ausfuehren    schreibt in die Datenbank
+//   npx tsx scripts/neuimport.ts --ausfuehren --nur-beschreibungen
+//       trägt bei schon importierten Kandidaten nur Beschreibung (leeres Feld) und Notizen
+//       aus Leadtable nach (Paket 40), Kunden bleiben unverändert
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -32,9 +36,9 @@ import { mapLeadFormAnswers } from "../src/lib/leadtable-form-answers"
 import { WEITERE_ANTWORTEN_KEY } from "../src/lib/candidate-custom-fields"
 import { mapKanzleistelleBerufsbild } from "../src/lib/sync-kanzleistelle"
 import { geocodePlz } from "../src/lib/geocode-plz"
-import { closeGet, closeList, customActivityLabels, leadFieldLabels, type CloseActivity, type CloseLead } from "../src/lib/close-api"
-import { activityTypeOf, customActivityText } from "../src/lib/close-sync"
-import { fetchWebsiteText } from "../src/lib/website-text"
+import { closeGet, closeList, customActivityLabels, leadFieldLabels, type CloseLead } from "../src/lib/close-api"
+import { closeActivitySources } from "./lib/close-quellen"
+import { fetchWebsiteText, htmlToText } from "../src/lib/website-text"
 import { processCloseWebhook } from "../src/lib/close-webhook"
 import { closeLeadSources, extractProfileFromSources, payloadFromLead, type ProfileSource } from "../src/lib/close-onboarding"
 import { generateText } from "../src/lib/llm"
@@ -46,6 +50,8 @@ const EXECUTE = process.argv.includes("--ausfuehren")
 // Testlauf mit einem einzelnen Kunden: --nur=<Close-Lead-ID>
 const ONLY = process.argv.find((a) => a.startsWith("--nur="))?.slice("--nur=".length) ?? null
 const RELOAD = process.argv.includes("--neu-laden")
+// Nur Beschreibung und Notizen aus Leadtable bei schon importierten Kandidaten nachtragen.
+const ONLY_TEXTS = process.argv.includes("--nur-beschreibungen")
 const OUT = path.resolve(__dirname, "../neuimport")
 const CACHE = path.join(OUT, "leadtable-cache.json")
 const POOL = /kanzleistelle24/i
@@ -93,6 +99,8 @@ interface LtLead extends LeadtableLead {
   createdAt?: string
   deleted?: { state?: boolean } | boolean
   funnelData?: { profile?: Record<string, { title?: string; value?: unknown }> }
+  // Verlauf: "description" = Beschreibungsfeld des Leads, "note" = Notizen.
+  history?: { itemType?: string; createdAt?: string; updatedAt?: string; deleted?: { state?: boolean }; payload?: { note?: string } }[]
 }
 interface LtCustomer {
   id: string
@@ -212,7 +220,42 @@ interface PlannedCandidate {
   customer: LtCustomer
   occupation: string
   others: { customer: string; occupation: string; status: string }[]
+  leadIds: string[]
+  texts: LeadText[]
   assignTo: Map<string, string> // Leadtable-Kunden-ID -> Zuordnungsstatus
+}
+
+// Beschreibung und Notizen eines Leads (HTML aus dem Leadtable-Editor) als Klartext.
+interface LeadText {
+  kind: "Beschreibung" | "Notiz"
+  customer: string
+  occupation: string
+  at: string | null
+  text: string
+}
+function leadTexts(lead: LtLead, customer: string, occupation: string): LeadText[] {
+  return (lead.history ?? [])
+    .filter((h) => (h.itemType === "description" || h.itemType === "note") && !h.deleted?.state && h.payload?.note)
+    .map((h) => ({
+      kind: h.itemType === "description" ? ("Beschreibung" as const) : ("Notiz" as const),
+      customer,
+      occupation,
+      at: h.updatedAt ?? h.createdAt ?? null,
+      text: htmlToText(h.payload!.note!.replace(/<li[^>]*>/gi, "<li>- "))
+        .split("\n")
+        .map((line) => line.trim())
+        .join("\n"),
+    }))
+    .filter((t) => t.text)
+}
+
+// Beschreibungsfeld(er) als Kandidatenbeschreibung; bei zusammengeführten Bewerbungen je
+// Kunde ein Absatz.
+function leadDescription(c: PlannedCandidate): string | null {
+  const descs = c.texts.filter((t) => t.kind === "Beschreibung")
+  if (descs.length === 0) return null
+  if (descs.length === 1) return descs[0].text
+  return descs.map((d) => `${d.customer}${d.occupation ? ` (${d.occupation})` : ""}:\n${d.text}`).join("\n\n")
 }
 
 // Mehrere Einträge gleichzeitig verarbeiten (KI-Aufrufe sind der Engpass, kie.ai erlaubt
@@ -226,24 +269,6 @@ async function pool<T>(items: T[], size: number, fn: (item: T) => Promise<void>)
   )
 }
 
-// Close: Notizen, Formulare und Besprechungs-Zusammenfassungen eines Leads (ohne Telefonate,
-// deren Transkription wäre für den Massenimport zu langsam).
-async function closeActivitySources(leadId: string, labels: { types: Map<string, string>; fields: Map<string, string> }): Promise<ProfileSource[]> {
-  const activities = await closeList<CloseActivity>(`/activity/?lead_id=${encodeURIComponent(leadId)}`, 1000).catch(() => [] as CloseActivity[])
-  const out: ProfileSource[] = []
-  for (const a of activities) {
-    const type = activityTypeOf(a)
-    const at = a.activity_at ?? a.date_created ?? null
-    if (type === "meeting" && a.summary?.text) out.push({ label: `Close: Besprechung – ${a.title ?? ""}`, at, text: a.summary.text })
-    else if (type === "note" && a.note?.trim()) out.push({ label: "Close: Notiz", at, text: a.note })
-    else if (type === "custom") {
-      const text = customActivityText(a, labels.fields)
-      if (text) out.push({ label: `Close: Formular ${labels.types.get(a.custom_activity_type_id ?? "") ?? ""}`, at, text })
-    }
-  }
-  return out
-}
-
 async function main() {
   console.log(EXECUTE ? "MODUS: AUSFÜHREN" : "MODUS: Probelauf (schreibt nichts)")
 
@@ -254,13 +279,14 @@ async function main() {
   const { count: candidateCount } = await db.from("candidates").select("id", { count: "exact", head: true }).eq("source", "leadtable")
   // Kunden aus einem vorherigen (abgebrochenen) Lauf werden wiederverwendet; gesperrt wird
   // nur, wenn schon Leadtable-Kandidaten importiert sind.
-  if (EXECUTE && !ONLY && (candidateCount ?? 0) > 0) {
+  if (EXECUTE && !ONLY && !ONLY_TEXTS && (candidateCount ?? 0) > 0) {
     throw new Error(`Datenbank ist nicht leer (${clientCount} Kunden, ${candidateCount} Kandidaten) - erst scripts/live-bereinigen.ts.`)
   }
 
   const customers = await loadLeadtable()
-  const won = await closeList<{ id: string; display_name: string }>(`/lead/?query=${encodeURIComponent('lead_status:"Gewonnen"')}&_fields=id,display_name`, 2000)
-  const clickupTasks = await loadClickup()
+  // Nur Texte nachtragen: Kunden werden nicht angefasst, Close und ClickUp nicht gebraucht.
+  const won = ONLY_TEXTS ? [] : await closeList<{ id: string; display_name: string }>(`/lead/?query=${encodeURIComponent('lead_status:"Gewonnen"')}&_fields=id,display_name`, 2000)
+  const clickupTasks = ONLY_TEXTS ? null : await loadClickup()
 
   // 1. Kunden planen
   interface PlannedClient {
@@ -350,7 +376,9 @@ async function main() {
         if (!key) { skipped.ohneKontakt++; continue }
         const status = STATUS_MAP[ltStatus] ?? "neu"
         const existing = byKey.get(key)
-        const entry: PlannedCandidate = existing ?? { key, lead, email, phone, status, ltStatus, customer, occupation: camp.occupation, others: [], assignTo: new Map() }
+        const entry: PlannedCandidate = existing ?? { key, lead, email, phone, status, ltStatus, customer, occupation: camp.occupation, others: [], leadIds: [], texts: [], assignTo: new Map() }
+        entry.leadIds.push(lead._id)
+        entry.texts.push(...leadTexts(lead, customer.name, camp.occupation))
         if (existing) {
           existing.others.push({ customer: customer.name, occupation: camp.occupation, status: ltStatus })
           // Neuester Lead bestimmt den Stand.
@@ -378,15 +406,15 @@ async function main() {
     `- übersprungen: Absagen ${skipped.absage}, ohne E-Mail und Telefon ${skipped.ohneKontakt}, Testleads ${skipped.test}, in Leadtable gelöscht ${skipped.geloescht}`,
     `- zusammengeführte Mehrfach-Bewerbungen: ${candidates.filter((c) => c.others.length > 0).length}`,
   ].join("\n")
-  fs.writeFileSync(path.join(OUT, "bericht.md"), report + "\n")
-  fs.writeFileSync(
+  if (!ONLY_TEXTS) fs.writeFileSync(path.join(OUT, "bericht.md"), report + "\n")
+  if (!ONLY_TEXTS) fs.writeFileSync(
     path.join(OUT, "kunden.csv"),
     "﻿" +
       ["kunde;quelle;leadtable_name;close_abgleich;close_lead;close_id;clickup_eintrag"]
         .concat(planned.map((p) => [csvEsc(p.name), p.source, csvEsc(customers.find((c) => c.id === p.leadtableId)?.name ?? ""), csvEsc(p.closeMatch), csvEsc(p.close?.display_name ?? ""), p.close?.id ?? "", csvEsc(p.clickup?.name ?? "")].join(";")))
         .join("\n")
   )
-  if (clickupTasks) {
+  if (clickupTasks && !ONLY_TEXTS) {
     const usedTasks = new Set(planned.map((p) => p.clickup?.id).filter(Boolean))
     fs.writeFileSync(path.join(OUT, "clickup-ohne-zuordnung.csv"), "﻿clickup_eintrag;clickup_id\n" + clickupTasks.filter((t) => !usedTasks.has(t.id)).map((t) => `${csvEsc(t.name)};${t.id}`).join("\n"))
   }
@@ -399,7 +427,7 @@ async function main() {
   const [leadLabels, activityLabels] = await Promise.all([leadFieldLabels(), customActivityLabels()])
   const profileStats = { befuellt: 0, fehler: 0 }
   let done = 0
-  await pool(planned, 5, async (p) => {
+  await pool(ONLY_TEXTS ? [] : planned, 5, async (p) => {
     try {
       // 1. Kunde anlegen bzw. aus Close verknüpfen.
       let clientId: string
@@ -466,22 +494,56 @@ async function main() {
   })
   console.log(`Kanzleiprofile befüllt: ${profileStats.befuellt}, Fehler: ${profileStats.fehler}`)
 
+  const textStats = { beschreibungen: 0, notizen: 0, nichtGefunden: 0 }
+  // Beschreibung nur, wo noch keine steht; Notizen einmalig in den Verlauf (mit Datum).
+  const addLeadtableTexts = async (candidateId: string, c: PlannedCandidate, currentDescription: string | null) => {
+    const description = leadDescription(c)
+    if (description && !currentDescription?.trim()) {
+      await db.from("candidates").update({ description }).eq("id", candidateId)
+      textStats.beschreibungen++
+    }
+    const notes = c.texts.filter((t) => t.kind === "Notiz")
+    if (notes.length === 0) return
+    const { count } = await db.from("candidate_history").select("id", { count: "exact", head: true }).eq("candidate_id", candidateId).like("content", "Notiz aus Leadtable%")
+    if (count) return
+    const multi = new Set(notes.map((n) => n.customer)).size > 1
+    const { error } = await db.from("candidate_history").insert(
+      notes.map((n) => ({
+        candidate_id: candidateId,
+        type: "note",
+        content: `Notiz aus Leadtable${multi ? ` (${n.customer})` : ""}: ${n.text}`,
+        ...(n.at ? { created_at: n.at } : {}),
+      }))
+    )
+    if (error) console.error(`Notizen ${c.key}: ${error.message}`)
+    else textStats.notizen += notes.length
+  }
+
   done = 0
   await pool(candidates, 10, async (c) => {
     const { firstName, lastName } = extractCleanName(c.lead.name ?? "")
     // Formularantworten über die Fragetitel (Zusatzfelder, PLZ); Rest ins Zusatzfeld
-    // "Weitere Antworten" - die Beschreibung bleibt leer (Entscheidung Paket 18).
+    // "Weitere Antworten". Die Beschreibung kommt aus dem Beschreibungsfeld in Leadtable.
     const answers = mapLeadFormAnswers(c.lead.funnelData?.profile)
     const customFields: Record<string, string> = { ...answers.fields }
     if (answers.extras.length) customFields[WEITERE_ANTWORTEN_KEY] = answers.extras.map((x) => `${x.question}: ${x.answer}`).join("\n")
     const plz = answers.plz
     const coords = plz ? geocodePlz(plz) : null
-    // Gibt es die Person schon (z.B. neue Bewerbung seit dem Leeren)? Dann nicht doppelt anlegen.
-    const { data: existingByEmail } = c.email ? await db.from("candidates").select("id").eq("email", c.email).limit(1).maybeSingle() : { data: null }
-    if (existingByEmail) {
-      await db.from("candidates").update({ leadtable_lead_id: c.lead._id }).eq("id", existingByEmail.id)
-      await db.from("candidate_history").insert({ candidate_id: existingByEmail.id, type: "note", content: `Auch in Leadtable vorhanden: Kunde „${c.customer.name}“, Status „${c.ltStatus}“.` })
+    // Gibt es die Person schon (früherer Lauf oder neue Bewerbung seit dem Leeren)? Dann
+    // nicht doppelt anlegen, nur Beschreibung und Notizen ergänzen.
+    const { data: byLead } = await db.from("candidates").select("id, description, leadtable_lead_id").in("leadtable_lead_id", c.leadIds).limit(1).maybeSingle()
+    const { data: existing } = byLead ? { data: byLead } : c.email ? await db.from("candidates").select("id, description, leadtable_lead_id").eq("email", c.email).limit(1).maybeSingle() : { data: null }
+    if (existing) {
+      if (!existing.leadtable_lead_id) {
+        await db.from("candidates").update({ leadtable_lead_id: c.lead._id }).eq("id", existing.id)
+        await db.from("candidate_history").insert({ candidate_id: existing.id, type: "note", content: `Auch in Leadtable vorhanden: Kunde „${c.customer.name}“, Status „${c.ltStatus}“.` })
+      }
+      await addLeadtableTexts(existing.id, c, existing.description)
       if (++done % 100 === 0) console.log(`Kandidaten: ${done}/${candidates.length}`)
+      return
+    }
+    if (ONLY_TEXTS) {
+      textStats.nichtGefunden++
       return
     }
     const { data: inserted, error } = await db
@@ -499,6 +561,7 @@ async function main() {
         lng: coords?.lng ?? null,
         leadtable_lead_id: c.lead._id,
         custom_fields: customFields,
+        description: leadDescription(c),
         ...(c.lead.createdAt ? { created_at: c.lead.createdAt } : {}),
       })
       .select("id")
@@ -510,6 +573,7 @@ async function main() {
     const origin = [`Kunde „${c.customer.name}“`, c.occupation && `Kampagne „${c.occupation}“`, `Status „${c.ltStatus}“`].filter(Boolean).join(", ")
     const others = c.others.length ? ` Weitere Bewerbungen: ${c.others.map((o) => `${o.customer} (${o.status})`).join("; ")}.` : ""
     await db.from("candidate_history").insert({ candidate_id: inserted.id, type: "note", content: `Import aus Leadtable: ${origin}.${others}` })
+    await addLeadtableTexts(inserted.id, c, leadDescription(c))
     for (const [ltCustomerId, status] of c.assignTo) {
       const clientId = clientIdByLeadtable.get(ltCustomerId)
       if (!clientId) continue
@@ -518,6 +582,7 @@ async function main() {
     }
     if (++done % 100 === 0) console.log(`Kandidaten: ${done}/${candidates.length}`)
   })
+  console.log(`Beschreibungen ergänzt: ${textStats.beschreibungen}, Notizen: ${textStats.notizen}${ONLY_TEXTS ? `, Kandidat nicht gefunden: ${textStats.nichtGefunden}` : ""}`)
   console.log("Fertig.")
 }
 

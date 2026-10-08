@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getStaffContext } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
+import { parsePlzList } from "@/lib/campaign-locations"
+import { matchCampaignToCandidates } from "@/lib/matching"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { sendEmail } from "@/lib/brevo-mail"
 import { closeLeadUrl } from "@/lib/close-webhook"
@@ -298,7 +300,8 @@ export async function deletePositionAction(clientId: string, positionId: string)
 }
 
 // Legt aus einer oder mehreren Stellen EINE Kanzlei-Kampagne an (mehrere Stellen =
-// zusammengelegt). Berufsbild/Standort/Umkreis kommen von der ersten Stelle.
+// zusammengelegt). Berufsbild/Haupt-Standort/Umkreis kommen von der ersten Stelle, die PLZ
+// der übrigen Stellen werden weitere Standorte fürs Matching (Paket 40).
 export async function createCampaignFromPositionsAction(
   clientId: string,
   positionIds: string[],
@@ -335,6 +338,7 @@ export async function createCampaignFromPositionsAction(
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
       location_id: await getOrCreateLocationForPlz(ctx.supabase, plz),
+      extra_plz: parsePlzList(positions.map((p) => p.plz ?? ""), plz),
       ...(first.radius_km ? { radius_km: first.radius_km } : {}),
     })
     .select("id")
@@ -358,6 +362,18 @@ export async function linkPositionToCampaignAction(clientId: string, positionId:
   }
   const { error } = await ctx.supabase.from("client_positions").update({ campaign_id: campaignId }).eq("id", positionId).eq("client_id", clientId)
   if (error) return { error: error.message }
+  // Stelle an anderem Ort: ihre PLZ wird weiterer Standort der Kampagne (Paket 40).
+  if (campaignId) {
+    const [{ data: position }, { data: campaign }] = await Promise.all([
+      ctx.supabase.from("client_positions").select("plz").eq("id", positionId).single(),
+      ctx.supabase.from("campaigns").select("plz, extra_plz").eq("id", campaignId).single(),
+    ])
+    const extra = parsePlzList([...(campaign?.extra_plz ?? []), position?.plz ?? ""], campaign?.plz)
+    if (campaign && extra.join() !== (campaign.extra_plz ?? []).join()) {
+      await ctx.supabase.from("campaigns").update({ extra_plz: extra }).eq("id", campaignId)
+      await matchCampaignToCandidates(ctx.supabase, campaignId).catch((e) => console.error("Matching fehlgeschlagen:", e))
+    }
+  }
   revalidateClient(clientId)
   return null
 }
