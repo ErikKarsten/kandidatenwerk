@@ -247,7 +247,9 @@ async function main() {
 
   // Sicherheitsnetz: nur auf geleerter Datenbank ausführen.
   const { count: clientCount } = await db.from("clients").select("id", { count: "exact", head: true })
-  const { count: candidateCount } = await db.from("candidates").select("id", { count: "exact", head: true }).not("tags", "cs", "{Musterdatensatz}")
+  // Nur Leadtable-Kandidaten zählen - neue Bewerbungen über Meta/Kanzleistelle24 seit dem
+  // Leeren sind echte Daten und bleiben (Dubletten werden beim Import erkannt).
+  const { count: candidateCount } = await db.from("candidates").select("id", { count: "exact", head: true }).eq("source", "leadtable")
   // Erlaubt: Kunden aus einem vorherigen Testlauf (mit Close-Lead, werden wiederverwendet).
   const { count: clientsWithoutClose } = await db.from("clients").select("id", { count: "exact", head: true }).is("close_lead_id", null)
   if (EXECUTE && !ONLY && ((clientsWithoutClose ?? 0) > 0 || (candidateCount ?? 0) > 0)) {
@@ -460,6 +462,14 @@ async function main() {
     if (answers.extras.length) customFields[WEITERE_ANTWORTEN_KEY] = answers.extras.map((x) => `${x.question}: ${x.answer}`).join("\n")
     const plz = answers.plz
     const coords = plz ? geocodePlz(plz) : null
+    // Gibt es die Person schon (z.B. neue Bewerbung seit dem Leeren)? Dann nicht doppelt anlegen.
+    const { data: existingByEmail } = c.email ? await db.from("candidates").select("id").eq("email", c.email).limit(1).maybeSingle() : { data: null }
+    if (existingByEmail) {
+      await db.from("candidates").update({ leadtable_lead_id: c.lead._id }).eq("id", existingByEmail.id)
+      await db.from("candidate_history").insert({ candidate_id: existingByEmail.id, type: "note", content: `Auch in Leadtable vorhanden: Kunde „${c.customer.name}“, Status „${c.ltStatus}“.` })
+      if (++done % 100 === 0) console.log(`Kandidaten: ${done}/${candidates.length}`)
+      return
+    }
     const { data: inserted, error } = await db
       .from("candidates")
       .insert({
