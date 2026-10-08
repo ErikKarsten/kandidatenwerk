@@ -49,6 +49,8 @@ const RELOAD = process.argv.includes("--neu-laden")
 const OUT = path.resolve(__dirname, "../neuimport")
 const CACHE = path.join(OUT, "leadtable-cache.json")
 const POOL = /kanzleistelle24/i
+// Die Agentur selbst ist kein Kunde.
+const OWN_AGENCY = /endlich\s*mitarbeiter/i
 const SKIP_STATUS = new Set(["Absage", "Absage mit Mitteilung"])
 const STATUS_MAP: Record<string, string> = { ...LEADTABLE_STATUS_MAP, "On Hold": "in_pruefung" }
 const ASSIGN_STATUS: Record<string, string> = { Vorqualifiziert: "inbox", "Vorstellungsgespräch": "vg", Eingestellt: "ja" }
@@ -293,8 +295,10 @@ async function main() {
     return m.kind === "sicher" || m.kind === "wahrscheinlich" ? m.best : null
   }
 
-  for (const c of customers.filter((x) => !x.archived && !POOL.test(x.name))) {
-    const m = matchByName(c.name, won, (l) => l.display_name)
+  for (const c of customers.filter((x) => !x.archived && !POOL.test(x.name) && !OWN_AGENCY.test(x.name))) {
+    // Ein Close-Lead gehört zu genau einem Kunden: ähnliche Namen in Leadtable
+    // (z. B. „ZRK …“ und „ZRK … Stahlecker“) sind eigene Kanzleien.
+    const m = matchByName(c.name, won.filter((l) => !usedClose.has(l.id)), (l) => l.display_name)
     const close = m.kind === "sicher" || m.kind === "wahrscheinlich" ? m.best : null
     if (close) usedClose.add(close.id)
     planned.push({
@@ -307,7 +311,7 @@ async function main() {
     })
   }
   // Close-Kunden ohne Leadtable: nur wenn sie in ClickUp aktiv oder anstehend sind.
-  const closeOnly = won.filter((l) => !usedClose.has(l.id))
+  const closeOnly = won.filter((l) => !usedClose.has(l.id) && !OWN_AGENCY.test(l.display_name))
   const closeOnlyInClickup: typeof closeOnly = []
   const closeOnlyOld: string[] = []
   for (const l of closeOnly) {
