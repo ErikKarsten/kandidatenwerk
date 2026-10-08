@@ -250,9 +250,9 @@ async function main() {
   // Nur Leadtable-Kandidaten zählen - neue Bewerbungen über Meta/Kanzleistelle24 seit dem
   // Leeren sind echte Daten und bleiben (Dubletten werden beim Import erkannt).
   const { count: candidateCount } = await db.from("candidates").select("id", { count: "exact", head: true }).eq("source", "leadtable")
-  // Erlaubt: Kunden aus einem vorherigen Testlauf (mit Close-Lead, werden wiederverwendet).
-  const { count: clientsWithoutClose } = await db.from("clients").select("id", { count: "exact", head: true }).is("close_lead_id", null)
-  if (EXECUTE && !ONLY && ((clientsWithoutClose ?? 0) > 0 || (candidateCount ?? 0) > 0)) {
+  // Kunden aus einem vorherigen (abgebrochenen) Lauf werden wiederverwendet; gesperrt wird
+  // nur, wenn schon Leadtable-Kandidaten importiert sind.
+  if (EXECUTE && !ONLY && (candidateCount ?? 0) > 0) {
     throw new Error(`Datenbank ist nicht leer (${clientCount} Kunden, ${candidateCount} Kandidaten) - erst scripts/live-bereinigen.ts.`)
   }
 
@@ -395,7 +395,7 @@ async function main() {
   const [leadLabels, activityLabels] = await Promise.all([leadFieldLabels(), customActivityLabels()])
   const profileStats = { befuellt: 0, fehler: 0 }
   let done = 0
-  await pool(planned, 10, async (p) => {
+  await pool(planned, 5, async (p) => {
     try {
       // 1. Kunde anlegen bzw. aus Close verknüpfen.
       let clientId: string
@@ -405,9 +405,13 @@ async function main() {
         const payload = { ...payloadFromLead(lead!, "Gewonnen"), firma: p.name }
         clientId = (await processCloseWebhook(db, payload, { bulkImport: true })).clientId
       } else {
-        const { data, error } = await db.from("clients").insert({ name: p.name, agency_id: agency!.id, status: "active" }).select("id").single()
-        if (error) throw new Error(error.message)
-        clientId = data.id
+        const { data: existing } = await db.from("clients").select("id").eq("name", p.name).is("close_lead_id", null).limit(1).maybeSingle()
+        if (existing) clientId = existing.id
+        else {
+          const { data, error } = await db.from("clients").insert({ name: p.name, agency_id: agency!.id, status: "active" }).select("id").single()
+          if (error) throw new Error(error.message)
+          clientId = data.id
+        }
       }
       // ClickUp "anstehende Kunden" starten im Onboarding, alle anderen sind live.
       await db.from("clients").update({ project_phase: p.clickup && clickupStatus(p.clickup) === "anstehende kunden" ? "onboarding" : "live" }).eq("id", clientId)
@@ -429,8 +433,14 @@ async function main() {
         if (website) sources.push({ label: "Website der Kanzlei", text: website })
       }
 
-      // 3. ClickUp-Kommentare als Stand im Projekt (erneuter Lauf: aktualisieren).
-      if (comments.length > 0) {
+      // Erneuter Lauf: schon befüllte Kunden nicht noch einmal per KI bearbeiten.
+      const [{ data: hasProfile }, { data: hasSummary }] = await Promise.all([
+        db.from("client_profiles").select("client_id").eq("client_id", clientId).not("intro", "is", null).maybeSingle(),
+        db.from("client_comments").select("id").eq("client_id", clientId).like("content", "Stand aus ClickUp%").maybeSingle(),
+      ])
+
+      // 3. ClickUp-Kommentare als Stand im Projekt.
+      if (comments.length > 0 && !hasSummary) {
         const summary = await summarizeClickup(p.name, comments)
         const content = `Stand aus ClickUp (zusammengefasst, ${comments.length} Kommentare)\n\n${summary}`
         const { data: existing } = await db.from("client_comments").select("id").eq("client_id", clientId).like("content", "Stand aus ClickUp%").maybeSingle()
@@ -439,7 +449,7 @@ async function main() {
       }
 
       // 4. Kanzleiprofil, Benefits und Stellen per KI (füllt nur leere Felder).
-      if (sources.length > 0) {
+      if (sources.length > 0 && !hasProfile) {
         const profile = await extractProfileFromSources(p.name, sources)
         await processCloseWebhook(db, { ...profile, firma: p.name, close_lead_id: p.close?.id }, { bulkImport: true, clientId })
         profileStats.befuellt++
