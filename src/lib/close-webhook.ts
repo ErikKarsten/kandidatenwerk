@@ -192,7 +192,12 @@ export function normalizePayload(raw: unknown): CloseWebhookPayload {
   return out as CloseWebhookPayload
 }
 
-export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebhookPayload): Promise<CloseWebhookResult> {
+export interface ProcessCloseOptions {
+  // Massenimport (Neuimport T-20): keine Beispielkampagne/Beispiel-Lead, keine Verlaufszeile.
+  bulkImport?: boolean
+}
+
+export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebhookPayload, options: ProcessCloseOptions = {}): Promise<CloseWebhookResult> {
   const closeLeadId = text(payload.close_lead_id)
   const firma = text(payload.firma)
   if (!closeLeadId) throw new Error("close_lead_id fehlt.")
@@ -383,7 +388,7 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
   }
 
   // Neuer Kunde: Beispiel-Lead passend zur ersten Stelle (Paket 14, T-68).
-  if (outcome === "angelegt") await createDemoCandidateForClient(db as unknown as SupabaseClient<Database>, clientId)
+  if (outcome === "angelegt" && !options.bulkImport) await createDemoCandidateForClient(db as unknown as SupabaseClient<Database>, clientId)
 
   // 6. Verlauf im Projekt-Reiter.
   const statusText = statusLabel ? ` Status in Close: ${statusLabel}.` : ""
@@ -395,7 +400,7 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
         : statusLabel && statusLabel !== previousStatus
           ? `Status in Close geändert: ${previousStatus ?? "–"} → ${statusLabel}. Kunde war bereits angelegt.`
           : "Daten aus Close erneut übertragen."
-  await db.from("client_comments").insert({
+  if (!options.bulkImport) await db.from("client_comments").insert({
     client_id: clientId,
     author_id: null,
     kind: "system",

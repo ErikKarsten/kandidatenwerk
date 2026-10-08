@@ -56,3 +56,6 @@ next-env.d.ts
 # Playwright (T-101)
 /playwright-report/
 /test-results/
+
+# Neuimport-Berichte (Firmen- und Personendaten)
+/neuimport/

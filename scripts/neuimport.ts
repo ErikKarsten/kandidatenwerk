@@ -1,0 +1,398 @@
+// Neuimport (Atlas T-20, abgestimmt 07./08.10.2026). Läuft nach scripts/live-bereinigen.ts.
+//
+// 1. Kunden: aktive (nicht archivierte) Leadtable-Kunden, außer dem Sammelpool
+//    "Kanzleistelle24.de". Dazu Close-Kunden auf "Gewonnen" ohne Leadtable-Kunden, wenn sie
+//    in der ClickUp-Liste "Account Management - Übersicht" stehen.
+//    Close-Verknüpfung nur mit einem Lead im Status "Gewonnen" (Namensabgleich über markante
+//    Namensteile). Stammdaten/Kontakt kommen dann aus Close (processCloseWebhook, ohne
+//    Beispielkampagne). Phase "Live".
+// 2. ClickUp: je Kunde nur die Kommentare, per KI zum aktuellen Stand zusammengefasst, als
+//    Kommentar im Projekt. Zuordnung über Close-Lead-ID, sonst E-Mail, sonst Name.
+// 3. Kandidaten: Leads aller Leadtable-Kunden (auch archivierter) außer Absagen; ohne E-Mail
+//    nur mit Telefon. Dubletten über E-Mail, sonst Telefon. Status per LEADTABLE_STATUS_MAP,
+//    Zusatzfelder aus den Formularantworten, Bewerbungsdatum aus Leadtable.
+// 4. Zuordnung: Leads eines importierten Kunden (nicht Sammelpool) mit Status
+//    Vorqualifiziert/Vorstellungsgespräch/Eingestellt -> Zuordnung zu diesem Kunden mit
+//    Status Neu/Vorstellungsgespräch/Eingestellt. Alles andere ordnet das Team von Hand zu.
+//
+// Ohne --ausfuehren nur Probelauf: Bericht in neuimport/ (per .gitignore ausgeschlossen).
+//   npx tsx scripts/neuimport.ts                 Probelauf (lädt Leadtable einmal, Cache)
+//   npx tsx scripts/neuimport.ts --neu-laden     Probelauf mit frischen Leadtable-Daten
+//   npx tsx scripts/neuimport.ts --ausfuehren    schreibt in die Datenbank
+import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+import dotenv from "dotenv"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { leadtableFetch } from "../src/lib/leadtable-client"
+import { fetchAllCampaigns, fetchAllCustomers } from "../src/lib/leadtable-import-customers"
+import { cleanLeadtableEmail, extractCleanName, isTestLead, type LeadtableLead } from "../src/lib/leadtable-import"
+import { LEADTABLE_STATUS_MAP } from "../src/lib/leadtable-sync-shared"
+import { mapLeadFormAnswers } from "../src/lib/leadtable-form-answers"
+import { WEITERE_ANTWORTEN_KEY } from "../src/lib/candidate-custom-fields"
+import { mapKanzleistelleBerufsbild } from "../src/lib/sync-kanzleistelle"
+import { geocodePlz } from "../src/lib/geocode-plz"
+import { closeGet, closeList, type CloseLead } from "../src/lib/close-api"
+import { processCloseWebhook } from "../src/lib/close-webhook"
+import { payloadFromLead } from "../src/lib/close-onboarding"
+import { generateText } from "../src/lib/llm"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true })
+
+const EXECUTE = process.argv.includes("--ausfuehren")
+const RELOAD = process.argv.includes("--neu-laden")
+const OUT = path.resolve(__dirname, "../neuimport")
+const CACHE = path.join(OUT, "leadtable-cache.json")
+const POOL = /kanzleistelle24/i
+const SKIP_STATUS = new Set(["Absage", "Absage mit Mitteilung"])
+const STATUS_MAP: Record<string, string> = { ...LEADTABLE_STATUS_MAP, "On Hold": "in_pruefung" }
+const ASSIGN_STATUS: Record<string, string> = { Vorqualifiziert: "inbox", "Vorstellungsgespräch": "vg", Eingestellt: "ja" }
+const CLICKUP_LIST = "account management - übersicht"
+
+const db: SupabaseClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, { auth: { persistSession: false } })
+fs.mkdirSync(OUT, { recursive: true })
+
+// ── Namensabgleich ───────────────────────────────────────────────────────────────────
+const STOP = new Set(
+  "und steuerberatung steuerberater steuerberaterin steuerberatungsgesellschaft steuerberatungsges partner partnerschaft partnerschaftsgesellschaft kanzlei steuerkanzlei stb gmbh mbb mbh partg wirtschaftspruefer wirtschaftspruefung rechtsanwalt rechtsanwaelte rechtsanwaeltin treuhand beratung gesellschaft steuern recht prof the kg ug ohg gbr www steuerberatungsbuero steuerbuero buero team".split(" ")
+)
+const norm = (s: string) =>
+  s.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/\.(de|com|net)\b/g, "").replace(/[^a-z0-9]+/g, " ")
+const tokens = (s: string) => new Set(norm(s).split(" ").filter((t) => t.length >= 3 && !STOP.has(t)))
+
+type MatchResult<T> = { kind: "sicher" | "wahrscheinlich" | "mehrdeutig" | "kein Treffer"; best: T | null; options: T[]; score: number }
+function matchByName<T>(name: string, pool: T[], nameOf: (x: T) => string): MatchResult<T> {
+  const a = tokens(name)
+  const scored = pool
+    .map((x) => {
+      const b = tokens(nameOf(x))
+      const inter = [...a].filter((t) => b.has(t)).length
+      return { x, inter, score: inter / Math.max(1, Math.min(a.size, b.size)) }
+    })
+    .filter((s) => s.inter > 0)
+    .sort((p, q) => q.score - p.score)
+  const best = scored[0]
+  if (!best || best.score < 0.5) return { kind: "kein Treffer", best: null, options: [], score: best?.score ?? 0 }
+  const ties = scored.filter((s) => s.score === best.score)
+  if (ties.length > 1) return { kind: "mehrdeutig", best: null, options: ties.map((t) => t.x), score: best.score }
+  return { kind: best.score >= 0.99 ? "sicher" : "wahrscheinlich", best: best.x, options: [best.x], score: best.score }
+}
+
+// ── Leadtable laden (mit Cache) ──────────────────────────────────────────────────────
+interface LtLead extends LeadtableLead {
+  createdAt?: string
+  deleted?: { state?: boolean } | boolean
+  funnelData?: { profile?: Record<string, { title?: string; value?: unknown }> }
+}
+interface LtCustomer {
+  id: string
+  name: string
+  archived: boolean
+  campaigns: { id: string; occupation: string; leads: LtLead[] }[]
+}
+
+async function loadLeadtable(): Promise<LtCustomer[]> {
+  if (!RELOAD && fs.existsSync(CACHE)) return JSON.parse(fs.readFileSync(CACHE, "utf8"))
+  const out: LtCustomer[] = []
+  for (const c of await fetchAllCustomers()) {
+    const campaigns = []
+    for (const camp of await fetchAllCampaigns(c._id)) {
+      const first = await leadtableFetch<{ pages: { totalPages: number }; leads: LtLead[] }>(`/lead/campaign/${camp._id}`, { page: 1, limit: 100 })
+      const leads = [...first.leads]
+      for (let page = 2; page <= first.pages.totalPages; page++) {
+        leads.push(...(await leadtableFetch<{ leads: LtLead[] }>(`/lead/campaign/${camp._id}`, { page, limit: 100 })).leads)
+      }
+      campaigns.push({ id: camp._id, occupation: String(camp.occupation ?? ""), leads })
+    }
+    out.push({ id: c._id, name: c.name.trim(), archived: String(c.archived) === "true", campaigns })
+    process.stdout.write(".")
+  }
+  fs.writeFileSync(CACHE, JSON.stringify(out))
+  console.log("")
+  return out
+}
+
+// ── ClickUp ──────────────────────────────────────────────────────────────────────────
+interface ClickupTask {
+  id: string
+  name: string
+  description?: string
+  custom_fields?: { name: string; value?: unknown }[]
+}
+
+async function clickup<T>(p: string): Promise<T> {
+  const res = await fetch(`https://api.clickup.com/api/v2${p}`, { headers: { Authorization: process.env.CLICKUP_API_TOKEN! } })
+  if (res.status === 429) {
+    await new Promise((r) => setTimeout(r, 5000))
+    return clickup<T>(p)
+  }
+  if (!res.ok) throw new Error(`ClickUp ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  return (await res.json()) as T
+}
+
+async function loadClickup(): Promise<ClickupTask[] | null> {
+  if (!process.env.CLICKUP_API_TOKEN) return null
+  const { teams } = await clickup<{ teams: { id: string }[] }>("/team")
+  for (const team of teams) {
+    const { spaces } = await clickup<{ spaces: { id: string }[] }>(`/team/${team.id}/space?archived=false`)
+    for (const space of spaces) {
+      const { folders } = await clickup<{ folders: { lists: { id: string; name: string }[] }[] }>(`/space/${space.id}/folder?archived=false`)
+      const { lists } = await clickup<{ lists: { id: string; name: string }[] }>(`/space/${space.id}/list?archived=false`)
+      const all = [...lists, ...folders.flatMap((f) => f.lists)]
+      const list = all.find((l) => l.name.trim().toLowerCase() === CLICKUP_LIST)
+      if (!list) continue
+      const tasks: ClickupTask[] = []
+      for (let page = 0; page < 50; page++) {
+        const r = await clickup<{ tasks: ClickupTask[]; last_page?: boolean }>(`/list/${list.id}/task?page=${page}&include_closed=true&subtasks=false`)
+        tasks.push(...r.tasks)
+        if (r.last_page || r.tasks.length === 0) break
+      }
+      return tasks
+    }
+  }
+  throw new Error(`ClickUp-Liste „${CLICKUP_LIST}“ nicht gefunden.`)
+}
+
+function clickupText(t: ClickupTask): string {
+  return [t.description ?? "", ...(t.custom_fields ?? []).map((f) => (typeof f.value === "string" ? f.value : ""))].join(" ")
+}
+
+async function clickupComments(taskId: string): Promise<{ date: string; user: string; text: string }[]> {
+  const r = await clickup<{ comments: { comment_text: string; date: string; user?: { username?: string } }[] }>(`/task/${taskId}/comment`)
+  return r.comments
+    .map((c) => ({ date: new Date(Number(c.date)).toISOString().slice(0, 10), user: c.user?.username ?? "", text: c.comment_text.trim() }))
+    .filter((c) => c.text)
+    .reverse()
+}
+
+async function summarizeClickup(clientName: string, comments: { date: string; user: string; text: string }[]): Promise<string> {
+  const source = comments.map((c) => `[${c.date}${c.user ? `, ${c.user}` : ""}] ${c.text}`).join("\n\n").slice(-60_000)
+  return generateText({
+    tier: "smart",
+    maxTokens: 1500,
+    timeoutMs: 120_000,
+    system:
+      "Du fasst die Kommentare aus dem bisherigen Projektmanagement (ClickUp) zu einer Kanzlei für den Key Account Manager zusammen. Schreibe den aktuellen Stand der Zusammenarbeit: Kurzfazit in ein bis zwei Sätzen, dann Stichpunkte mit \"- \" zu laufenden Themen, Vereinbarungen und offenen Punkten. Neuere Kommentare haben Vorrang. Nichts erfinden, keine Markdown-Überschriften mit #.",
+    prompt: `Kanzlei: ${clientName}\n\nKommentare (älteste zuerst):\n${source}`,
+  })
+}
+
+// ── Hilfen ───────────────────────────────────────────────────────────────────────────
+const normPhone = (p: string | null | undefined) => {
+  const digits = (p ?? "").replace(/\D/g, "").replace(/^0049/, "49").replace(/^0/, "49")
+  return digits.length >= 8 ? digits : ""
+}
+const csvEsc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`
+
+interface PlannedCandidate {
+  key: string
+  lead: LtLead
+  email: string | null
+  phone: string | null
+  status: string
+  ltStatus: string
+  customer: LtCustomer
+  occupation: string
+  others: { customer: string; occupation: string; status: string }[]
+  assignTo: Map<string, string> // Leadtable-Kunden-ID -> Zuordnungsstatus
+}
+
+async function main() {
+  console.log(EXECUTE ? "MODUS: AUSFÜHREN" : "MODUS: Probelauf (schreibt nichts)")
+
+  // Sicherheitsnetz: nur auf geleerter Datenbank ausführen.
+  const { count: clientCount } = await db.from("clients").select("id", { count: "exact", head: true })
+  const { count: candidateCount } = await db.from("candidates").select("id", { count: "exact", head: true }).not("tags", "cs", "{Musterdatensatz}")
+  if (EXECUTE && ((clientCount ?? 0) > 0 || (candidateCount ?? 0) > 0)) {
+    throw new Error(`Datenbank ist nicht leer (${clientCount} Kunden, ${candidateCount} Kandidaten) - erst scripts/live-bereinigen.ts.`)
+  }
+
+  const customers = await loadLeadtable()
+  const won = await closeList<{ id: string; display_name: string }>(`/lead/?query=${encodeURIComponent('lead_status:"Gewonnen"')}&_fields=id,display_name`, 2000)
+  const clickupTasks = await loadClickup()
+
+  // 1. Kunden planen
+  interface PlannedClient {
+    name: string
+    leadtableId: string | null
+    close: { id: string; display_name: string } | null
+    closeMatch: string
+    clickup: ClickupTask | null
+    source: "leadtable" | "close+clickup"
+  }
+  const planned: PlannedClient[] = []
+  const usedClose = new Set<string>()
+  const findClickup = (name: string, closeId: string | null): ClickupTask | null => {
+    if (!clickupTasks) return null
+    if (closeId) {
+      const byId = clickupTasks.find((t) => clickupText(t).includes(closeId))
+      if (byId) return byId
+    }
+    const m = matchByName(name, clickupTasks, (t) => t.name)
+    return m.kind === "sicher" || m.kind === "wahrscheinlich" ? m.best : null
+  }
+
+  for (const c of customers.filter((x) => !x.archived && !POOL.test(x.name))) {
+    const m = matchByName(c.name, won, (l) => l.display_name)
+    const close = m.kind === "sicher" || m.kind === "wahrscheinlich" ? m.best : null
+    if (close) usedClose.add(close.id)
+    planned.push({
+      name: close?.display_name ?? c.name,
+      leadtableId: c.id,
+      close,
+      closeMatch: m.kind === "mehrdeutig" ? `mehrdeutig: ${m.options.map((o) => o.display_name).join(" | ")}` : m.kind,
+      clickup: findClickup(c.name, close?.id ?? null),
+      source: "leadtable",
+    })
+  }
+  const closeOnly = won.filter((l) => !usedClose.has(l.id))
+  const closeOnlyInClickup: typeof closeOnly = []
+  for (const l of closeOnly) {
+    const task = findClickup(l.display_name, l.id)
+    if (!task) continue
+    closeOnlyInClickup.push(l)
+    planned.push({ name: l.display_name, leadtableId: null, close: l, closeMatch: "nur Close", clickup: task, source: "close+clickup" })
+  }
+
+  // 2. Kandidaten planen
+  const byKey = new Map<string, PlannedCandidate>()
+  const skipped = { absage: 0, test: 0, ohneKontakt: 0, geloescht: 0 }
+  for (const customer of customers) {
+    for (const camp of customer.campaigns) {
+      for (const lead of camp.leads) {
+        const ltStatus = lead.status ?? ""
+        const deleted = typeof lead.deleted === "object" ? !!lead.deleted?.state : !!lead.deleted
+        if (deleted) { skipped.geloescht++; continue }
+        if (SKIP_STATUS.has(ltStatus)) { skipped.absage++; continue }
+        if (isTestLead(lead) || mapLeadFormAnswers(lead.funnelData?.profile).isTestLead) { skipped.test++; continue }
+        const email = lead.email ? cleanLeadtableEmail(lead.email).toLowerCase() : null
+        const phone = lead.phone?.trim() || null
+        const key = email ? `e:${email}` : normPhone(phone) ? `t:${normPhone(phone)}` : null
+        if (!key) { skipped.ohneKontakt++; continue }
+        const status = STATUS_MAP[ltStatus] ?? "neu"
+        const existing = byKey.get(key)
+        const entry: PlannedCandidate = existing ?? { key, lead, email, phone, status, ltStatus, customer, occupation: camp.occupation, others: [], assignTo: new Map() }
+        if (existing) {
+          existing.others.push({ customer: customer.name, occupation: camp.occupation, status: ltStatus })
+          // Neuester Lead bestimmt den Stand.
+          if ((lead.createdAt ?? "") > (existing.lead.createdAt ?? "")) Object.assign(existing, { lead, status, ltStatus, customer, occupation: camp.occupation })
+        }
+        if (ASSIGN_STATUS[ltStatus] && !POOL.test(customer.name) && !customer.archived) entry.assignTo.set(customer.id, ASSIGN_STATUS[ltStatus])
+        byKey.set(key, entry)
+      }
+    }
+  }
+  const candidates = [...byKey.values()]
+  const statusCount = candidates.reduce<Record<string, number>>((a, c) => ((a[c.status] = (a[c.status] ?? 0) + 1), a), {})
+  const assignmentCount = candidates.reduce((n, c) => n + c.assignTo.size, 0)
+
+  // Bericht
+  const report = [
+    `# Neuimport ${EXECUTE ? "(ausgeführt)" : "(Probelauf)"} – ${new Date().toISOString().slice(0, 16)}`,
+    "",
+    `Kunden: ${planned.length} (aus Leadtable ${planned.filter((p) => p.source === "leadtable").length}, nur Close + ClickUp ${closeOnlyInClickup.length})`,
+    `- mit Close verknüpft: ${planned.filter((p) => p.close).length}`,
+    `- mit ClickUp-Kommentaren: ${planned.filter((p) => p.clickup).length}${clickupTasks ? ` (ClickUp-Liste: ${clickupTasks.length} Einträge)` : " – ClickUp nicht verbunden (CLICKUP_API_TOKEN fehlt)"}`,
+    `Kandidaten: ${candidates.length} (Status: ${Object.entries(statusCount).map(([k, v]) => `${k} ${v}`).join(", ")})`,
+    `- Zuordnungen zu Kunden: ${assignmentCount}`,
+    `- übersprungen: Absagen ${skipped.absage}, ohne E-Mail und Telefon ${skipped.ohneKontakt}, Testleads ${skipped.test}, in Leadtable gelöscht ${skipped.geloescht}`,
+    `- zusammengeführte Mehrfach-Bewerbungen: ${candidates.filter((c) => c.others.length > 0).length}`,
+  ].join("\n")
+  fs.writeFileSync(path.join(OUT, "bericht.md"), report + "\n")
+  fs.writeFileSync(
+    path.join(OUT, "kunden.csv"),
+    "﻿" +
+      ["kunde;quelle;leadtable_name;close_abgleich;close_lead;close_id;clickup_eintrag"]
+        .concat(planned.map((p) => [csvEsc(p.name), p.source, csvEsc(customers.find((c) => c.id === p.leadtableId)?.name ?? ""), csvEsc(p.closeMatch), csvEsc(p.close?.display_name ?? ""), p.close?.id ?? "", csvEsc(p.clickup?.name ?? "")].join(";")))
+        .join("\n")
+  )
+  if (clickupTasks) {
+    const usedTasks = new Set(planned.map((p) => p.clickup?.id).filter(Boolean))
+    fs.writeFileSync(path.join(OUT, "clickup-ohne-zuordnung.csv"), "﻿clickup_eintrag;clickup_id\n" + clickupTasks.filter((t) => !usedTasks.has(t.id)).map((t) => `${csvEsc(t.name)};${t.id}`).join("\n"))
+  }
+  console.log(report)
+  if (!EXECUTE) return
+
+  // ── Ausführen ──────────────────────────────────────────────────────────────────────
+  const { data: agency } = await db.from("agencies").select("id").limit(1).single()
+  const clientIdByLeadtable = new Map<string, string>()
+  let done = 0
+  for (const p of planned) {
+    let clientId: string
+    if (p.close) {
+      const lead = await closeGet<CloseLead>(`/lead/${encodeURIComponent(p.close.id)}/`)
+      const payload = { ...payloadFromLead(lead!, "Gewonnen"), firma: p.name }
+      clientId = (await processCloseWebhook(db, payload, { bulkImport: true })).clientId
+    } else {
+      const { data, error } = await db.from("clients").insert({ name: p.name, agency_id: agency!.id, status: "active" }).select("id").single()
+      if (error) throw new Error(`${p.name}: ${error.message}`)
+      clientId = data.id
+    }
+    await db.from("clients").update({ project_phase: "live" }).eq("id", clientId)
+    if (p.leadtableId) clientIdByLeadtable.set(p.leadtableId, clientId)
+    if (p.clickup) {
+      try {
+        const comments = await clickupComments(p.clickup.id)
+        if (comments.length > 0) {
+          const summary = await summarizeClickup(p.name, comments)
+          await db.from("client_comments").insert({ client_id: clientId, author_id: null, kind: "notiz", content: `Stand aus ClickUp (zusammengefasst, ${comments.length} Kommentare)\n\n${summary}` })
+        }
+      } catch (err) {
+        console.error(`ClickUp ${p.name}:`, err instanceof Error ? err.message : err)
+      }
+    }
+    if (++done % 10 === 0) console.log(`Kunden: ${done}/${planned.length}`)
+  }
+
+  done = 0
+  for (const c of candidates) {
+    const { firstName, lastName } = extractCleanName(c.lead.name ?? "")
+    // Formularantworten über die Fragetitel (Zusatzfelder, PLZ); Rest ins Zusatzfeld
+    // "Weitere Antworten" - die Beschreibung bleibt leer (Entscheidung Paket 18).
+    const answers = mapLeadFormAnswers(c.lead.funnelData?.profile)
+    const customFields: Record<string, string> = { ...answers.fields }
+    if (answers.extras.length) customFields[WEITERE_ANTWORTEN_KEY] = answers.extras.map((x) => `${x.question}: ${x.answer}`).join("\n")
+    const plz = answers.plz
+    const coords = plz ? geocodePlz(plz) : null
+    const { data: inserted, error } = await db
+      .from("candidates")
+      .insert({
+        first_name: firstName,
+        last_name: lastName,
+        email: c.email,
+        phone: c.phone,
+        status: c.status,
+        source: "leadtable",
+        berufsbild: mapKanzleistelleBerufsbild(c.occupation),
+        plz,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
+        leadtable_lead_id: c.lead._id,
+        custom_fields: customFields,
+        ...(c.lead.createdAt ? { created_at: c.lead.createdAt } : {}),
+      })
+      .select("id")
+      .single()
+    if (error) {
+      console.error(`Kandidat ${c.key}: ${error.message}`)
+      continue
+    }
+    const origin = [`Kunde „${c.customer.name}“`, c.occupation && `Kampagne „${c.occupation}“`, `Status „${c.ltStatus}“`].filter(Boolean).join(", ")
+    const others = c.others.length ? ` Weitere Bewerbungen: ${c.others.map((o) => `${o.customer} (${o.status})`).join("; ")}.` : ""
+    await db.from("candidate_history").insert({ candidate_id: inserted.id, type: "note", content: `Import aus Leadtable: ${origin}.${others}` })
+    for (const [ltCustomerId, status] of c.assignTo) {
+      const clientId = clientIdByLeadtable.get(ltCustomerId)
+      if (!clientId) continue
+      const { error: assignError } = await db.from("client_assignments").insert({ candidate_id: inserted.id, client_id: clientId, status })
+      if (assignError) console.error(`Zuordnung ${c.key}: ${assignError.message}`)
+    }
+    if (++done % 100 === 0) console.log(`Kandidaten: ${done}/${candidates.length}`)
+  }
+  console.log("Fertig.")
+}
+
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err)
+  process.exit(1)
+})
