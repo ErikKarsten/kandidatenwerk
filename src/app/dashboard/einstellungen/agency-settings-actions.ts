@@ -49,7 +49,12 @@ export async function uploadAgencyLogoAction(formData: FormData): Promise<{ erro
     .from("client-logos")
     .upload(path, Buffer.from(await file.arrayBuffer()), { upsert: true, contentType: file.type })
   if (uploadError) return { error: uploadError.message }
-  const url = `${ctx.db.storage.from("client-logos").getPublicUrl(path).data.publicUrl}?v=${Date.now()}`
+  // Abmessungen in der URL mitführen: Mails setzen damit feste width/height (Outlook
+  // ignoriert max-height, Paket 38). Das Bild selbst verkleinert der Browser vorher.
+  const w = Number(formData.get("width"))
+  const h = Number(formData.get("height"))
+  const dims = Number.isInteger(w) && Number.isInteger(h) && w > 0 && h > 0 ? `&w=${w}&h=${h}` : ""
+  const url = `${ctx.db.storage.from("client-logos").getPublicUrl(path).data.publicUrl}?v=${Date.now()}${dims}`
   const { error } = await ctx.db.from("agency_settings").upsert({ agency_id: ctx.agencyId, logo_url: url, updated_at: new Date().toISOString() })
   if (error) return { error: error.message }
   revalidatePath("/dashboard/einstellungen")
