@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { resizeImageFile } from "@/lib/resize-image"
 import { removeAgencyLogoAction, saveConfirmationSettingsAction, uploadAgencyLogoAction, type AgencySettings } from "./agency-settings-actions"
 
 // Zentrale Eingangsbestätigung an Kandidaten (Paket 23, T-93).
@@ -78,9 +79,18 @@ export function AgencyLogoCard({ logoUrl, isAdmin }: { logoUrl: string | null; i
   function upload(file: File | undefined) {
     if (!file) return
     setError(null)
-    const fd = new FormData()
-    fd.set("logo", file)
     startTransition(async () => {
+      // Vor dem Hochladen auf Mail-Größe verkleinern (Paket 38).
+      let resized: Awaited<ReturnType<typeof resizeImageFile>>
+      try {
+        resized = await resizeImageFile(file)
+      } catch {
+        return setError("Das Bild konnte nicht gelesen werden. Bitte PNG, JPG oder WebP verwenden.")
+      }
+      const fd = new FormData()
+      fd.set("logo", resized.file)
+      fd.set("width", String(resized.width))
+      fd.set("height", String(resized.height))
       const result = await uploadAgencyLogoAction(fd)
       if ("error" in result) return setError(result.error)
       router.refresh()

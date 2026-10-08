@@ -61,12 +61,34 @@ export function emailButton(href: string, label: string): string {
 
 // Agentur-Logo statt Symbol + Schriftzug (Paket 23, T-94) - setzt sendEmail ein, wenn in
 // den Kontoeinstellungen ein Logo hinterlegt ist.
+// Logo-Größe für Mails: feste width/height-Attribute, weil Outlook und andere Programme
+// max-height/max-width ignorieren und das Bild sonst in Originalgröße zeigen (Paket 38).
+// Die Abmessungen stehen beim Hochladen in der URL (&w=…&h=…).
+const LOGO_MAX_HEIGHT = 56
+const LOGO_MAX_WIDTH = 220
+
+export function emailLogoSize(logoUrl: string): { width: number; height: number } | null {
+  const w = Number(logoUrl.match(/[?&]w=(\d+)/)?.[1])
+  const h = Number(logoUrl.match(/[?&]h=(\d+)/)?.[1])
+  if (!w || !h) return null
+  let height = Math.min(LOGO_MAX_HEIGHT, h)
+  let width = Math.round((w * height) / h)
+  if (width > LOGO_MAX_WIDTH) {
+    width = LOGO_MAX_WIDTH
+    height = Math.round((h * width) / w)
+  }
+  return { width, height }
+}
+
 export function applyEmailLogo(html: string, logoUrl: string | null | undefined): string {
   if (!logoUrl) return html
   const safe = logoUrl.replace(/"/g, "%22")
+  const size = emailLogoSize(logoUrl)
+  const attrs = size ? `width="${size.width}" height="${size.height}"` : `height="${LOGO_MAX_HEIGHT}"`
+  const dims = size ? `width:${size.width}px;height:${size.height}px;` : `height:${LOGO_MAX_HEIGHT}px;width:auto;`
   return html.replace(
     /<!--KW_LOGO_START-->[\s\S]*?<!--KW_LOGO_END-->/,
-    `<img src="${safe}" alt="Logo" style="display:block;margin:0 auto;max-height:64px;max-width:220px;border:0;">`
+    `<img src="${safe}" alt="Logo" ${attrs} style="display:block;margin:0 auto;${dims}max-width:${LOGO_MAX_WIDTH}px;border:0;outline:none;text-decoration:none;">`
   )
 }
 
