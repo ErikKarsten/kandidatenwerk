@@ -255,14 +255,14 @@ async function step(db: SupabaseClient, row: OnboardingRow): Promise<string> {
 
 // Schritte je Kunde, solange es vorangeht und Zeit bleibt (Paket 33): "aktivitaeten" ->
 // "profil" -> "erledigt" laufen im selben Cron-Lauf, sobald alle Aktivitäten fertig sind.
-export async function processOnboarding(db: SupabaseClient, deadline: number): Promise<{ steps: number; failed: number }> {
+export async function processOnboarding(db: SupabaseClient, deadline: number): Promise<{ steps: number; failed: number; errors: string[] }> {
   const { data } = await db
     .from("close_onboarding")
     .select("lead_id, client_id, trigger_status, triggered_at, status, attempts")
     .in("status", ["offen", "aktivitaeten", "profil"])
     .order("created_at")
     .limit(10)
-  const result = { steps: 0, failed: 0 }
+  const result = { steps: 0, failed: 0, errors: [] as string[] }
   for (const initial of (data ?? []) as OnboardingRow[]) {
     let row = initial
     for (let i = 0; i < 3; i++) {
@@ -272,11 +272,16 @@ export async function processOnboarding(db: SupabaseClient, deadline: number): P
         result.steps++
       } catch (err) {
         const attempts = row.attempts + 1
+        const message = err instanceof Error ? err.message : String(err)
         await db
           .from("close_onboarding")
-          .update({ attempts, status: attempts >= MAX_ATTEMPTS ? "fehler" : row.status, error: err instanceof Error ? err.message : String(err), updated_at: new Date().toISOString() })
+          .update({ attempts, status: attempts >= MAX_ATTEMPTS ? "fehler" : row.status, error: message, updated_at: new Date().toISOString() })
           .eq("lead_id", row.lead_id)
-        result.failed++
+        // Nur endgültig gescheiterte Übernahmen melden.
+        if (attempts >= MAX_ATTEMPTS) {
+          result.failed++
+          result.errors.push(`Übernahme aus Close (Schritt „${row.status}“, Status „${row.trigger_status ?? "?"}“): ${message} (Close: ${closeLeadUrl(row.lead_id)})`)
+        }
         break
       }
       const { data: next } = await db.from("close_onboarding").select("lead_id, client_id, trigger_status, triggered_at, status, attempts").eq("lead_id", row.lead_id).single()
