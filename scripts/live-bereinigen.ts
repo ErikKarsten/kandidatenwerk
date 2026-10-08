@@ -57,7 +57,7 @@ const DELETE_TABLES = [
   "leadtable_sync_runs",
 ]
 // Spalte, die in jeder Zeile gesetzt ist (PostgREST verlangt einen Filter beim Löschen).
-const KEY_COLUMN: Record<string, string> = {}
+const KEY_COLUMN: Record<string, string> = { close_meeting_summaries: "close_activity_id", client_profiles: "client_id" }
 const DELETE_BUCKETS = ["candidate-files", "client-files", "client-logos"]
 // Das Agentur-Logo (Einstellungen > Mein Konto) liegt in client-logos/agentur/ - bleibt.
 const KEEP_FILE_PREFIXES = ["agentur/"]
