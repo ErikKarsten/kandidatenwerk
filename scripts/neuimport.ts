@@ -249,8 +249,8 @@ function leadTexts(lead: LtLead, customer: string, occupation: string): LeadText
     .filter((t) => t.text)
 }
 
-// Beschreibungsfeld(er) als Kandidatenbeschreibung; bei zusammengeführten Bewerbungen je
-// Kunde ein Absatz.
+// Beschreibungsfeld(er) als Kandidatenbeschreibung (Spalte notes = Feld "Beschreibung" im
+// Profil); bei zusammengeführten Bewerbungen je Kunde ein Absatz.
 function leadDescription(c: PlannedCandidate): string | null {
   const descs = c.texts.filter((t) => t.kind === "Beschreibung")
   if (descs.length === 0) return null
@@ -499,7 +499,7 @@ async function main() {
   const addLeadtableTexts = async (candidateId: string, c: PlannedCandidate, currentDescription: string | null) => {
     const description = leadDescription(c)
     if (description && !currentDescription?.trim()) {
-      await db.from("candidates").update({ description }).eq("id", candidateId)
+      await db.from("candidates").update({ notes: description }).eq("id", candidateId)
       textStats.beschreibungen++
     }
     const notes = c.texts.filter((t) => t.kind === "Notiz")
@@ -531,14 +531,14 @@ async function main() {
     const coords = plz ? geocodePlz(plz) : null
     // Gibt es die Person schon (früherer Lauf oder neue Bewerbung seit dem Leeren)? Dann
     // nicht doppelt anlegen, nur Beschreibung und Notizen ergänzen.
-    const { data: byLead } = await db.from("candidates").select("id, description, leadtable_lead_id").in("leadtable_lead_id", c.leadIds).limit(1).maybeSingle()
-    const { data: existing } = byLead ? { data: byLead } : c.email ? await db.from("candidates").select("id, description, leadtable_lead_id").eq("email", c.email).limit(1).maybeSingle() : { data: null }
+    const { data: byLead } = await db.from("candidates").select("id, notes, leadtable_lead_id").in("leadtable_lead_id", c.leadIds).limit(1).maybeSingle()
+    const { data: existing } = byLead ? { data: byLead } : c.email ? await db.from("candidates").select("id, notes, leadtable_lead_id").eq("email", c.email).limit(1).maybeSingle() : { data: null }
     if (existing) {
       if (!existing.leadtable_lead_id) {
         await db.from("candidates").update({ leadtable_lead_id: c.lead._id }).eq("id", existing.id)
         await db.from("candidate_history").insert({ candidate_id: existing.id, type: "note", content: `Auch in Leadtable vorhanden: Kunde „${c.customer.name}“, Status „${c.ltStatus}“.` })
       }
-      await addLeadtableTexts(existing.id, c, existing.description)
+      await addLeadtableTexts(existing.id, c, existing.notes)
       if (++done % 100 === 0) console.log(`Kandidaten: ${done}/${candidates.length}`)
       return
     }
@@ -561,7 +561,7 @@ async function main() {
         lng: coords?.lng ?? null,
         leadtable_lead_id: c.lead._id,
         custom_fields: customFields,
-        description: leadDescription(c),
+        notes: leadDescription(c),
         ...(c.lead.createdAt ? { created_at: c.lead.createdAt } : {}),
       })
       .select("id")

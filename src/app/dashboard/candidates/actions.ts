@@ -8,6 +8,7 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
+import { createSampleCandidates } from "@/lib/sample-candidates"
 
 export type CreateCandidateState = { error: string } | null
 
@@ -127,4 +128,22 @@ export async function updateCandidateStatusAction(
   revalidatePath(`/dashboard/candidates/${candidateId}`)
 
   return null
+}
+
+// Drei Musterdatensätze per KI (Paket 41) - Berufsbild und PLZ des Kunden.
+export async function createSampleCandidatesAction(berufsbild: string, plz: string): Promise<{ error: string } | { count: number }> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+  const { data: { user } } = await supabase.auth.getUser()
+  const cleanPlz = plz.trim()
+  if (!/^\d{5}$/.test(cleanPlz) || !geocodePlz(cleanPlz)) return { error: "Bitte eine gültige PLZ eingeben." }
+  try {
+    const ids = await createSampleCandidates(supabase, { berufsbild, plz: cleanPlz }, user?.id ?? null)
+    revalidatePath("/dashboard/candidates")
+    return { count: ids.length }
+  } catch (err) {
+    console.error("Musterdatensätze fehlgeschlagen:", err)
+    return { error: err instanceof Error ? err.message : "Musterdatensätze konnten nicht erstellt werden." }
+  }
 }

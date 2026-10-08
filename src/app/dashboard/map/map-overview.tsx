@@ -27,7 +27,10 @@ const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").th
   ),
 })
 
-const SEARCH_ZOOM = 12
+// Umkreis um gesuchten Ort, gesuchte Kanzlei/Kandidat oder angeklickten Punkt.
+const FOCUS_RADIUS_KM = 30
+const FOCUS_COLOR = "#dc2626"
+const MAX_SUGGESTIONS = 8
 
 // Ein Punkt je Standort (Paket 16, T-75) - ein Kunde kann mehrere Punkte haben.
 export interface MapClientPoint {
@@ -49,24 +52,25 @@ export interface MapCandidatePoint {
   approximate: boolean
 }
 
-// Zwei unabhängige Toggle-Reihen statt eines einzelnen 5-Werte-Enums: "Art" entscheidet
-// Kanzlei/Kandidat/Beide, "Genauigkeit" filtert innerhalb der Kandidaten zusätzlich nach
-// eigenem vs. ungefährem Standort. Die zweite Reihe wird nur angezeigt, wenn Kandidaten
-// überhaupt einbezogen sind (Art ≠ "clients") - bei 5 flachen Buttons in einer Zeile
-// wäre es auf schmaleren Bildschirmen zu eng geworden.
+// "Art" entscheidet Kanzlei/Kandidat/Beide (Filter nach Genauigkeit entfernt, Paket 41).
 type TypeFilter = "all" | "clients" | "candidates"
-type AccuracyFilter = "all" | "own" | "approx"
+
+interface Focus {
+  lat: number
+  lng: number
+  label: string
+}
+
+interface Suggestion extends Focus {
+  key: string
+  kind: "Kanzlei" | "Kandidat"
+  sublabel?: string | null
+}
 
 const TYPE_OPTIONS: { value: TypeFilter; label: string }[] = [
   { value: "all", label: "Beide" },
   { value: "clients", label: "Nur Kanzleien" },
   { value: "candidates", label: "Nur Kandidaten" },
-]
-
-const ACCURACY_OPTIONS: { value: AccuracyFilter; label: string }[] = [
-  { value: "all", label: "Beide" },
-  { value: "own", label: "Eigener Standort" },
-  { value: "approx", label: "Ungefährer Standort" },
 ]
 
 const CLIENT_COLOR = "#dc2626"
@@ -101,7 +105,6 @@ export function MapOverview({
         })),
     [adAreas]
   )
-  const [accuracyFilter, setAccuracyFilter] = useState<AccuracyFilter>("all")
   // Kandidat im Seitenfenster statt Seitenwechsel (Paket 13, T-55).
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
   // Anonymisierter Modus (Paket 29): Kandidaten nur mit Kennung und Berufsbild, Kanzleien ohne Namen,
@@ -113,11 +116,58 @@ export function MapOverview({
   const [searchError, setSearchError] = useState<string | null>(null)
   const [searchPending, startSearchTransition] = useTransition()
   const [searchPin, setSearchPin] = useState<SearchPin | null>(null)
+  // 30-km-Umkreis (Paket 41): nach jeder Suche und bei Klick auf einen Punkt.
+  const [focus, setFocus] = useState<Focus | null>(null)
+  const [suggestOpen, setSuggestOpen] = useState(false)
+
+  function focusOn(target: Focus, opts: { pin?: boolean; fly?: boolean } = {}) {
+    setFocus(target)
+    setSearchPin(opts.pin ? { lat: target.lat, lng: target.lng, label: target.label, ringsKm: [] } : null)
+    if (opts.fly) mapRef.current?.flyToRadius(target.lat, target.lng, FOCUS_RADIUS_KM)
+  }
+
+  function clearFocus() {
+    setFocus(null)
+    setSearchPin(null)
+  }
+
+  // Kanzleien und (außer im anonymisierten Modus) Kandidaten nach Namen.
+  const suggestions = useMemo<Suggestion[]>(() => {
+    const q = locationQuery.trim().toLowerCase()
+    if (q.length < 2 || /^\d+$/.test(q) || showMode) return []
+    const seen = new Set<string>()
+    const out: Suggestion[] = []
+    for (const c of clients) {
+      const key = `k:${c.id}:${c.lat},${c.lng}`
+      if (!c.name.toLowerCase().includes(q) || seen.has(key)) continue
+      seen.add(key)
+      out.push({ key, kind: "Kanzlei", label: c.name, sublabel: c.place, lat: c.lat, lng: c.lng })
+    }
+    for (const c of candidates) {
+      if (!c.name.toLowerCase().includes(q)) continue
+      out.push({ key: `c:${c.id}`, kind: "Kandidat", label: c.name, sublabel: berufsbildLabel(c.berufsbild), lat: c.lat, lng: c.lng })
+    }
+    return out.slice(0, MAX_SUGGESTIONS)
+  }, [locationQuery, clients, candidates, showMode])
+
+  function pickSuggestion(s: Suggestion) {
+    setLocationQuery(s.label)
+    setSuggestOpen(false)
+    setSearchError(null)
+    focusOn(s, { fly: true })
+  }
 
   function handleLocationSearch() {
     const query = locationQuery.trim()
     if (!query) return
     setSearchError(null)
+    setSuggestOpen(false)
+    // Genau eine Kanzlei/ein Kandidat mit diesem Namen: direkt dorthin.
+    const exact = suggestions.find((s) => s.label.toLowerCase() === query.toLowerCase())
+    if (exact) {
+      pickSuggestion(exact)
+      return
+    }
 
     // PLZ (genau 5 Ziffern) lokal aus der bereits vorhandenen PLZ-Koordinatentabelle
     // auflösen - kein Netzwerk nötig, gleicher Mechanismus wie bei Kunden. Alles
@@ -128,26 +178,22 @@ export function MapOverview({
         setSearchError(`PLZ "${query}" nicht gefunden.`)
         return
       }
-      setSearchPin({ lat: coords.lat, lng: coords.lng, label: `PLZ ${query}` })
-      mapRef.current?.flyTo(coords.lat, coords.lng, SEARCH_ZOOM)
+      focusOn({ lat: coords.lat, lng: coords.lng, label: `PLZ ${query}` }, { pin: true, fly: true })
       return
     }
 
     startSearchTransition(async () => {
       const result = await searchLocationAction(query)
       if ("error" in result) {
-        setSearchError(result.error)
+        // Kein Ort gefunden, aber Namenstreffer: den ersten nehmen.
+        if (suggestions.length > 0) pickSuggestion(suggestions[0])
+        else setSearchError(result.error)
         return
       }
-      setSearchPin({ lat: result.lat, lng: result.lng, label: query })
-      mapRef.current?.flyTo(result.lat, result.lng, SEARCH_ZOOM)
+      focusOn({ lat: result.lat, lng: result.lng, label: query }, { pin: true, fly: true })
     })
   }
 
-  const candidatesWithOwnLocation = useMemo(() => candidates.filter((c) => !c.approximate).length, [candidates])
-  const candidatesWithApproxLocation = candidates.length - candidatesWithOwnLocation
-
-  const clientCount = new Set(clients.map((c) => c.id)).size
   const includeClients = typeFilter !== "candidates"
   const includeCandidates = typeFilter !== "clients"
 
@@ -163,13 +209,7 @@ export function MapOverview({
         }))
       : []
 
-    const filteredCandidates = includeCandidates
-      ? candidates.filter((c) => {
-          if (accuracyFilter === "own") return !c.approximate
-          if (accuracyFilter === "approx") return c.approximate
-          return true
-        })
-      : []
+    const filteredCandidates = includeCandidates ? candidates : []
 
     const candidatePoints: MapPoint[] = filteredCandidates.map((c) => ({
       lat: c.lat,
@@ -183,27 +223,23 @@ export function MapOverview({
     }))
 
     return [...clientPoints, ...candidatePoints]
-  }, [clients, candidates, includeClients, includeCandidates, accuracyFilter, showMode])
+  }, [clients, candidates, includeClients, includeCandidates, showMode])
+
+  const circles = useMemo<MapCircle[]>(
+    () => [
+      ...(showAdAreas ? adCircles : []),
+      ...(focus
+        ? [{ lat: focus.lat, lng: focus.lng, radiusKm: FOCUS_RADIUS_KM, label: `${FOCUS_RADIUS_KM} km`, color: FOCUS_COLOR, interactive: false, dashed: true }]
+        : []),
+    ],
+    [showAdAreas, adCircles, focus]
+  )
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Zusammenfassung */}
-      <div
-        className="rounded-xl border bg-white px-4 py-3 text-sm text-gray-600"
-        style={{ borderColor: "#dde3ea" }}
-      >
-        <span className="font-medium text-gray-900">{clientCount}</span>{" "}
-        Kanzlei{clientCount !== 1 ? "en" : ""} an{" "}
-        <span className="font-medium text-gray-900">{clients.length}</span> Standort{clients.length !== 1 ? "en" : ""},{" "}
-        <span className="font-medium text-gray-900">{candidatesWithOwnLocation}</span>{" "}
-        Kandidat{candidatesWithOwnLocation !== 1 ? "en" : ""} mit eigenem Standort,{" "}
-        <span className="font-medium text-gray-900">{candidatesWithApproxLocation}</span>{" "}
-        mit ungefährem Standort
-      </div>
-
-      {/* PLZ/Ort-Suche - reine Ansichtsänderung (zoomt/zentriert die Karte), filtert
-          nichts: alle Kanzleien/Kandidaten bleiben sichtbar. Der gesuchte Ort bekommt eine
-          Stecknadel mit Entfernungsringen (Paket 28, T-112). */}
+      {/* Suche nach PLZ, Ort, Kanzlei oder Kandidat - reine Ansichtsänderung, filtert
+          nichts. Treffer bekommen einen 30-km-Umkreis (Paket 41), Orte zusätzlich eine
+          Stecknadel. */}
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <div className="relative w-full max-w-xs">
@@ -213,14 +249,41 @@ export function MapOverview({
             />
             <input
               value={locationQuery}
-              onChange={(e) => setLocationQuery(e.target.value)}
+              onChange={(e) => {
+                setLocationQuery(e.target.value)
+                setSuggestOpen(true)
+              }}
+              onFocus={() => setSuggestOpen(true)}
+              onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleLocationSearch()
+                if (e.key === "Escape") setSuggestOpen(false)
               }}
-              placeholder="PLZ oder Ort suchen…"
+              placeholder={showMode ? "PLZ oder Ort suchen…" : "PLZ, Ort, Kanzlei oder Kandidat suchen…"}
               className="w-full rounded-md border py-1.5 pl-8 pr-3 text-sm focus:outline-none focus:ring-1"
               style={{ borderColor: "#dde3ea" }}
             />
+            {suggestOpen && suggestions.length > 0 && (
+              <ul
+                className="absolute left-0 right-0 top-full z-[1000] mt-1 max-h-72 overflow-y-auto rounded-md border bg-white py-1 shadow-lg"
+                style={{ borderColor: "#dde3ea" }}
+              >
+                {suggestions.map((s) => (
+                  <li key={s.key}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pickSuggestion(s)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-50"
+                    >
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: s.kind === "Kanzlei" ? CLIENT_COLOR : CANDIDATE_COLOR }} />
+                      <span className="min-w-0 flex-1 truncate">{s.label}</span>
+                      {s.sublabel && <span className="shrink-0 text-xs text-gray-400">{s.sublabel}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <button
             type="button"
@@ -231,14 +294,14 @@ export function MapOverview({
           >
             {searchPending ? "Suche…" : "Suchen"}
           </button>
-          {searchPin && (
+          {(searchPin || focus) && (
             <button
               type="button"
-              onClick={() => setSearchPin(null)}
+              onClick={clearFocus}
               className="shrink-0 rounded-md border bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
               style={{ borderColor: "#dde3ea" }}
             >
-              Stecknadel entfernen
+              Umkreis entfernen
             </button>
           )}
           <div className="ml-auto">
@@ -272,25 +335,6 @@ export function MapOverview({
             <input type="checkbox" checked={showAdAreas} onChange={(e) => setShowAdAreas(e.target.checked)} />
             Werbegebiete laufender Meta-Kampagnen ({adCircles.length})
           </label>
-
-          {includeCandidates && (
-            <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: "#dde3ea" }}>
-              {ACCURACY_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setAccuracyFilter(opt.value)}
-                  className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-                  style={{
-                    backgroundColor: accuracyFilter === opt.value ? "#4ba3c3" : "transparent",
-                    color: accuracyFilter === opt.value ? "white" : "#6b7280",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Legende */}
@@ -316,10 +360,24 @@ export function MapOverview({
               Werbegebiet
             </span>
           )}
+          {focus && (
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ border: `2px dashed ${FOCUS_COLOR}` }} />
+              Umkreis {FOCUS_RADIUS_KM} km
+            </span>
+          )}
         </div>
       </div>
 
-      <MatchesMap ref={mapRef} points={points} circles={showAdAreas ? adCircles : []} height="clamp(420px, calc(100vh - 260px), 1400px)" scrollWheelZoom searchPin={searchPin} />
+      <MatchesMap
+        ref={mapRef}
+        points={points}
+        circles={circles}
+        height="clamp(420px, calc(100vh - 260px), 1400px)"
+        scrollWheelZoom
+        searchPin={searchPin}
+        onMarkerClick={(lat, lng) => focusOn({ lat, lng, label: "Umkreis" })}
+      />
       {selectedCandidateId && <CandidatePanel candidateId={selectedCandidateId} onClose={() => setSelectedCandidateId(null)} anonymize={showMode} />}
     </div>
   )

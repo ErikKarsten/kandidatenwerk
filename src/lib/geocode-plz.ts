@@ -1,4 +1,5 @@
 import plzCoords from "@/data/plz-coords.json"
+import { haversineDistanceKm } from "@/lib/geo-distance"
 
 const COORDS = plzCoords as unknown as Record<string, [number, number]>
 
@@ -25,4 +26,9 @@ export function nearestPlz(lat: number, lng: number): string | null {
     }
   }
   return best
+}
+
+// Alle PLZ, deren Flächenmittelpunkt höchstens radiusKm vom Punkt entfernt liegt.
+export function plzWithin(lat: number, lng: number, radiusKm: number): string[] {
+  return ENTRIES.filter(([, [pLat, pLng]]) => haversineDistanceKm(lat, lng, pLat, pLng) <= radiusKm).map(([plz]) => plz)
 }

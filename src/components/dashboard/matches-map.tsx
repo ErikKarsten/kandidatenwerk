@@ -38,6 +38,9 @@ export interface MapCircle {
   label: string
   sublabel?: string
   color?: string
+  // false: nur Anzeige (kein Popup, Klicks gehen an die Karte bzw. Punkte darunter).
+  interactive?: boolean
+  dashed?: boolean
 }
 
 // Einfache farbige Punkt-Icons statt Leaflets Standard-Marker-Bildern - vermeidet das
@@ -164,6 +167,8 @@ export interface SearchPin {
   lat: number
   lng: number
   label: string
+  // Entfernungsringe in km (Standard 10/25/50); [] = ohne Ringe.
+  ringsKm?: number[]
 }
 
 const SEARCH_PIN_RINGS_KM = [10, 25, 50]
@@ -178,6 +183,8 @@ const searchPinIcon = L.divIcon({
 
 export interface MatchesMapHandle {
   flyTo(lat: number, lng: number, zoom?: number): void
+  // Ausschnitt so wählen, dass ein Umkreis um den Punkt ganz sichtbar ist.
+  flyToRadius(lat: number, lng: number, radiusKm: number): void
 }
 
 export const MatchesMap = forwardRef<MatchesMapHandle, {
@@ -189,18 +196,23 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
   // Paket 13) - sonst zoomt die Karte bei nur einem Punkt ganz nah heran.
   fitCircles?: boolean
   searchPin?: SearchPin | null
-}>(function MatchesMap({ points, circles = [], height = "280px", scrollWheelZoom = false, fitCircles = false, searchPin = null }, ref) {
+  // Klick auf einen Punkt (bzw. eine Punktgruppe), z. B. um einen Umkreis zu zeigen.
+  onMarkerClick?: (lat: number, lng: number) => void
+}>(function MatchesMap({ points, circles = [], height = "280px", scrollWheelZoom = false, fitCircles = false, searchPin = null, onMarkerClick }, ref) {
   const validPoints = useMemo(() => points.filter(hasCoords), [points])
   const groups = useMemo(() => groupByLocation(validPoints), [validPoints])
   // Referenziell stabil, solange sich die Punktmenge nicht ändert - sonst würde JEDER
   // Re-Render (z.B. durch einen Marker-Klick, der eine Popup öffnet) ein neues
   // L.LatLngBounds-Objekt erzeugen und MapContainers "bounds"-Prop erneut auslösen, was
   // die Karte ungewollt wieder auf alle Punkte zurückzoomt (siehe Bug-Report 25.09.2026).
+  // Kreise nur als Abhängigkeit, wenn sie den Ausschnitt bestimmen - sonst würde z. B. ein
+  // per Klick gesetzter Umkreis die Karte auf alle Punkte zurückzoomen.
+  const fitTo = fitCircles ? circles : null
   const bounds = useMemo(() => {
     const b = L.latLngBounds(validPoints.map((p) => [p.lat, p.lng] as [number, number]))
-    if (fitCircles) for (const c of circles) b.extend(L.latLng(c.lat, c.lng).toBounds(c.radiusKm * 2000))
+    for (const c of fitTo ?? []) b.extend(L.latLng(c.lat, c.lng).toBounds(c.radiusKm * 2000))
     return b
-  }, [validPoints, circles, fitCircles])
+  }, [validPoints, fitTo])
 
   // WICHTIG: bewusst useState statt useRef für die Map-Instanz. react-leaflets
   // MapContainer befüllt seinen ref-Wert erst asynchron über einen Folge-Render
@@ -216,6 +228,9 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
   useImperativeHandle(ref, () => ({
     flyTo(lat, lng, zoom = 12) {
       map?.flyTo([lat, lng], zoom)
+    },
+    flyToRadius(lat, lng, radiusKm) {
+      map?.flyToBounds(L.latLng(lat, lng).toBounds(radiusKm * 2000), { padding: [30, 30] })
     },
   }), [map])
 
@@ -264,20 +279,23 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
         />
         {circles.map((c, i) => (
           <Circle
-            key={`circle-${i}`}
+            key={`circle-${i}-${c.lat}-${c.lng}-${c.radiusKm}`}
             center={[c.lat, c.lng]}
             radius={c.radiusKm * 1000}
-            pathOptions={{ color: c.color ?? "#f59e0b", weight: 1.5, fillOpacity: 0.08 }}
+            interactive={c.interactive ?? true}
+            pathOptions={{ color: c.color ?? "#f59e0b", weight: 1.5, fillOpacity: 0.08, dashArray: c.dashed ? "6 6" : undefined }}
           >
-            <Popup>
-              <p className="text-sm font-semibold text-gray-900">{c.label}</p>
-              {c.sublabel && <p className="text-xs text-gray-500">{c.sublabel}</p>}
-            </Popup>
+            {(c.interactive ?? true) && (
+              <Popup>
+                <p className="text-sm font-semibold text-gray-900">{c.label}</p>
+                {c.sublabel && <p className="text-xs text-gray-500">{c.sublabel}</p>}
+              </Popup>
+            )}
           </Circle>
         ))}
         {searchPin && (
           <>
-            {SEARCH_PIN_RINGS_KM.map((km) => (
+            {(searchPin.ringsKm ?? SEARCH_PIN_RINGS_KM).map((km) => (
               <Circle
                 key={`pin-ring-${km}`}
                 center={[searchPin.lat, searchPin.lng]}
@@ -289,7 +307,9 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
             <Marker position={[searchPin.lat, searchPin.lng]} icon={searchPinIcon} zIndexOffset={1000}>
               <Popup>
                 <p className="text-sm font-semibold text-gray-900">{searchPin.label}</p>
-                <p className="text-xs text-gray-500">Gestrichelte Ringe: {SEARCH_PIN_RINGS_KM.join(" / ")} km</p>
+                {(searchPin.ringsKm ?? SEARCH_PIN_RINGS_KM).length > 0 && (
+                  <p className="text-xs text-gray-500">Gestrichelte Ringe: {(searchPin.ringsKm ?? SEARCH_PIN_RINGS_KM).join(" / ")} km</p>
+                )}
               </Popup>
             </Marker>
           </>
@@ -300,7 +320,7 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
             const p = group.points[0]
             const icon = createDotIcon(effectiveColor(p), p.approximate ?? false)
             return (
-              <Marker key={group.key} position={[group.lat, group.lng]} icon={icon}>
+              <Marker key={group.key} position={[group.lat, group.lng]} icon={icon} eventHandlers={onMarkerClick ? { click: () => onMarkerClick(group.lat, group.lng) } : undefined}>
                 <Popup>
                   <PointDetails point={p} />
                 </Popup>
@@ -319,7 +339,7 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
           const icon = createGroupIcon(groupColor, groupDashed, group.points.length)
 
           return (
-            <Marker key={group.key} position={[group.lat, group.lng]} icon={icon}>
+            <Marker key={group.key} position={[group.lat, group.lng]} icon={icon} eventHandlers={onMarkerClick ? { click: () => onMarkerClick(group.lat, group.lng) } : undefined}>
               <Popup maxHeight={240} minWidth={180}>
                 <p className="mb-2 text-sm font-semibold text-gray-900">
                   {group.points.length} Einträge an diesem Standort

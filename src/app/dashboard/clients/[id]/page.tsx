@@ -58,7 +58,28 @@ export default async function ClientDetailPage({
     .order("id", { ascending: false })
     .range(campaignFrom, campaignFrom + campaignPageSize - 1)
 
-  const [{ data: client }, { data: campaigns, count: campaignTotalCount }, { data: contacts }, { data: fileRows }, { data: assignments }, kpis, { data: kanzleiCampaignRows }, adAreas] = await Promise.all([
+  // Alles in EINER parallelen Runde (Paket 41) - vorher liefen die Abfragen in sechs
+  // Runden nacheinander, jede Runde kostet die volle Netzwerk-Latenz zu Supabase.
+  const admin = createSupabaseAdminClient()
+  const [
+    { data: client },
+    { data: campaigns, count: campaignTotalCount },
+    { data: contacts },
+    { data: fileRows },
+    { data: assignments },
+    kpis,
+    { data: kanzleiCampaignRows },
+    adAreas,
+    { data: profileRow },
+    { data: positionRows },
+    { data: commentRows },
+    { data: teamRows },
+    { data: { user } },
+    { data: locationRows },
+    { data: taskRows },
+    fieldConfig,
+    { data: portalProfiles },
+  ] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
     campaignsQuery,
     supabase
@@ -91,12 +112,7 @@ export default async function ClientDetailPage({
       .order("title", { ascending: true }),
     // Werbegebiete laufender Meta-Kampagnen für den Abdeckungs-Hinweis (Atlas T-38).
     getActiveAdAreas(supabase as unknown as SupabaseClient),
-  ])
-
-  if (!client) notFound()
-
-  // Projekt-Reiter (Paket 9): Kanzleiprofil, Stellen, Kommentare, Team.
-  const [{ data: profileRow }, { data: positionRows }, { data: commentRows }, { data: teamRows }, { data: { user } }, { data: locationRows }] = await Promise.all([
+    // Projekt-Reiter (Paket 9): Kanzleiprofil, Stellen, Kommentare, Team.
     supabase.from("client_profiles").select("*").eq("client_id", id).maybeSingle(),
     // Nach Titel sortiert, damit dieselbe Stelle an mehreren Standorten zusammensteht.
     supabase.from("client_positions").select("*").eq("client_id", id).order("title").order("created_at"),
@@ -105,13 +121,25 @@ export default async function ClientDetailPage({
     supabase.auth.getUser(),
     // Standorte (Paket 16, T-75) - Kanzleiprofil, Stammdaten und Stellen.
     supabase.from("client_locations").select("id, strasse, plz, ort, lat, lng, is_primary").eq("client_id", id).order("created_at"),
+    supabase
+      .from("tasks")
+      .select("id, title, description, status, due_date, assigned_to, assignee:profiles!tasks_assigned_to_fkey(full_name)")
+      .eq("client_id", id)
+      .order("status")
+      .order("due_date", { ascending: true, nullsFirst: false }),
+    loadProfileFieldConfig(supabase),
+    // Portal-Zugänge per Admin-Client (Begründung unten) - werden nur genutzt, wenn der
+    // Kunde über die RLS-Session geladen werden konnte.
+    admin
+      .from("profiles")
+      .select("id, email, portal_invited_at")
+      .eq("client_id", id)
+      .eq("role", "client")
+      .order("created_at", { ascending: true }),
   ])
-  const { data: taskRows } = await supabase
-    .from("tasks")
-    .select("id, title, description, status, due_date, assigned_to, assignee:profiles!tasks_assigned_to_fkey(full_name)")
-    .eq("client_id", id)
-    .order("status")
-    .order("due_date", { ascending: true, nullsFirst: false })
+
+  if (!client) notFound()
+
   const tasks = (taskRows ?? []).map((t) => ({
     id: t.id,
     title: t.title,
@@ -122,7 +150,6 @@ export default async function ClientDetailPage({
     assigneeName: ((Array.isArray(t.assignee) ? t.assignee[0] : t.assignee) as { full_name: string | null } | null)?.full_name ?? null,
   }))
   const team = (teamRows ?? []).map((t) => ({ id: t.id, full_name: t.full_name }))
-  const fieldConfig = await loadProfileFieldConfig(supabase)
   const nameOf = (profileId: string | null) => (profileId ? team.find((t) => t.id === profileId)?.full_name ?? "Unbekannt" : "System")
   const commentFiles = (fileRows ?? []).filter((f) => f.comment_id)
   const project = {
@@ -185,46 +212,38 @@ export default async function ClientDetailPage({
   // Portal-Zugänge per Admin-Client statt über die RLS-Session: Portal-Profile haben
   // bewusst agency_id = NULL (Sicherheitsvorfall 22.09.2026), die "Profile der eigenen
   // Agentur"-Policy zeigt sie dem Team deshalb nicht - die Liste war dadurch immer leer.
-  // Sicher, weil erst hier nach dem RLS-geprüften Laden des Kunden (sonst notFound
-  // oben) und streng auf diesen Kunden und role "client" gefiltert wird.
+  // Sicher, weil streng auf diesen Kunden und role "client" gefiltert wird und das
+  // Ergebnis nur genutzt wird, wenn der Kunde über die RLS-Session geladen werden konnte
+  // (sonst notFound oben).
   //
   // Aktiv/eingeladen laesst sich nicht aus profiles ablesen (dort steht nur, DASS ein
   // Portal-Profil existiert) - dafuer muss der zugehoerige Auth-User per Admin-API
   // abgefragt werden (last_sign_in_at gesetzt => hat sich schon mal eingeloggt).
-  const admin = createSupabaseAdminClient()
-  const { data: portalProfiles } = await admin
-    .from("profiles")
-    .select("id, email, portal_invited_at")
-    .eq("client_id", client.id)
-    .eq("role", "client")
-    .order("created_at", { ascending: true })
-  const portalUsers = await Promise.all(
-    (portalProfiles ?? []).map(async (p) => {
-      const { data } = await admin.auth.admin.getUserById(p.id)
-      return {
-        id: p.id,
-        email: p.email,
-        status: data.user?.last_sign_in_at ? ("aktiv" as const) : p.portal_invited_at ? ("eingeladen" as const) : ("angelegt" as const),
-      }
-    })
-  )
-
-  const files = await Promise.all(
-    (fileRows ?? []).map(async (f) => {
-      const { data: urlData } = await supabase.storage
-        .from("client-files")
-        .createSignedUrl(f.file_path, 3600)
-      return {
-        id: f.id,
-        name: f.file_name,
-        storage_path: f.file_path,
-        size: f.file_size,
-        mime_type: f.mime_type,
-        created_at: f.created_at,
-        signedUrl: urlData?.signedUrl ?? null,
-      }
-    })
-  )
+  // Zweite (letzte) Runde: Login-Status der Portal-Zugänge und alle Datei-Links auf einmal.
+  const filePaths = (fileRows ?? []).map((f) => f.file_path)
+  const [portalUsers, { data: signedUrls }] = await Promise.all([
+    Promise.all(
+      (portalProfiles ?? []).map(async (p) => {
+        const { data } = await admin.auth.admin.getUserById(p.id)
+        return {
+          id: p.id,
+          email: p.email,
+          status: data.user?.last_sign_in_at ? ("aktiv" as const) : p.portal_invited_at ? ("eingeladen" as const) : ("angelegt" as const),
+        }
+      })
+    ),
+    filePaths.length > 0 ? supabase.storage.from("client-files").createSignedUrls(filePaths, 3600) : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
+  ])
+  const urlByPath = new Map((signedUrls ?? []).map((u) => [u.path, u.signedUrl]))
+  const files = (fileRows ?? []).map((f) => ({
+    id: f.id,
+    name: f.file_name,
+    storage_path: f.file_path,
+    size: f.file_size,
+    mime_type: f.mime_type,
+    created_at: f.created_at,
+    signedUrl: urlByPath.get(f.file_path) ?? null,
+  }))
 
   const campaignList = (campaigns ?? []).map((c) => {
     const countRow = Array.isArray(c.candidates) ? c.candidates[0] : null
