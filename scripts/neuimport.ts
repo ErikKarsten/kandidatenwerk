@@ -32,9 +32,11 @@ import { mapLeadFormAnswers } from "../src/lib/leadtable-form-answers"
 import { WEITERE_ANTWORTEN_KEY } from "../src/lib/candidate-custom-fields"
 import { mapKanzleistelleBerufsbild } from "../src/lib/sync-kanzleistelle"
 import { geocodePlz } from "../src/lib/geocode-plz"
-import { closeGet, closeList, type CloseLead } from "../src/lib/close-api"
+import { closeGet, closeList, customActivityLabels, leadFieldLabels, type CloseActivity, type CloseLead } from "../src/lib/close-api"
+import { activityTypeOf, customActivityText } from "../src/lib/close-sync"
+import { fetchWebsiteText } from "../src/lib/website-text"
 import { processCloseWebhook } from "../src/lib/close-webhook"
-import { payloadFromLead } from "../src/lib/close-onboarding"
+import { closeLeadSources, extractProfileFromSources, payloadFromLead, type ProfileSource } from "../src/lib/close-onboarding"
 import { generateText } from "../src/lib/llm"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -211,6 +213,35 @@ interface PlannedCandidate {
   assignTo: Map<string, string> // Leadtable-Kunden-ID -> Zuordnungsstatus
 }
 
+// Mehrere Einträge gleichzeitig verarbeiten (KI-Aufrufe sind der Engpass, kie.ai erlaubt
+// 20 Anfragen je 10 Sekunden).
+async function pool<T>(items: T[], size: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(size, items.length) }, async () => {
+      while (next < items.length) await fn(items[next++])
+    })
+  )
+}
+
+// Close: Notizen, Formulare und Besprechungs-Zusammenfassungen eines Leads (ohne Telefonate,
+// deren Transkription wäre für den Massenimport zu langsam).
+async function closeActivitySources(leadId: string, labels: { types: Map<string, string>; fields: Map<string, string> }): Promise<ProfileSource[]> {
+  const activities = await closeList<CloseActivity>(`/activity/?lead_id=${encodeURIComponent(leadId)}`, 1000).catch(() => [] as CloseActivity[])
+  const out: ProfileSource[] = []
+  for (const a of activities) {
+    const type = activityTypeOf(a)
+    const at = a.activity_at ?? a.date_created ?? null
+    if (type === "meeting" && a.summary?.text) out.push({ label: `Close: Besprechung – ${a.title ?? ""}`, at, text: a.summary.text })
+    else if (type === "note" && a.note?.trim()) out.push({ label: "Close: Notiz", at, text: a.note })
+    else if (type === "custom") {
+      const text = customActivityText(a, labels.fields)
+      if (text) out.push({ label: `Close: Formular ${labels.types.get(a.custom_activity_type_id ?? "") ?? ""}`, at, text })
+    }
+  }
+  return out
+}
+
 async function main() {
   console.log(EXECUTE ? "MODUS: AUSFÜHREN" : "MODUS: Probelauf (schreibt nichts)")
 
@@ -359,41 +390,68 @@ async function main() {
   // ── Ausführen ──────────────────────────────────────────────────────────────────────
   const { data: agency } = await db.from("agencies").select("id").limit(1).single()
   const clientIdByLeadtable = new Map<string, string>()
+  const [leadLabels, activityLabels] = await Promise.all([leadFieldLabels(), customActivityLabels()])
+  const profileStats = { befuellt: 0, fehler: 0 }
   let done = 0
-  for (const p of planned) {
-    let clientId: string
-    if (p.close) {
-      const lead = await closeGet<CloseLead>(`/lead/${encodeURIComponent(p.close.id)}/`)
-      const payload = { ...payloadFromLead(lead!, "Gewonnen"), firma: p.name }
-      clientId = (await processCloseWebhook(db, payload, { bulkImport: true })).clientId
-    } else {
-      const { data, error } = await db.from("clients").insert({ name: p.name, agency_id: agency!.id, status: "active" }).select("id").single()
-      if (error) throw new Error(`${p.name}: ${error.message}`)
-      clientId = data.id
-    }
-    // ClickUp "anstehende Kunden" starten im Onboarding, alle anderen sind live.
-    await db.from("clients").update({ project_phase: p.clickup && clickupStatus(p.clickup) === "anstehende kunden" ? "onboarding" : "live" }).eq("id", clientId)
-    if (p.leadtableId) clientIdByLeadtable.set(p.leadtableId, clientId)
-    if (p.clickup) {
-      try {
-        const comments = await clickupComments(p.clickup.id)
-        if (comments.length > 0) {
-          const summary = await summarizeClickup(p.name, comments)
-          const content = `Stand aus ClickUp (zusammengefasst, ${comments.length} Kommentare)\n\n${summary}`
-          // Erneuter Lauf (z.B. nach Testlauf): vorhandene Zusammenfassung aktualisieren.
-          const { data: existing } = await db.from("client_comments").select("id").eq("client_id", clientId).like("content", "Stand aus ClickUp%").maybeSingle()
-          if (existing) await db.from("client_comments").update({ content }).eq("id", existing.id)
-          else await db.from("client_comments").insert({ client_id: clientId, author_id: null, kind: "notiz", content })
-        }
-      } catch (err) {
-        console.error(`ClickUp ${p.name}:`, err instanceof Error ? err.message : err)
+  await pool(planned, 10, async (p) => {
+    try {
+      // 1. Kunde anlegen bzw. aus Close verknüpfen.
+      let clientId: string
+      let lead: CloseLead | null = null
+      if (p.close) {
+        lead = await closeGet<CloseLead>(`/lead/${encodeURIComponent(p.close.id)}/`)
+        const payload = { ...payloadFromLead(lead!, "Gewonnen"), firma: p.name }
+        clientId = (await processCloseWebhook(db, payload, { bulkImport: true })).clientId
+      } else {
+        const { data, error } = await db.from("clients").insert({ name: p.name, agency_id: agency!.id, status: "active" }).select("id").single()
+        if (error) throw new Error(error.message)
+        clientId = data.id
       }
+      // ClickUp "anstehende Kunden" starten im Onboarding, alle anderen sind live.
+      await db.from("clients").update({ project_phase: p.clickup && clickupStatus(p.clickup) === "anstehende kunden" ? "onboarding" : "live" }).eq("id", clientId)
+      if (p.leadtableId) clientIdByLeadtable.set(p.leadtableId, clientId)
+
+      // 2. Quellen fürs Kanzleiprofil: ClickUp (Beschreibung, Kommentare), Close, Website.
+      const sources: ProfileSource[] = []
+      let comments: { date: string; user: string; text: string }[] = []
+      if (p.clickup) {
+        comments = await clickupComments(p.clickup.id).catch(() => [])
+        if (p.clickup.description?.trim()) sources.push({ label: "ClickUp: Beschreibung", text: p.clickup.description })
+        const fields = (p.clickup.custom_fields ?? []).filter((f) => typeof f.value === "string" && f.value.trim()).map((f) => `${f.name}: ${f.value}`)
+        if (fields.length) sources.push({ label: "ClickUp: Felder", text: fields.join("\n") })
+        if (comments.length) sources.push({ label: "ClickUp: Kommentare", text: comments.map((c) => `[${c.date}] ${c.text}`).join("\n") })
+      }
+      if (lead) {
+        sources.push(...closeLeadSources(lead, leadLabels), ...(await closeActivitySources(lead.id, activityLabels)))
+        const website = await fetchWebsiteText(lead.url as string | null)
+        if (website) sources.push({ label: "Website der Kanzlei", text: website })
+      }
+
+      // 3. ClickUp-Kommentare als Stand im Projekt (erneuter Lauf: aktualisieren).
+      if (comments.length > 0) {
+        const summary = await summarizeClickup(p.name, comments)
+        const content = `Stand aus ClickUp (zusammengefasst, ${comments.length} Kommentare)\n\n${summary}`
+        const { data: existing } = await db.from("client_comments").select("id").eq("client_id", clientId).like("content", "Stand aus ClickUp%").maybeSingle()
+        if (existing) await db.from("client_comments").update({ content }).eq("id", existing.id)
+        else await db.from("client_comments").insert({ client_id: clientId, author_id: null, kind: "notiz", content })
+      }
+
+      // 4. Kanzleiprofil, Benefits und Stellen per KI (füllt nur leere Felder).
+      if (sources.length > 0) {
+        const profile = await extractProfileFromSources(p.name, sources)
+        await processCloseWebhook(db, { ...profile, firma: p.name, close_lead_id: p.close?.id }, { bulkImport: true, clientId })
+        profileStats.befuellt++
+      }
+    } catch (err) {
+      profileStats.fehler++
+      console.error(`Kunde ${p.name}:`, err instanceof Error ? err.message : err)
     }
     if (++done % 10 === 0) console.log(`Kunden: ${done}/${planned.length}`)
-  }
+  })
+  console.log(`Kanzleiprofile befüllt: ${profileStats.befuellt}, Fehler: ${profileStats.fehler}`)
 
   done = 0
-  for (const c of candidates) {
+  await pool(candidates, 10, async (c) => {
     const { firstName, lastName } = extractCleanName(c.lead.name ?? "")
     // Formularantworten über die Fragetitel (Zusatzfelder, PLZ); Rest ins Zusatzfeld
     // "Weitere Antworten" - die Beschreibung bleibt leer (Entscheidung Paket 18).
@@ -423,7 +481,7 @@ async function main() {
       .single()
     if (error) {
       console.error(`Kandidat ${c.key}: ${error.message}`)
-      continue
+      return
     }
     const origin = [`Kunde „${c.customer.name}“`, c.occupation && `Kampagne „${c.occupation}“`, `Status „${c.ltStatus}“`].filter(Boolean).join(", ")
     const others = c.others.length ? ` Weitere Bewerbungen: ${c.others.map((o) => `${o.customer} (${o.status})`).join("; ")}.` : ""
@@ -435,7 +493,7 @@ async function main() {
       if (assignError) console.error(`Zuordnung ${c.key}: ${assignError.message}`)
     }
     if (++done % 100 === 0) console.log(`Kandidaten: ${done}/${candidates.length}`)
-  }
+  })
   console.log("Fertig.")
 }
 

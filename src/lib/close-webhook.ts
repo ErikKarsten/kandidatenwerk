@@ -195,19 +195,23 @@ export function normalizePayload(raw: unknown): CloseWebhookPayload {
 export interface ProcessCloseOptions {
   // Massenimport (Neuimport T-20): keine Beispielkampagne/Beispiel-Lead, keine Verlaufszeile.
   bulkImport?: boolean
+  // Bestehenden Kunden direkt befüllen (auch ohne Close-Lead, z.B. aus Leadtable + ClickUp).
+  clientId?: string
 }
 
 export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebhookPayload, options: ProcessCloseOptions = {}): Promise<CloseWebhookResult> {
   const closeLeadId = text(payload.close_lead_id)
   const firma = text(payload.firma)
-  if (!closeLeadId) throw new Error("close_lead_id fehlt.")
+  if (!closeLeadId && !options.clientId) throw new Error("close_lead_id fehlt.")
   if (!firma) throw new Error("firma fehlt.")
 
   const filled: string[] = []
   let outcome: CloseWebhookResult["outcome"] = "aktualisiert"
 
-  // 1. Kunde finden: Close-ID, sonst eindeutiger Name, sonst neu anlegen.
-  let { data: client } = await db.from("clients").select("*").eq("close_lead_id", closeLeadId).maybeSingle()
+  // 1. Kunde finden: vorgegebene ID, Close-ID, sonst eindeutiger Name, sonst neu anlegen.
+  let { data: client } = options.clientId
+    ? await db.from("clients").select("*").eq("id", options.clientId).maybeSingle()
+    : await db.from("clients").select("*").eq("close_lead_id", closeLeadId!).maybeSingle()
   if (!client) {
     const { data: all } = await db.from("clients").select("*").is("close_lead_id", null)
     const wanted = normalizeCompanyName(firma)
@@ -258,7 +262,7 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
     updates.close_status = statusLabel
     updates.close_status_at = new Date().toISOString()
   }
-  fill("close_url", text(payload.close_url) ?? closeLeadUrl(closeLeadId), "Close-Link")
+  if (closeLeadId) fill("close_url", text(payload.close_url) ?? closeLeadUrl(closeLeadId), "Close-Link")
   fill("contact_name", block ? text(block.name) : text(payload.ansprechpartner_name), "Kontakt")
   fill("contact_email", text(payload.email), "E-Mail")
   fill("phone", text(payload.telefon), "Telefon")
@@ -363,15 +367,16 @@ export async function processCloseWebhook(db: SupabaseClient, payload: CloseWebh
       const positionTitle = text(p.titel)!
       if (known.has(positionTitle.toLowerCase())) continue
       known.add(positionTitle.toLowerCase())
-      const positionPlz = text(p.plz)?.match(/\d{5}/)?.[0] ?? plz
+      // Ohne eigene PLZ gilt der Standort des Kunden.
+      const positionPlz = text(p.plz)?.match(/\d{5}/)?.[0] ?? plz ?? ((client!.plz as string | null) || null)
       const coords = positionPlz ? geocodePlz(positionPlz) : null
       const radius = Number(p.umkreis_km)
       await db.from("client_positions").insert({
         client_id: clientId,
         title: positionTitle,
-        berufsbild: mapKanzleistelleBerufsbild(text(p.berufsbild) ?? positionTitle),
+        berufsbild: mapKanzleistelleBerufsbild(text(p.berufsbild) ?? positionTitle) ?? (/^sonstig/i.test(text(p.berufsbild) ?? "") ? "sonstige" : null),
         plz: positionPlz,
-        ort: text(p.ort) ?? text(payload.ort),
+        ort: text(p.ort) ?? text(payload.ort) ?? ((client!.ort as string | null) || null),
         lat: coords?.lat ?? null,
         lng: coords?.lng ?? null,
         radius_km: Number.isFinite(radius) && radius > 0 ? Math.round(radius) : 25,
