@@ -53,7 +53,7 @@ function berufsbildLabel(value: string | null): string {
 export function AvailableCandidatesPanel({
   campaign,
 }: {
-  campaign: { id: string; title: string; berufsbild: string | null; radius_km: number | null; lat: number | null; lng: number | null }
+  campaign: { id: string; title: string; berufsbild: string | null; radius_km: number | null; lat: number | null; lng: number | null; extra_points?: { lat: number; lng: number; plz?: string | null }[] }
 }) {
   const router = useRouter()
   const campaignId = campaign.id
@@ -166,6 +166,7 @@ export function AvailableCandidatesPanel({
         <MatchesMap
           points={[
             { lat: campaign.lat, lng: campaign.lng, label: campaign.title, isSelf: true } as MapPoint,
+            ...(campaign.extra_points ?? []).map((p) => ({ lat: p.lat, lng: p.lng, label: campaign.title, sublabel: p.plz ? `Standort ${p.plz}` : undefined, isSelf: true }) as MapPoint),
             ...result.items.map((c) => ({ lat: c.lat, lng: c.lng, label: c.name, sublabel: c.plz ?? undefined, onSelect: () => setSelectedId(c.id) })),
           ]}
         />

@@ -1,21 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
+import { campaignPoints, nearestDistanceKm } from "@/lib/campaign-locations"
 
-const EARTH_RADIUS_KM = 6371
-
-function toRad(deg: number): number {
-  return (deg * Math.PI) / 180
-}
-
-export function haversineDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const dLat = toRad(lat2 - lat1)
-  const dLng = toRad(lng2 - lng1)
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return Math.round(EARTH_RADIUS_KM * c * 100) / 100
-}
+export { haversineDistanceKm } from "@/lib/geo-distance"
 
 type Supabase = SupabaseClient<Database>
 
@@ -32,7 +19,7 @@ export async function matchCandidateToCampaigns(supabase: Supabase, candidateId:
 
   const { data: campaigns, error: campaignsError } = await supabase
     .from("campaigns")
-    .select("id, lat, lng, radius_km")
+    .select("id, plz, lat, lng, radius_km, extra_plz")
     .eq("status", "active")
     .eq("kind", "kanzlei") // Lead-Kampagnen (T-36) sind keine Zuordnungsziele
     .eq("is_demo", false) // Beispielkampagnen (Paket 18) nie matchen
@@ -46,7 +33,7 @@ export async function matchCandidateToCampaigns(supabase: Supabase, candidateId:
   const matches = campaigns
     .map((campaign) => ({
       campaign,
-      distance: haversineDistanceKm(candidate.lat!, candidate.lng!, campaign.lat!, campaign.lng!),
+      distance: nearestDistanceKm(campaignPoints(campaign), candidate.lat!, candidate.lng!)!,
     }))
     .filter(({ campaign, distance }) => distance <= campaign.radius_km)
     .map(({ campaign, distance }) => ({
@@ -69,7 +56,7 @@ export async function matchCandidateToCampaigns(supabase: Supabase, candidateId:
 export async function matchCampaignToCandidates(supabase: Supabase, campaignId: string): Promise<void> {
   const { data: campaign, error: campaignError } = await supabase
     .from("campaigns")
-    .select("id, status, kind, berufsbild, lat, lng, radius_km, is_demo")
+    .select("id, status, kind, berufsbild, plz, lat, lng, radius_km, is_demo, extra_plz")
     .eq("id", campaignId)
     .single()
 
@@ -88,10 +75,11 @@ export async function matchCampaignToCandidates(supabase: Supabase, campaignId: 
   if (candidatesError) throw new Error(candidatesError.message)
   if (!candidates || candidates.length === 0) return
 
+  const points = campaignPoints(campaign)
   const matches = candidates
     .map((candidate) => ({
       candidate,
-      distance: haversineDistanceKm(candidate.lat!, candidate.lng!, campaign.lat!, campaign.lng!),
+      distance: nearestDistanceKm(points, candidate.lat!, candidate.lng!)!,
     }))
     .filter(({ distance }) => distance <= campaign.radius_km)
     .map(({ candidate, distance }) => ({

@@ -4,7 +4,7 @@ import { useMemo } from "react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
 import type { MapCircle, MapPoint } from "@/components/dashboard/matches-map"
-import { haversineDistanceKm } from "@/lib/matching"
+import { haversineDistanceKm } from "@/lib/geo-distance"
 import { AssignmentControl, assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
 import type { ClientOption } from "./client-assignment-section"
 import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
@@ -17,6 +17,7 @@ export interface KanzleiCampaignOption {
   clientName: string
   lat: number | null
   lng: number | null
+  extraPoints?: { lat: number; lng: number }[]
 }
 
 // Umkreis, in dem Kanzleien auf der Karte im Kandidaten gezeigt werden.
@@ -70,15 +71,20 @@ export function AssignmentTab({
   // Kanzleien (mit aktiven Kanzlei-Kampagnen) im Umkreis, je Kanzlei ein Punkt.
   const nearby = useMemo(() => {
     if (selfLat === null || selfLng === null) return []
-    const byClient = new Map<string, { clientId: string; name: string; lat: number; lng: number; distanceKm: number; campaigns: KanzleiCampaignOption[] }>()
+    type Nearby = { clientId: string; name: string; lat: number; lng: number; distanceKm: number; campaigns: KanzleiCampaignOption[] }
+    const byClient = new Map<string, Nearby>()
+    // Je Kanzlei und Standort ein Punkt - zusammengeführte Kampagnen haben mehrere.
     for (const c of kanzleiCampaigns) {
-      if (!c.clientId || c.lat === null || c.lng === null) continue
-      const distanceKm = haversineDistanceKm(selfLat, selfLng, c.lat, c.lng)
-      if (distanceKm > NEARBY_KM) continue
-      const entry = byClient.get(c.clientId) ?? { clientId: c.clientId, name: c.clientName, lat: c.lat, lng: c.lng, distanceKm, campaigns: [] }
-      entry.campaigns.push(c)
-      entry.distanceKm = Math.min(entry.distanceKm, distanceKm)
-      byClient.set(c.clientId, entry)
+      if (!c.clientId) continue
+      const places = [...(c.lat !== null && c.lng !== null ? [{ lat: c.lat, lng: c.lng }] : []), ...(c.extraPoints ?? [])]
+      for (const place of places) {
+        const distanceKm = haversineDistanceKm(selfLat, selfLng, place.lat, place.lng)
+        if (distanceKm > NEARBY_KM) continue
+        const key: string = `${c.clientId}:${place.lat},${place.lng}`
+        const entry: Nearby = byClient.get(key) ?? { clientId: c.clientId, name: c.clientName, lat: place.lat, lng: place.lng, distanceKm, campaigns: [] }
+        if (!entry.campaigns.includes(c)) entry.campaigns.push(c)
+        byClient.set(key, entry)
+      }
     }
     return [...byClient.values()].sort((a, b) => a.distanceKm - b.distanceKm)
   }, [kanzleiCampaigns, selfLat, selfLng])
@@ -156,7 +162,7 @@ export function AssignmentTab({
             {nearby.length > 0 && (
               <ul className="mt-3 flex flex-col gap-1 text-xs text-gray-600">
                 {nearby.slice(0, 8).map((k) => (
-                  <li key={k.clientId}>
+                  <li key={`${k.clientId}:${k.lat},${k.lng}`}>
                     <Link href={`/dashboard/clients/${k.clientId}`} className="font-medium hover:underline" style={{ color: fits(k) ? MATCH_COLOR : "#1e56a0" }}>
                       {k.name}
                     </Link>{" "}

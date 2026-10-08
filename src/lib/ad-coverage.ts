@@ -1,4 +1,4 @@
-import { haversineDistanceKm } from "@/lib/matching"
+import { haversineDistanceKm } from "@/lib/geo-distance"
 import type { AdArea } from "@/lib/meta-campaigns-queries"
 
 // Welche Werbegebiete decken einen Standort ab? (Atlas T-38, Hinweis im Kundenprofil)

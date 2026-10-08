@@ -966,6 +966,7 @@ export type Database = {
           kind: string
           agency_id: string | null
           is_demo: boolean
+          extra_plz: string[]
         }
         Insert: {
           id?: string
@@ -991,6 +992,7 @@ export type Database = {
           kind?: string
           agency_id?: string | null
           is_demo?: boolean
+          extra_plz?: string[]
         }
         Update: {
           id?: string
@@ -1016,6 +1018,7 @@ export type Database = {
           kind?: string
           agency_id?: string | null
           is_demo?: boolean
+          extra_plz?: string[]
         }
         Relationships: [
           {

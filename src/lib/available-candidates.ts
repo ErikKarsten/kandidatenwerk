@@ -1,4 +1,4 @@
-import { haversineDistanceKm } from "@/lib/matching"
+import { haversineDistanceKm } from "@/lib/geo-distance"
 
 // Passende Kandidaten einer Kanzlei-Kampagne (Atlas T-40): Kandidaten, die der
 // Kampagne noch nicht zugeordnet sind - sortiert nach Entfernung zum Standort der
@@ -39,8 +39,8 @@ export interface AvailableCandidate {
 }
 
 export interface RankOptions {
-  clientLat: number | null
-  clientLng: number | null
+  // Standorte der Kampagne (Haupt-PLZ plus weitere, Paket 40); es zählt der nächste.
+  points: { lat: number; lng: number }[]
   radiusKm: number | null // null = ohne Umkreis-Grenze
   sort: AvailableSort
   page: number
@@ -52,7 +52,7 @@ export function rankAvailableCandidates(
   assignedIds: Set<string>,
   opts: RankOptions
 ): { items: AvailableCandidate[]; total: number; totalPages: number; page: number } {
-  const hasClientLocation = opts.clientLat !== null && opts.clientLng !== null
+  const hasClientLocation = opts.points.length > 0
 
   let items: AvailableCandidate[] = rows
     .filter((r) => !assignedIds.has(r.id))
@@ -69,7 +69,7 @@ export function rankAvailableCandidates(
       lng: r.lng,
       distanceKm:
         hasClientLocation && r.lat !== null && r.lng !== null
-          ? haversineDistanceKm(opts.clientLat!, opts.clientLng!, r.lat, r.lng)
+          ? Math.min(...opts.points.map((p) => haversineDistanceKm(p.lat, p.lng, r.lat!, r.lng!)))
           : null,
     }))
 

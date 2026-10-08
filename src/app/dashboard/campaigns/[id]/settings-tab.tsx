@@ -20,6 +20,8 @@ interface SettingsTabProps {
   berufsbild: string | null
   plz: string | null
   radiusKm: number | null
+  // Weitere Standorte (PLZ) aus zusammengeführten Stellen (Paket 40).
+  extraPlz?: string[]
   // Zeitpunkt der letzten per Webhook BESTAETIGTEN Verbindung (siehe
   // isMetaTestLead/handleLeadgenEvent) - unabhaengig von testLeadMessage unten, die nur
   // zeigt, dass die Anfrage bei Meta erfolgreich RAUSGEGANGEN ist, nicht dass sie
@@ -32,7 +34,7 @@ interface SettingsTabProps {
   fieldTemplates: { id: string; name: string; is_default: boolean }[]
 }
 
-export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, plz, radiusKm, metaWebhookLastTestAt, kind, fieldTemplateId, fieldTemplates }: SettingsTabProps) {
+export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, plz, radiusKm, extraPlz, metaWebhookLastTestAt, kind, fieldTemplateId, fieldTemplates }: SettingsTabProps) {
   const isKanzlei = kind === "kanzlei"
   const [localTemplateId, setLocalTemplateId] = useState(fieldTemplateId ?? "")
   const router = useRouter()
@@ -43,6 +45,7 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
   const [localBerufsbild, setLocalBerufsbild] = useState(berufsbild ?? "")
   const [localPlz, setLocalPlz] = useState(plz ?? "")
   const [localRadiusKm, setLocalRadiusKm] = useState(String(radiusKm ?? 25))
+  const [localExtraPlz, setLocalExtraPlz] = useState((extraPlz ?? []).join(", "))
 
   // Seite-/Formular-Auswähler fürs Meta-Lead-Form-Feld, analog zum
   // Leadtable-Direktintegrations-Dialog (erst Seite, dann Formular dieser Seite
@@ -127,6 +130,7 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
     fd.append("berufsbild", localBerufsbild)
     fd.append("plz", localPlz)
     fd.append("radius_km", localRadiusKm)
+    if (isKanzlei) fd.append("extra_plz", localExtraPlz)
     startTransition(async () => {
       const result = await updateCampaignSettingsAction(campaignId, fd)
       if (result?.error) {
@@ -205,6 +209,21 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
               />
             </div>
           </div>
+          {isKanzlei && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500">Weitere Standorte (PLZ)</label>
+              <input
+                value={localExtraPlz}
+                onChange={(e) => setLocalExtraPlz(e.target.value)}
+                placeholder="z. B. 20095, 30159"
+                className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+                style={{ borderColor: "#dde3ea" }}
+              />
+              <span className="text-xs text-gray-400">
+                Für zusammengeführte Stellen an mehreren Orten: Ein Kandidat passt, wenn er im Umkreis eines dieser Standorte wohnt.
+              </span>
+            </div>
+          )}
         </div>
       </section>
 
