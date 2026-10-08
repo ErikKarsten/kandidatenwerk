@@ -186,7 +186,7 @@ async function summarizeClickup(clientName: string, comments: { date: string; us
     maxTokens: 1500,
     timeoutMs: 120_000,
     system:
-      "Du fasst die Kommentare aus dem bisherigen Projektmanagement (ClickUp) zu einer Kanzlei für den Key Account Manager zusammen. Schreibe den aktuellen Stand der Zusammenarbeit: Kurzfazit in ein bis zwei Sätzen, dann Stichpunkte mit \"- \" zu laufenden Themen, Vereinbarungen und offenen Punkten. Neuere Kommentare haben Vorrang. Nichts erfinden, keine Markdown-Überschriften mit #.",
+      "Du fasst die Kommentare aus dem bisherigen Projektmanagement (ClickUp) zu einer Steuerkanzlei für den Key Account Manager von Endlich Mitarbeiter (Recruiting für Steuerkanzleien) zusammen. Schreibe den aktuellen Stand der Zusammenarbeit: Kurzfazit in ein bis zwei Sätzen, dann Stichpunkte mit \"- \" zu laufenden Themen, gesuchten Profilen, Vereinbarungen und offenen Aufgaben. Regeln: Neuere Kommentare haben Vorrang. Nur wiedergeben, was in den Kommentaren steht - keine eigenen Schlussfolgerungen oder Vermutungen und keine Aufzählung dessen, was nicht dokumentiert ist. Fachbegriffe im Kontext einer Steuerkanzlei lesen: \"Lohn\" meint die Lohnbuchhaltung, \"JA\" Jahresabschlüsse, \"FiBu\" Finanzbuchhaltung - nicht Gehalt. Gehalt nur nennen, wenn ausdrücklich von Gehalt oder Bezahlung die Rede ist. Keine Markdown-Überschriften mit #.",
     prompt: `Kanzlei: ${clientName}\n\nKommentare (älteste zuerst):\n${source}`,
   })
 }
@@ -379,7 +379,11 @@ async function main() {
         const comments = await clickupComments(p.clickup.id)
         if (comments.length > 0) {
           const summary = await summarizeClickup(p.name, comments)
-          await db.from("client_comments").insert({ client_id: clientId, author_id: null, kind: "notiz", content: `Stand aus ClickUp (zusammengefasst, ${comments.length} Kommentare)\n\n${summary}` })
+          const content = `Stand aus ClickUp (zusammengefasst, ${comments.length} Kommentare)\n\n${summary}`
+          // Erneuter Lauf (z.B. nach Testlauf): vorhandene Zusammenfassung aktualisieren.
+          const { data: existing } = await db.from("client_comments").select("id").eq("client_id", clientId).like("content", "Stand aus ClickUp%").maybeSingle()
+          if (existing) await db.from("client_comments").update({ content }).eq("id", existing.id)
+          else await db.from("client_comments").insert({ client_id: clientId, author_id: null, kind: "notiz", content })
         }
       } catch (err) {
         console.error(`ClickUp ${p.name}:`, err instanceof Error ? err.message : err)
