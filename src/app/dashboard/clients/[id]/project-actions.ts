@@ -79,19 +79,21 @@ export async function updateProjectMetaAction(
   if (error?.code === "23505") return { error: "Diese Close-ID ist schon einem anderen Kunden zugeordnet." }
   if (error) return { error: error.message }
 
-  if (before && before.project_phase !== meta.project_phase) {
-    const phaseLabel = PROJECT_PHASES.find((p) => p.value === meta.project_phase)?.label ?? meta.project_phase
-    const oldLabel = PROJECT_PHASES.find((p) => p.value === before.project_phase)?.label ?? before.project_phase
-    await ctx.supabase.from("client_comments").insert({
-      client_id: clientId,
-      author_id: ctx.userId,
-      kind: "system",
-      content: `Projektphase geändert: ${oldLabel} → ${phaseLabel}.`,
-    })
-    if (meta.project_phase === CAMPAIGN_CHECK_TASK.phase) await createCampaignCheckTask(ctx.supabase, ctx.userId, clientId)
-  }
+  if (before && before.project_phase !== meta.project_phase) await phaseChanged(ctx.supabase, ctx.userId, clientId, before.project_phase, meta.project_phase)
   revalidateClient(clientId)
   return null
+}
+
+// Verlaufseintrag und Folgeaufgabe nach einem Phasenwechsel.
+async function phaseChanged(supabase: Supabase, userId: string, clientId: string, from: string, to: string) {
+  const label = (v: string) => PROJECT_PHASES.find((p) => p.value === v)?.label ?? v
+  await supabase.from("client_comments").insert({
+    client_id: clientId,
+    author_id: userId,
+    kind: "system",
+    content: `Projektphase geändert: ${label(from)} → ${label(to)}.`,
+  })
+  if (to === CAMPAIGN_CHECK_TASK.phase) await createCampaignCheckTask(supabase, userId, clientId)
 }
 
 // "Kampagnenstatus prüfen" für Elea Günther - nur, wenn nicht schon eine offene
@@ -166,7 +168,17 @@ export async function finalizeClientProfileAction(clientId: string, finalize: bo
     kind: "system",
     content: finalize ? "Kanzleiprofil abgeschlossen." : "Kanzleiprofil wieder zur Bearbeitung geöffnet.",
   })
-  if (finalize) scheduleKanzleistelleSync(clientId)
+  if (finalize) {
+    // Mit dem abgeschlossenen Kanzleiprofil ist das Onboarding vorbei: weiter zur Kampagnenvorbereitung.
+    const { data: moved } = await ctx.supabase
+      .from("clients")
+      .update({ project_phase: CAMPAIGN_CHECK_TASK.phase })
+      .eq("id", clientId)
+      .eq("project_phase", "onboarding")
+      .select("id")
+    if (moved?.length) await phaseChanged(ctx.supabase, ctx.userId, clientId, "onboarding", CAMPAIGN_CHECK_TASK.phase)
+    scheduleKanzleistelleSync(clientId)
+  }
   revalidateClient(clientId)
   return null
 }

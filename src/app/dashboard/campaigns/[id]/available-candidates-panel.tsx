@@ -180,10 +180,11 @@ export function AvailableCandidatesPanel({
             {result.effectiveRadiusKm !== null ? `, ${result.effectiveRadiusKm} km Umkreis` : ""}).
           </p>
         ) : (
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[820px] text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-gray-500" style={{ borderColor: "#eef2f6" }}>
                 <th className="px-4 py-2 font-medium">Name</th>
+                <th className="px-4 py-2 font-medium">Berufsbild</th>
                 <th className="px-4 py-2 font-medium">Status</th>
                 <th className="px-4 py-2 font-medium">PLZ</th>
                 <th className="px-4 py-2 font-medium">Entfernung</th>
@@ -204,6 +205,7 @@ export function AvailableCandidatesPanel({
                       </button>
                       {c.email && <div className="text-xs text-gray-400">{c.email}</div>}
                     </td>
+                    <td className="px-4 py-2.5 text-gray-600">{berufsbildLabel(c.berufsbild)}</td>
                     <td className="px-4 py-2.5">
                       <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: colors.bg, color: colors.text }}>
                         {statusOpt?.label ?? c.status}
