@@ -103,7 +103,7 @@ const PROFILE_FIELD_GUIDE: Record<string, string> = {
     "Intern für den Key Account Manager: Was erwartet die Kanzlei konkret von uns: Anzahl Einstellungen, Zeitrahmen, gewünschtes Profil inkl. Ausschlüsse (z.B. keine Berufsanfänger), woran sie Erfolg misst. Stichpunkte, jede Zeile beginnt mit \"- \".",
 }
 
-const SYSTEM = `Du bist Assistent eines Recruiting-Dienstleisters für Steuerkanzleien (Endlich Mitarbeiter). Du bekommst alle Informationen aus unserem Vertriebs-CRM Close zu einer Steuerkanzlei: Lead-Felder, Notizen, Formulare aus Gesprächen, Zusammenfassungen von Besprechungen und automatische Transkripte von Telefonaten (mit Erkennungsfehlern, ohne Sprecherangaben).
+const SYSTEM = `Du bist Assistent eines Recruiting-Dienstleisters für Steuerkanzleien (Endlich Mitarbeiter). Du bekommst alle vorhandenen Informationen zu einer Steuerkanzlei: aus unserem Vertriebs-CRM Close (Lead-Felder, Notizen, Formulare aus Gesprächen, Zusammenfassungen von Besprechungen, automatische Transkripte von Telefonaten mit Erkennungsfehlern), aus unserem bisherigen Projektmanagement ClickUp (Beschreibung und Kommentare) und ggf. Texte von der Website der Kanzlei.
 
 Deine Aufgabe: Arbeite daraus das Kanzleiprofil für unser internes System "Kandidatenwerk" heraus. Daraus entstehen später Stellenanzeigen und die Briefings für unsere Bewerber-Telefonisten. Außerdem halten wir fest, warum die Kanzlei mit uns zusammenarbeitet.
 
@@ -114,7 +114,8 @@ REGELN
 4. Gibt es widersprüchliche Aussagen, gilt die Aussage aus der neuesten Quelle (Datum steht an jeder Quelle).
 5. Jedes Feld enthält nur den reinen Inhalt – keine Feldnamen, keine Einleitung, keine Anführungszeichen drumherum.
 6. Nur Inhalte, die für die Betreuung der Kanzlei und die Kandidatensuche relevant sind. Weglassen: Abläufe aus dem Vertrieb und Organisatorisches wie Termine (z.B. Portaleinweisung, Folgetermine), Zahlungen, Karriereseite, Referenzen, Marketingmaterial, Vertragsdetails.
-7. Interne Wünsche und Ausschlüsse der Kanzlei (z.B. "keine Berufsanfänger", Gehaltsgrenzen, Gründe für die Suche) gehören in painpoints oder ziele_zusammenarbeit - nie in aufgaben oder anforderungen einer Stelle.
+7. Die Website ist eine Selbstdarstellung: gut für kurzbeschreibung, intro, mitarbeiterzahl, standorte, mandantenstruktur, software und benefits. painpoints und ziele_zusammenarbeit nur aus Close und ClickUp. Bei Widersprüchen gelten Close und ClickUp.
+8. Interne Wünsche und Ausschlüsse der Kanzlei (z.B. "keine Berufsanfänger", Gehaltsgrenzen, Gründe für die Suche) gehören in painpoints oder ziele_zusammenarbeit - nie in aufgaben oder anforderungen einer Stelle.
 
 FELDER FÜR "profil"
 #FELDER#
@@ -178,22 +179,34 @@ export async function extractProfile(
   labels: Map<string, string>,
   activities: Awaited<ReturnType<typeof leadActivityTexts>>
 ): Promise<CloseWebhookPayload> {
-  const typeLabel = { meeting: "Besprechung (Zusammenfassung)", call: "Telefonat (Transkript)", note: "Notiz", custom: "Formular", status: "Status" }
-  const parts: string[] = [
-    `Kanzlei: ${lead.display_name ?? ""}`,
-    lead.description ? `Beschreibung im Lead:\n${lead.description}` : "",
-    `Lead-Felder:\n${leadFieldsText(lead, labels) || "(keine)"}`,
-    ...activities.map((a) => `### ${typeLabel[a.type]}${a.title ? ` – ${a.title}` : ""}${a.at ? ` (${a.at.slice(0, 10)})` : ""}\n${a.text.slice(0, MAX_SOURCE_CHARS)}`),
-  ].filter(Boolean)
+  return extractProfileFromSources(lead.display_name ?? "", [...closeLeadSources(lead, labels), ...activitySources(activities)])
+}
+
+export interface ProfileSource {
+  label: string
+  at?: string | null
+  text: string
+}
+
+const ACTIVITY_LABEL = { meeting: "Close: Besprechung (Zusammenfassung)", call: "Close: Telefonat (Transkript)", note: "Close: Notiz", custom: "Close: Formular", status: "Close: Status" }
+
+export function activitySources(activities: Awaited<ReturnType<typeof leadActivityTexts>>): ProfileSource[] {
+  return activities.map((a) => ({ label: `${ACTIVITY_LABEL[a.type]}${a.title ? ` – ${a.title}` : ""}`, at: a.at, text: a.text }))
+}
+
+export function closeLeadSources(lead: CloseLead, labels: Map<string, string>): ProfileSource[] {
+  return [
+    lead.description ? { label: "Close: Beschreibung im Lead", text: String(lead.description) } : null,
+    { label: "Close: Lead-Felder", text: leadFieldsText(lead, labels) || "(keine)" },
+  ].filter((x): x is ProfileSource => !!x)
+}
+
+// KI-Auswertung beliebiger Quellen (Close, ClickUp, Website) - ohne Datenbank, testbar.
+export async function extractProfileFromSources(name: string, sources: ProfileSource[]): Promise<CloseWebhookPayload> {
+  const parts = [`Kanzlei: ${name}`, ...sources.filter((x) => x.text.trim()).map((x) => `### ${x.label}${x.at ? ` (${x.at.slice(0, 10)})` : ""}\n${x.text.slice(0, MAX_SOURCE_CHARS)}`)]
   let prompt = parts.join("\n\n")
   if (prompt.length > MAX_TOTAL_CHARS) prompt = prompt.slice(prompt.length - MAX_TOTAL_CHARS)
-  const raw = await generateText({
-    tier: "smart",
-    system: SYSTEM,
-    prompt,
-    maxTokens: 4000,
-    timeoutMs: 180_000,
-  })
+  const raw = await generateText({ tier: "smart", system: SYSTEM, prompt, maxTokens: 4000, timeoutMs: 180_000 })
   return payloadFromAnswer(raw)
 }
 
@@ -242,14 +255,14 @@ async function step(db: SupabaseClient, row: OnboardingRow): Promise<string> {
 
 // Schritte je Kunde, solange es vorangeht und Zeit bleibt (Paket 33): "aktivitaeten" ->
 // "profil" -> "erledigt" laufen im selben Cron-Lauf, sobald alle Aktivitäten fertig sind.
-export async function processOnboarding(db: SupabaseClient, deadline: number): Promise<{ steps: number; failed: number }> {
+export async function processOnboarding(db: SupabaseClient, deadline: number): Promise<{ steps: number; failed: number; errors: string[] }> {
   const { data } = await db
     .from("close_onboarding")
     .select("lead_id, client_id, trigger_status, triggered_at, status, attempts")
     .in("status", ["offen", "aktivitaeten", "profil"])
     .order("created_at")
     .limit(10)
-  const result = { steps: 0, failed: 0 }
+  const result = { steps: 0, failed: 0, errors: [] as string[] }
   for (const initial of (data ?? []) as OnboardingRow[]) {
     let row = initial
     for (let i = 0; i < 3; i++) {
@@ -259,11 +272,16 @@ export async function processOnboarding(db: SupabaseClient, deadline: number): P
         result.steps++
       } catch (err) {
         const attempts = row.attempts + 1
+        const message = err instanceof Error ? err.message : String(err)
         await db
           .from("close_onboarding")
-          .update({ attempts, status: attempts >= MAX_ATTEMPTS ? "fehler" : row.status, error: err instanceof Error ? err.message : String(err), updated_at: new Date().toISOString() })
+          .update({ attempts, status: attempts >= MAX_ATTEMPTS ? "fehler" : row.status, error: message, updated_at: new Date().toISOString() })
           .eq("lead_id", row.lead_id)
-        result.failed++
+        // Nur endgültig gescheiterte Übernahmen melden.
+        if (attempts >= MAX_ATTEMPTS) {
+          result.failed++
+          result.errors.push(`Übernahme aus Close (Schritt „${row.status}“, Status „${row.trigger_status ?? "?"}“): ${message} (Close: ${closeLeadUrl(row.lead_id)})`)
+        }
         break
       }
       const { data: next } = await db.from("close_onboarding").select("lead_id, client_id, trigger_status, triggered_at, status, attempts").eq("lead_id", row.lead_id).single()

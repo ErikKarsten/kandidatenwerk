@@ -237,7 +237,20 @@ function formatDate(iso: string | null): string | null {
 
 export interface CloseActivitiesResult {
   processed: number
+  // Endgültig gescheitert (nach MAX_ATTEMPTS) - nur das löst eine Fehlermeldung aus.
   failed: number
+  // Gescheitert, wird im nächsten Lauf erneut versucht (z.B. KI kurz überlastet).
+  retrying: number
+  // Je endgültig gescheiterter Aktivität eine Zeile mit Kunde, Art, Titel, Datum und Link
+  // (erscheint in der Fehlermeldung unter "Fehlermeldungen").
+  errors: string[]
+}
+
+const TYPE_LABEL: Record<ActivityType, string> = { meeting: "Besprechung", call: "Telefonat", note: "Notiz", custom: "Aktivität", status: "Statuswechsel" }
+
+function describeFailure(row: QueueRow, clientName: string, message: string): string {
+  const date = row.activity_at ? new Date(row.activity_at).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" }) : "ohne Datum"
+  return `Kunde „${clientName}“ – ${TYPE_LABEL[row.activity_type]} ${row.title ? `„${row.title}“ ` : ""}vom ${date}: ${message} (Close: ${closeLeadUrl(row.lead_id)}, Aktivität ${row.close_activity_id})`
 }
 
 interface QueueRow {
@@ -310,9 +323,11 @@ function needsTranscript(row: QueueRow): boolean {
   return row.activity_type === "call" && !row.transcript && (row.call_duration ?? 0) >= MIN_CALL_SECONDS
 }
 
+type RowOutcome = { ok: true } | { ok: false; final: boolean; message: string } | null
+
 // Eine Aktivität komplett verarbeiten: sperren, ggf. transkribieren, Kommentar anlegen bzw.
-// nur als Grundlage fürs Profil abhaken. Liefert true bei Erfolg, null wenn schon gesperrt.
-async function processRow(db: SupabaseClient, row: QueueRow): Promise<boolean | null> {
+// nur als Grundlage fürs Profil abhaken. null, wenn ein paralleler Lauf sie schon hat.
+async function processRow(db: SupabaseClient, row: QueueRow): Promise<RowOutcome> {
   const rel = row.clients
   const clientName = (Array.isArray(rel) ? rel[0]?.name : rel?.name) ?? "Kanzlei"
   // Sperren - ein paralleler Lauf hat sie evtl. schon übernommen.
@@ -331,7 +346,7 @@ async function processRow(db: SupabaseClient, row: QueueRow): Promise<boolean | 
         .from("close_meeting_summaries")
         .update({ status: "erledigt", processed_at: new Date().toISOString(), error: null, locked_at: null })
         .eq("close_activity_id", row.close_activity_id)
-      return true
+      return { ok: true }
     }
     const content = await commentContent(db, row, clientName)
     // Kommentar dem Bearbeiter in Close zuordnen, wenn er ein Team-Profil hat.
@@ -355,14 +370,16 @@ async function processRow(db: SupabaseClient, row: QueueRow): Promise<boolean | 
       .from("close_meeting_summaries")
       .update({ status: "erledigt", comment_id: comment.id, processed_at: new Date().toISOString(), error: null, locked_at: null })
       .eq("close_activity_id", row.close_activity_id)
-    return true
+    return { ok: true }
   } catch (err) {
     const attempts = row.attempts + 1
+    const message = err instanceof Error ? err.message : String(err)
+    const final = attempts >= MAX_ATTEMPTS
     await db
       .from("close_meeting_summaries")
-      .update({ attempts, status: attempts >= MAX_ATTEMPTS ? "fehler" : "offen", locked_at: null, error: err instanceof Error ? err.message : String(err) })
+      .update({ attempts, status: final ? "fehler" : "offen", locked_at: null, error: message })
       .eq("close_activity_id", row.close_activity_id)
-    return false
+    return { ok: false, final, message: describeFailure(row, clientName, message) }
   }
 }
 
@@ -386,10 +403,14 @@ export async function processPendingActivities(db: SupabaseClient, deadline: num
   if (error) throw new Error(error.message)
   const rows = (data ?? []) as unknown as QueueRow[]
 
-  const result: CloseActivitiesResult = { processed: 0, failed: 0 }
-  const count = (ok: boolean | null) => {
-    if (ok === true) result.processed++
-    else if (ok === false) result.failed++
+  const result: CloseActivitiesResult = { processed: 0, failed: 0, retrying: 0, errors: [] }
+  const count = (outcome: RowOutcome) => {
+    if (!outcome) return
+    if (outcome.ok) result.processed++
+    else if (outcome.final) {
+      result.failed++
+      result.errors.push(outcome.message)
+    } else result.retrying++
   }
 
   const calls = rows.filter(needsTranscript).slice(0, MAX_PARALLEL_TRANSCRIPTIONS)

@@ -42,7 +42,7 @@ function textOf(response: MessageResponse): string {
   return text
 }
 
-async function viaKie(key: string, o: GenerateTextOptions): Promise<string> {
+async function viaKieOnce(key: string, o: GenerateTextOptions): Promise<string> {
   const content = o.system ? `<anweisungen>\n${o.system}\n</anweisungen>\n\n${o.prompt}` : o.prompt
   const res = await fetch(KIE_URL, {
     method: "POST",
@@ -63,6 +63,21 @@ async function viaKie(key: string, o: GenerateTextOptions): Promise<string> {
     throw new Error(`kie.ai ${res.status}: ${reason}`)
   }
   return textOf(json)
+}
+
+// kie.ai drosselt bei vielen gleichzeitigen Anfragen (429, teils "Internal error") - dann
+// mit wachsender Pause erneut versuchen (Paket 39, Neuimport mit vielen Kunden).
+async function viaKie(key: string, o: GenerateTextOptions): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await viaKieOnce(key, o)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const retryable = /kie\.ai (429|5\d\d)|internal error/i.test(message)
+      if (!retryable || attempt >= 4) throw err
+      await new Promise((resolve) => setTimeout(resolve, 5_000 * 2 ** attempt))
+    }
+  }
 }
 
 async function viaAnthropic(key: string, o: GenerateTextOptions): Promise<string> {

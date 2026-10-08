@@ -27,7 +27,10 @@ export async function POST(request: NextRequest) {
     const r = await processPendingActivities(db, deadline)
     const finished = await processOnboarding(db, deadline)
     const onboarding = { steps: started.steps + finished.steps, failed: started.failed + finished.failed }
-    return { result: { ...r, polled, onboarding }, ok: r.failed === 0 && onboarding.failed === 0 }
+    // errors: je endgültig gescheiterte Aktivität/Übernahme eine Zeile mit Kunde und Close-Link
+    // (Fehlermeldung, describeCronFailure). Vorübergehende Fehler (retrying) melden nicht.
+    const errors = [...r.errors, ...started.errors, ...finished.errors]
+    return { result: { ...r, errors, polled, onboarding }, ok: r.failed === 0 && onboarding.failed === 0 }
   })
   return NextResponse.json(result)
 }
