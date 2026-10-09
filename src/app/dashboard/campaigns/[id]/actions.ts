@@ -83,12 +83,51 @@ async function campaignReturnPath(supabase: Awaited<ReturnType<typeof createSupa
   return data?.client_id ? `/dashboard/clients/${data.client_id}` : "/dashboard/einstellungen"
 }
 
+// Kanzlei-Kampagnen (Paket 46): Kandidaten hängen über client_assignments.campaign_id an der
+// Kampagne, nicht über candidates.campaign_id (das ist die Herkunft). Vorher blieben sie
+// beim Löschen stehen - mit Zuordnung "Kanzlei allgemein". Jetzt: Beispiel-Leads werden
+// immer gelöscht; echte Kandidaten je nach Wahl gelöscht oder nur von der Kanzlei gelöst.
+async function clearKanzleiCampaignAssignments(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  campaignId: string,
+  deleteCandidates: boolean,
+  userId: string | null
+): Promise<string | null> {
+  const { data: campaign } = await supabase.from("campaigns").select("kind, title").eq("id", campaignId).maybeSingle()
+  if (campaign?.kind !== "kanzlei") return null
+  const { data: rows, error } = await supabase
+    .from("client_assignments")
+    .select("id, removed_at, candidates(id, is_demo)")
+    .eq("campaign_id", campaignId)
+  if (error) return error.message
+  const candidates = (rows ?? []).map((r) => ({ assignmentId: r.id, active: !r.removed_at, ...((Array.isArray(r.candidates) ? r.candidates[0] : r.candidates) as { id: string; is_demo: boolean }) }))
+  const toDelete = candidates.filter((c) => c.is_demo || deleteCandidates).map((c) => c.id)
+  if (toDelete.length > 0) {
+    const { error: deleteError } = await supabase.from("candidates").delete().in("id", toDelete)
+    if (deleteError) return deleteError.message
+  }
+  const toRelease = candidates.filter((c) => !c.is_demo && !deleteCandidates && c.active)
+  if (toRelease.length > 0) {
+    const { error: releaseError } = await supabase
+      .from("client_assignments")
+      .update({ removed_at: new Date().toISOString() })
+      .in("id", toRelease.map((c) => c.assignmentId))
+    if (releaseError) return releaseError.message
+    await supabase.from("candidate_history").insert(
+      toRelease.map((c) => ({ candidate_id: c.id, type: "note", content: `Zuordnung beendet: Kampagne „${campaign.title}“ wurde gelöscht.`, created_by: userId }))
+    )
+  }
+  return null
+}
+
 export async function deleteCampaignWithCandidatesAction(campaignId: string): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
   // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return staffError
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
   const returnPath = await campaignReturnPath(supabase, campaignId)
+  const kanzleiError = await clearKanzleiCampaignAssignments(supabase, campaignId, true, guard.staff.userId)
+  if (kanzleiError) return { error: kanzleiError }
   const { error: candidateErr } = await supabase.from("candidates").delete().eq("campaign_id", campaignId)
   if (candidateErr) return { error: candidateErr.message }
   const { error } = await supabase.from("campaigns").delete().eq("id", campaignId)
@@ -115,10 +154,13 @@ export async function archiveCampaignAction(campaignId: string): Promise<{ error
 export async function deleteCampaignAction(campaignId: string): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
   // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return staffError
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
   const returnPath = await campaignReturnPath(supabase, campaignId)
-  // ON DELETE SET NULL handles candidates automatically
+  // Kanzlei-Kampagne: Kandidaten bleiben im Pool, die Zuordnung zur Kanzlei endet.
+  const kanzleiError = await clearKanzleiCampaignAssignments(supabase, campaignId, false, guard.staff.userId)
+  if (kanzleiError) return { error: kanzleiError }
+  // Lead-Kampagne: ON DELETE SET NULL löst die Herkunft der Kandidaten automatisch.
   const { error } = await supabase.from("campaigns").delete().eq("id", campaignId)
   if (error) return { error: error.message }
   revalidatePath(returnPath)

@@ -136,6 +136,7 @@ function triggerCSVDownload(csv: string, filename: string) {
 
 export function CampaignDetail({ campaign, candidates, automations, automationTemplates, clients, fieldTemplates }: CampaignDetailProps) {
   const bb = useBerufsbilder()
+  const isKanzleiCampaign = campaign.kind === "kanzlei"
   const berufsbildLabel = (value: string | null) => bb.label(value) ?? "—"
   const [tab, setTab] = useState<"kandidaten" | "matches" | "einrichtung" | "automatisierungen">("kandidaten")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
@@ -360,17 +361,23 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                       {
                         value: "export_delete" as CandidateOption,
                         label: "Exportieren & löschen",
-                        desc: "CSV mit Name, E-Mail, Telefon und Custom-Feldern wird heruntergeladen. Anschließend werden Kandidaten und Kampagne gelöscht.",
+                        desc: isKanzleiCampaign
+                          ? "CSV wird heruntergeladen. Anschließend werden die zugeordneten Kandidaten endgültig gelöscht – auch bei anderen Kanzleien – und die Kampagne entfernt."
+                          : "CSV mit Name, E-Mail, Telefon und Custom-Feldern wird heruntergeladen. Anschließend werden Kandidaten und Kampagne gelöscht.",
                       },
                       {
                         value: "delete_all" as CandidateOption,
                         label: "Kandidaten mit löschen",
-                        desc: "Alle Kandidaten werden zusammen mit der Kampagne unwiderruflich gelöscht. Kein Export.",
+                        desc: isKanzleiCampaign
+                          ? "Die zugeordneten Kandidaten werden endgültig gelöscht – auch bei anderen Kanzleien. Kein Export."
+                          : "Alle Kandidaten werden zusammen mit der Kampagne unwiderruflich gelöscht. Kein Export.",
                       },
                       {
                         value: "keep" as CandidateOption,
                         label: "Kandidaten behalten",
-                        desc: "Kandidaten bleiben erhalten, werden aber keiner Kampagne mehr zugeordnet.",
+                        desc: isKanzleiCampaign
+                          ? "Kandidaten bleiben im Kandidatenpool, die Zuordnung zu dieser Kanzlei wird beendet. Beispiel-Leads werden gelöscht."
+                          : "Kandidaten bleiben erhalten, werden aber keiner Kampagne mehr zugeordnet.",
                       },
                     ] as const
                   ).map((opt) => (
