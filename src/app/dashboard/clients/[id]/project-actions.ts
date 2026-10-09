@@ -399,9 +399,18 @@ export async function addCommentAction(clientId: string, formData: FormData): Pr
     mentions = []
   }
 
+  // Antwort (Paket 50): immer an den obersten Kommentar desselben Kunden (eine Ebene).
+  let parentId: string | null = null
+  const rawParent = (formData.get("parent_id") as string) || null
+  if (rawParent) {
+    const { data: parent } = await ctx.supabase.from("client_comments").select("id, parent_id, client_id").eq("id", rawParent).maybeSingle()
+    if (!parent || parent.client_id !== clientId) return { error: "Kommentar nicht gefunden." }
+    parentId = parent.parent_id ?? parent.id
+  }
+
   const { data: comment, error } = await ctx.supabase
     .from("client_comments")
-    .insert({ client_id: clientId, author_id: ctx.userId, kind, content: content ?? "(Anhang)", mentions })
+    .insert({ client_id: clientId, author_id: ctx.userId, kind, content: content ?? "(Anhang)", mentions, parent_id: parentId })
     .select("id")
     .single()
   if (error) return { error: error.message }
@@ -423,6 +432,27 @@ export async function addCommentAction(clientId: string, formData: FormData): Pr
   }
 
   if (mentions.length > 0) await notifyMentions(ctx.supabase, ctx.userId, clientId, mentions, content ?? "")
+  revalidateClient(clientId)
+  return null
+}
+
+// Reaktion setzen oder zurücknehmen (Paket 50).
+const REACTIONS = new Set(["👍", "❤️", "🎉", "👀", "✅"])
+export async function toggleCommentReactionAction(clientId: string, commentId: string, emoji: string): Promise<Result> {
+  const ctx = await staff()
+  if ("error" in ctx) return ctx
+  if (!REACTIONS.has(emoji)) return { error: "Unbekannte Reaktion." }
+  const { data: existing } = await ctx.supabase
+    .from("client_comment_reactions")
+    .select("comment_id")
+    .eq("comment_id", commentId)
+    .eq("user_id", ctx.userId)
+    .eq("emoji", emoji)
+    .maybeSingle()
+  const { error } = existing
+    ? await ctx.supabase.from("client_comment_reactions").delete().eq("comment_id", commentId).eq("user_id", ctx.userId).eq("emoji", emoji)
+    : await ctx.supabase.from("client_comment_reactions").insert({ comment_id: commentId, user_id: ctx.userId, emoji })
+  if (error) return { error: error.message }
   revalidateClient(clientId)
   return null
 }

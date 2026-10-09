@@ -117,7 +117,12 @@ export default async function ClientDetailPage({
     supabase.from("client_profiles").select("*").eq("client_id", id).maybeSingle(),
     // Nach Titel sortiert, damit dieselbe Stelle an mehreren Standorten zusammensteht.
     supabase.from("client_positions").select("*").eq("client_id", id).order("title").order("created_at"),
-    supabase.from("client_comments").select("id, author_id, kind, content, created_at, edited_at").eq("client_id", id).order("created_at", { ascending: false }).limit(300),
+    supabase
+      .from("client_comments")
+      .select("id, author_id, kind, content, created_at, edited_at, parent_id, client_comment_reactions(user_id, emoji)")
+      .eq("client_id", id)
+      .order("created_at", { ascending: false })
+      .limit(300),
     supabase.from("profiles").select("id, full_name, role").in("role", ["agency_admin", "agency_member"]).order("full_name"),
     supabase.auth.getUser(),
     // Standorte (Paket 16, T-75) - Kanzleiprofil, Stammdaten und Stellen.
@@ -193,6 +198,8 @@ export default async function ClientDetailPage({
       content: c.content,
       createdAt: c.created_at,
       editedAt: c.edited_at,
+      parentId: c.parent_id,
+      reactions: (c.client_comment_reactions ?? []).map((r) => ({ emoji: r.emoji, userId: r.user_id })),
       files: commentFiles.filter((f) => f.comment_id === c.id).map((f) => ({ id: f.id, name: f.file_name, path: f.file_path })),
     })),
     team,

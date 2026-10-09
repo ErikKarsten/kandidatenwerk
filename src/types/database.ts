@@ -256,6 +256,35 @@ export type Database = {
           }
         ]
       }
+      client_comment_reactions: {
+        Row: {
+          comment_id: string
+          user_id: string
+          emoji: string
+          created_at: string
+        }
+        Insert: {
+          comment_id: string
+          user_id: string
+          emoji: string
+          created_at?: string
+        }
+        Update: {
+          comment_id?: string
+          user_id?: string
+          emoji?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_comment_reactions_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "client_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_comments: {
         Row: {
           id: string
@@ -266,6 +295,7 @@ export type Database = {
           mentions: string[]
           created_at: string
           edited_at: string | null
+          parent_id: string | null
         }
         Insert: {
           id?: string
@@ -276,6 +306,7 @@ export type Database = {
           mentions?: string[]
           created_at?: string
           edited_at?: string | null
+          parent_id?: string | null
         }
         Update: {
           id?: string
@@ -286,6 +317,7 @@ export type Database = {
           mentions?: string[]
           created_at?: string
           edited_at?: string | null
+          parent_id?: string | null
         }
         Relationships: [
           {
