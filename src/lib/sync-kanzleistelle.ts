@@ -192,6 +192,8 @@ export async function syncApplicationsFromKanzleistelle(limit?: number): Promise
           email: application.email,
           phone: application.phone,
           berufsbild,
+          // Ausgeschriebene Position, angezeigt unter dem Namen (Paket 46).
+          bewerbung: application.position || application.applicant_role || null,
           plz,
           lat: coords?.lat ?? null,
           lng: coords?.lng ?? null,

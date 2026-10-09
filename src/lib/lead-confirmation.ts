@@ -6,7 +6,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { sendEmail } from "@/lib/brevo-mail"
-import { substituteTemplateVars, wrapAutomationEmailHtml } from "@/lib/automation-engine"
+import { mailCampaignName, substituteTemplateVars, wrapAutomationEmailHtml } from "@/lib/automation-engine"
+import { berufsbildLabel } from "@/lib/berufsbild"
+import { fetchBerufsbilder } from "@/lib/berufsbild-db"
 
 type Db = SupabaseClient<Database>
 
@@ -27,7 +29,7 @@ export async function sendLeadConfirmations(db: Db, opts: { candidateIds?: strin
 
   let query = db
     .from("candidates")
-    .select("id, first_name, last_name, email, phone, campaigns(title, clients(name))")
+    .select("id, first_name, last_name, email, phone, berufsbild, campaigns(title, kind, clients(name))")
     .in("source", IMPORT_SOURCES)
     .eq("is_demo", false)
     .not("email", "is", null)
@@ -41,16 +43,17 @@ export async function sendLeadConfirmations(db: Db, opts: { candidateIds?: strin
 
   const { data: done } = await db.from("candidate_mail_runs").select("candidate_id").eq("kind", KIND).in("candidate_id", candidates.map((c) => c.id))
   const doneIds = new Set((done ?? []).map((d) => d.candidate_id))
+  const berufsbilder = await fetchBerufsbilder(db)
 
   for (const c of candidates.filter((x) => !doneIds.has(x.id))) {
     // Reservieren vor dem Versand - schlägt das fehl, hat ein paralleler Lauf ihn schon.
     const { error: claimError } = await db.from("candidate_mail_runs").insert({ kind: KIND, candidate_id: c.id })
     if (claimError) continue
-    const campaign = (Array.isArray(c.campaigns) ? c.campaigns[0] : c.campaigns) as { title: string; clients: { name: string } | { name: string }[] | null } | null
+    const campaign = (Array.isArray(c.campaigns) ? c.campaigns[0] : c.campaigns) as { title: string; kind: string | null; clients: { name: string } | { name: string }[] | null } | null
     const client = Array.isArray(campaign?.clients) ? campaign?.clients[0] : campaign?.clients
     const vars = {
       Kandidatenname: `${c.first_name} ${c.last_name}`.trim(),
-      Kampagnenname: campaign?.title ?? "",
+      Kampagnenname: mailCampaignName(campaign, berufsbildLabel(c.berufsbild, berufsbilder)),
       Kundenname: client?.name ?? "",
       Email: c.email ?? "",
       Telefon: c.phone ?? "",

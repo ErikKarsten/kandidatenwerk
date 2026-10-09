@@ -22,7 +22,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { sendEmail } from "@/lib/brevo-mail"
+import { berufsbildLabel } from "@/lib/berufsbild"
+import { fetchBerufsbilder } from "@/lib/berufsbild-db"
 import {
+  mailCampaignName,
   candidatePortalLink,
   substituteTemplateVars,
   resolveAutomationRecipients,
@@ -40,6 +43,7 @@ interface CandidateRow {
   status: string
   client_id: string | null
   created_at: string
+  berufsbild: string | null
 }
 
 interface CampaignJoin {
@@ -98,7 +102,7 @@ async function loadCampaignCandidates(
   triggerStatus: string | null,
   joinedAt: Map<string, string>
 ): Promise<CandidateRow[]> {
-  const columns = "id, first_name, last_name, email, phone, status, client_id, created_at"
+  const columns = "id, first_name, last_name, email, phone, status, client_id, created_at, berufsbild"
   let own = supabase.from("candidates").select(columns).eq("campaign_id", campaign.id).eq("is_demo", false)
   if (trigger === "status_change") own = own.eq("status", triggerStatus!)
   const { data: ownRows, error } = await own
@@ -151,6 +155,7 @@ export async function runAutomations(
   let sent = 0
   let skipped = 0
   let errors = 0
+  const berufsbilder = await fetchBerufsbilder(supabase)
 
   for (const automation of automations ?? []) {
     const campaign = unwrapOne(automation.campaigns as unknown as CampaignJoin | CampaignJoin[] | null)
@@ -253,7 +258,7 @@ export async function runAutomations(
 
         const vars = {
           Kandidatenname: candidateName,
-          Kampagnenname: campaign.title,
+          Kampagnenname: mailCampaignName(campaign, berufsbildLabel(candidate.berufsbild, berufsbilder)),
           Kundenname: unwrapOne(campaign.clients)?.name ?? "",
           Email: candidate.email ?? "",
           Telefon: candidate.phone ?? "",

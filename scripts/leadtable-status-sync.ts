@@ -1,6 +1,6 @@
-// Synchronisiert den aktuellen Leadtable-Status für alle Leadtable-Kandidaten nach
-// Kandidatenwerk. Leadtable-Stand gewinnt immer, auch wenn candidates.status seither
-// manuell geändert wurde.
+// Synchronisiert den aktuellen Leadtable-Status für alle Kandidaten mit Leadtable-Lead nach
+// Kandidatenwerk. Leadtable gewinnt - außer der Status wurde in Kandidatenwerk von Hand
+// geändert (Verlaufseintrag "status_change", Paket 46): dann bleibt er.
 //
 // Setzt voraus, dass die Migration
 // supabase/migrations/20260804000000_add_candidates_leadtable_lead_id.sql bereits
@@ -16,8 +16,9 @@
 // refreshLeadtableCandidateAction Server Action).
 //
 // Usage:
-//   npx tsx scripts/leadtable-status-sync.ts            (alle Kandidaten)
-//   npx tsx scripts/leadtable-status-sync.ts --limit=15  (nur die ersten 15, zum Testen)
+//   npx tsx scripts/leadtable-status-sync.ts                          Probelauf (zeigt nur)
+//   npx tsx scripts/leadtable-status-sync.ts --ausfuehren             schreibt
+//   npx tsx scripts/leadtable-status-sync.ts --ausfuehren --limit=15  nur die ersten 15
 
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -38,6 +39,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
 
 const DELAY_MS = 250
+const EXECUTE = process.argv.includes("--ausfuehren")
 const PROGRESS_EVERY = 30
 
 function parseLimitArg(): number | null {
@@ -60,12 +62,22 @@ async function main() {
   const { data: candidates, error } = await supabase
     .from("candidates")
     .select("id, first_name, last_name, email, status, leadtable_lead_id, campaign_id")
-    .eq("source", "leadtable")
-    .not("email", "is", null)
+    .not("leadtable_lead_id", "is", null)
+    .range(0, 4999)
 
   if (error) throw new Error(error.message)
 
-  let list = candidates ?? []
+  // Von Hand in Kandidatenwerk geänderte Status bleiben (Paket 46).
+  const manual = new Set<string>()
+  for (let from = 0; ; from += 1000) {
+    const { data: rows } = await supabase.from("candidate_history").select("candidate_id").eq("type", "status_change").range(from, from + 999)
+    for (const r of rows ?? []) manual.add(r.candidate_id)
+    if (!rows || rows.length < 1000) break
+  }
+  console.log(EXECUTE ? "MODUS: AUSFÜHREN" : "MODUS: Probelauf (schreibt nichts)")
+  console.log(`${manual.size} Kandidaten mit Handänderung werden übersprungen`)
+
+  let list = (candidates ?? []).filter((c) => !manual.has(c.id))
   console.log(`${list.length} Kandidaten geladen`)
   if (limit) {
     list = list.slice(0, limit)
@@ -135,14 +147,20 @@ async function main() {
           // Lead) haben, z.B. bei Bewerbungen auf mehrere Kampagnen. Die UNIQUE-
           // Constraint auf leadtable_lead_id schlägt dann für die zweite Zeile fehl -
           // das darf den Status-Sync (Pflichtteil) nicht verhindern.
-          const { error: statusError } = await supabase
-            .from("candidates")
-            .update({ status: mappedStatus })
-            .eq("id", candidate.id)
+          if (EXECUTE && mappedStatus !== candidate.status) {
+            const { error: statusError } = await supabase
+              .from("candidates")
+              .update({ status: mappedStatus })
+              .eq("id", candidate.id)
+            if (statusError) throw new Error(statusError.message)
+            await supabase.from("candidate_history").insert({
+              candidate_id: candidate.id,
+              type: "note",
+              content: `Status aus Leadtable übernommen: ${candidate.status} → ${mappedStatus} (Leadtable: „${leadtableStatusName(lead)}“).`,
+            })
+          }
 
-          if (statusError) throw new Error(statusError.message)
-
-          if (newLeadId) {
+          if (EXECUTE && newLeadId) {
             const { error: leadIdError } = await supabase
               .from("candidates")
               .update({ leadtable_lead_id: newLeadId })

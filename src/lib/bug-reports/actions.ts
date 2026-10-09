@@ -6,9 +6,13 @@
 // Login/Rolle selbst, bevor sie etwas liest oder schreibt.
 //
 // Ablauf:
-//   - Staff (agency_admin/agency_member) meldet -> Aufgabe (tasks) wird sofort angelegt.
-//   - Portal-Kunde meldet -> Status "neu", Mail an die Admins; Aufgabe erst nach
-//     Freigabe über approveBugReportAction.
+//   - Jede Meldung (Team wie Portal-Kunde) landet mit Status "neu" in der Übersicht
+//     /dashboard/fehlermeldungen (Paket 46 - vorher legten Team-Meldungen sofort eine
+//     Aufgabe an und tauchten in der Übersicht nicht auf).
+//   - Mail: Team-Meldung an die zuständige Person für Fehlermeldungen, Kunden-Meldung an
+//     die Admins.
+//   - Aufgabe erst bei der Freigabe (approveBugReportAction), zugewiesen an die dort
+//     gewählte Person oder das Team.
 
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
@@ -19,6 +23,7 @@ import { getStaffContext, requireAgencyAdmin } from "@/lib/auth-guards"
 import { checkBugReportRateLimit } from "@/lib/ratelimit"
 import { sendEmail } from "@/lib/brevo-mail"
 import { getAdminEmails } from "@/lib/get-admin-emails"
+import { parseAssignee } from "@/lib/teams"
 import {
   BUG_REPORT_DESCRIPTION_MAX,
   BUG_REPORT_TITLE_MAX,
@@ -91,10 +96,13 @@ async function resolveAssignee(db: SupabaseClient, agencyId: string): Promise<st
 async function createTaskForReport(
   db: SupabaseClient,
   report: BugReportRow,
-  createdBy: string
+  createdBy: string,
+  // Gewählte Person oder Team (Paket 46); sonst die zuständige Person für Fehlermeldungen.
+  chosen?: { assigned_to: string | null; assigned_team: string | null } | null
 ): Promise<{ error: string } | { taskId: string }> {
   if (!report.agency_id) return { error: "Meldung ist keiner Agentur zugeordnet." }
-  const assignee = await resolveAssignee(db, report.agency_id)
+  const fallback = chosen ? null : await resolveAssignee(db, report.agency_id)
+  const assignee = chosen ?? (fallback ? { assigned_to: fallback, assigned_team: null } : null)
   if (!assignee) return { error: "Kein Admin gefunden, dem die Aufgabe zugewiesen werden kann." }
 
   const [{ data: reporter }, { data: client }] = await Promise.all([
@@ -122,7 +130,7 @@ async function createTaskForReport(
     .insert({
       title: `Fehler: ${report.title}`,
       description,
-      assigned_to: assignee,
+      ...assignee,
       created_by: createdBy,
     })
     .select("id")
@@ -194,31 +202,10 @@ export async function submitBugReportAction(input: {
   if (insertError || !inserted) return { error: insertError?.message ?? "Meldung konnte nicht gespeichert werden." }
   const report = inserted as BugReportRow
 
-  if (isStaff) {
-    const result = await createTaskForReport(db, report, user.id)
-    if ("error" in result) {
-      // Meldung bleibt als "neu" stehen und taucht in der Admin-Übersicht auf.
-      console.error(`[bug-reports] Aufgabe für Meldung ${report.id} nicht angelegt: ${result.error}`)
-      return { ok: true, outcome: "pending_review" }
-    }
-    await db
-      .from("bug_reports")
-      .update({
-        status: "freigegeben",
-        task_id: result.taskId,
-        reviewed_at: new Date().toISOString(),
-        review_note: "Vom Team gemeldet - Aufgabe direkt angelegt.",
-      })
-      .eq("id", report.id)
-    revalidatePath("/dashboard/tasks")
-    revalidatePath("/dashboard/fehlermeldungen")
-    return { ok: true, outcome: "task_created" }
-  }
-
-  // Portal-Kunde: Admins zur Prüfung benachrichtigen. Ein Mailfehler darf die Meldung
-  // selbst nicht scheitern lassen - sie steht ohnehin in der Admin-Übersicht.
+  // Benachrichtigen. Ein Mailfehler darf die Meldung selbst nicht scheitern lassen - sie
+  // steht ohnehin in der Übersicht.
   try {
-    await notifyAdminsAboutClientReport(report)
+    await notifyAboutReport(report, isStaff)
   } catch (err) {
     console.error(`[bug-reports] Admin-Mail für Meldung ${report.id} fehlgeschlagen:`, err)
   }
@@ -226,12 +213,17 @@ export async function submitBugReportAction(input: {
   return { ok: true, outcome: "pending_review" }
 }
 
-async function notifyAdminsAboutClientReport(report: BugReportRow): Promise<void> {
+async function notifyAboutReport(report: BugReportRow, fromTeam: boolean): Promise<void> {
   const admin = createSupabaseAdminClient()
-  const recipients = await getAdminEmails(admin)
+  const db = admin as unknown as SupabaseClient
+  let recipients: string[]
+  if (fromTeam && report.agency_id) {
+    const assignee = await resolveAssignee(db, report.agency_id)
+    const { data } = assignee ? await db.from("profiles").select("email").eq("id", assignee).maybeSingle() : { data: null }
+    recipients = data?.email ? [data.email as string] : await getAdminEmails(admin)
+  } else recipients = await getAdminEmails(admin)
   if (recipients.length === 0) return
 
-  const db = admin as unknown as SupabaseClient
   const [{ data: client }, { data: reporter }] = await Promise.all([
     report.client_id ? db.from("clients").select("name").eq("id", report.client_id).maybeSingle() : Promise.resolve({ data: null }),
     report.reporter_id ? db.from("profiles").select("email").eq("id", report.reporter_id).maybeSingle() : Promise.resolve({ data: null }),
@@ -240,10 +232,10 @@ async function notifyAdminsAboutClientReport(report: BugReportRow): Promise<void
   const link = `${APP_BASE_URL}/dashboard/fehlermeldungen/${report.id}`
   await sendEmail(
     recipients,
-    `Fehlermeldung aus dem Kunden-Portal: ${report.title}`,
-    `<p>Ein Kunde hat im Portal einen Fehler gemeldet. Bitte prüfen und freigeben oder ablehnen - erst nach der Freigabe wird eine Aufgabe angelegt.</p>
+    `Fehlermeldung ${fromTeam ? "aus dem Team" : "aus dem Kunden-Portal"}: ${report.title}`,
+    `<p>${fromTeam ? "Im Team wurde ein Fehler gemeldet." : "Ein Kunde hat im Portal einen Fehler gemeldet."} Bitte unter Fehlermeldungen prüfen und freigeben oder ablehnen - bei der Freigabe wählst du, wer die Aufgabe bekommt.</p>
 <table style="font-size:14px;border-collapse:collapse">
-<tr><td style="padding:2px 12px 2px 0;color:#6b7280">Kunde</td><td>${escapeHtml(client?.name ?? "-")}</td></tr>
+<tr><td style="padding:2px 12px 2px 0;color:#6b7280">Kunde</td><td>${escapeHtml(client?.name ?? (fromTeam ? "Team" : "-"))}</td></tr>
 <tr><td style="padding:2px 12px 2px 0;color:#6b7280">Gemeldet von</td><td>${escapeHtml(reporter?.email ?? "-")}</td></tr>
 <tr><td style="padding:2px 12px 2px 0;color:#6b7280">Seite</td><td>${escapeHtml(report.page_url ?? "-")}</td></tr>
 <tr><td style="padding:2px 12px 2px 0;color:#6b7280">Titel</td><td><strong>${escapeHtml(report.title)}</strong></td></tr>
@@ -275,10 +267,13 @@ function revalidateReport(reportId: string) {
   revalidatePath(`/dashboard/fehlermeldungen/${reportId}`)
 }
 
-export async function approveBugReportAction(reportId: string, note: string): Promise<{ error: string } | null> {
+export async function approveBugReportAction(reportId: string, note: string, assignTo?: string): Promise<{ error: string } | null> {
   const supabase = await createSupabaseServerClient()
   const guard = await requireAgencyAdmin(supabase)
   if ("error" in guard) return guard
+  // Person oder Team aus der Freigabe (Paket 46); leer = zuständige Person für Fehlermeldungen.
+  const chosen = assignTo ? parseAssignee(assignTo) : null
+  if (assignTo && !chosen) return { error: "Bitte eine Person oder ein Team wählen." }
 
   const db = untypedAdmin()
   const report = await loadReportForAdmin(db, reportId, guard.staff.agencyId)
@@ -287,7 +282,11 @@ export async function approveBugReportAction(reportId: string, note: string): Pr
     return { error: "Diese Meldung wurde bereits bearbeitet." }
   }
 
-  const result = await createTaskForReport(db, report, guard.staff.userId)
+  if (chosen?.assigned_to) {
+    const { data: person } = await db.from("profiles").select("role, agency_id").eq("id", chosen.assigned_to).maybeSingle()
+    if (!person || !STAFF_ROLES.includes(person.role) || person.agency_id !== guard.staff.agencyId) return { error: "Diese Person gehört nicht zum Team." }
+  }
+  const result = await createTaskForReport(db, report, guard.staff.userId, chosen)
   if ("error" in result) return result
 
   const { error } = await db

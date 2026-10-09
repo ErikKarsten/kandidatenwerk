@@ -57,8 +57,10 @@ export const LEADTABLE_STATUS_MAP: Record<string, string> = {
   "In Kontakt": "in_kontakt",
   Vorstellungsgespräch: "vorqualifiziert",
   Absage: "abgelehnt",
+  "Absage mit Mitteilung": "abgelehnt",
   "aktuell kein Interesse": "abgelehnt",
   Eingestellt: "vorqualifiziert",
+  "On Hold": "in_pruefung",
 }
 
 export function leadtableStatusName(lead: Pick<LeadtableSyncLead, "status" | "statusID">): string {

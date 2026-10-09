@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { requireAgencyAdmin } from "@/lib/auth-guards"
-import { getBugReport } from "@/lib/bug-reports/queries"
+import { getBugReport, getBugReportAssigneeSettings } from "@/lib/bug-reports/queries"
 import { BugReportStatusBadge } from "../status-badge"
 import { ReviewActions } from "./review-actions"
 
@@ -17,7 +17,7 @@ export default async function BugReportDetailPage({ params }: { params: Promise<
   if ("error" in guard || !guard.staff.agencyId) notFound()
 
   const { id } = await params
-  const report = await getBugReport(guard.staff.agencyId, id)
+  const [report, assigneeSettings] = await Promise.all([getBugReport(guard.staff.agencyId, id), getBugReportAssigneeSettings(guard.staff.agencyId)])
   if (!report) notFound()
 
   const rows: [string, string][] = [
@@ -62,7 +62,7 @@ export default async function BugReportDetailPage({ params }: { params: Promise<
                 {report.task.assigneeName ? ` · zugewiesen an ${report.task.assigneeName}` : ""}
               </p>
             )}
-            <ReviewActions reportId={report.id} status={report.status} />
+            <ReviewActions reportId={report.id} status={report.status} team={assigneeSettings.team} defaultAssignee={assigneeSettings.assigneeId} />
           </section>
         </div>
 

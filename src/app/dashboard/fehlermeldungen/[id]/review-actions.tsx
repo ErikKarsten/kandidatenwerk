@@ -8,10 +8,23 @@ import {
   setBugReportStatusAction,
 } from "@/lib/bug-reports/actions"
 import type { BugReportStatus } from "@/lib/bug-reports/shared"
+import { TEAM_OPTIONS } from "@/lib/teams"
 
-export function ReviewActions({ reportId, status }: { reportId: string; status: BugReportStatus }) {
+export function ReviewActions({
+  reportId,
+  status,
+  team,
+  defaultAssignee,
+}: {
+  reportId: string
+  status: BugReportStatus
+  team: { id: string; name: string }[]
+  defaultAssignee: string | null
+}) {
   const router = useRouter()
   const [note, setNote] = useState("")
+  // Wer die Aufgabe bekommt (Paket 46): Person oder Team, vorbelegt mit der zuständigen Person.
+  const [assignTo, setAssignTo] = useState(defaultAssignee ?? "")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -54,12 +67,37 @@ export function ReviewActions({ reportId, status }: { reportId: string; status: 
         className="w-full resize-none rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
         style={{ borderColor: "#dde3ea" }}
       />
+      <label className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+        Aufgabe zuweisen an
+        <select
+          value={assignTo}
+          onChange={(e) => setAssignTo(e.target.value)}
+          className="rounded-md border bg-white px-2 py-1.5 text-sm text-gray-800"
+          style={{ borderColor: "#dde3ea" }}
+        >
+          <option value="">Zuständige Person für Fehlermeldungen</option>
+          <optgroup label="Teams">
+            {TEAM_OPTIONS.map((t) => (
+              <option key={t.value} value={`team:${t.value}`}>
+                Team {t.label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Personen">
+            {team.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+      </label>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           disabled={pending}
-          onClick={() => run(() => approveBugReportAction(reportId, note))}
+          onClick={() => run(() => approveBugReportAction(reportId, note, assignTo || undefined))}
           className="rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           style={{ backgroundColor: "#1e56a0" }}
         >

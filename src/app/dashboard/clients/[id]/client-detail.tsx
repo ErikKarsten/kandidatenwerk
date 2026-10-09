@@ -510,7 +510,7 @@ export function ClientDetail({
               team={project.team}
             />
           )}
-          {tab === "aufgaben" && <ClientTasksTab clientId={client.id} tasks={tasks} team={project.team} />}
+          {tab === "aufgaben" && <ClientTasksTab clientId={client.id} tasks={tasks} team={project.team} currentUserId={project.currentUserId} />}
           {tab === "kampagnen" && (
             <KampagnenTab
               clientId={client.id}

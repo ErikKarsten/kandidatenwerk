@@ -2,14 +2,24 @@ import { notFound } from "next/navigation"
 import { campaignPoints } from "@/lib/campaign-locations"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CandidateDetail } from "./candidate-detail"
+import { loadProfileFieldConfig } from "@/lib/profile-field-config"
+import { resolveFields } from "@/lib/profile-fields"
+import { buildKanzleiOptions } from "@/lib/kanzlei-umkreis"
+import { assigneeLabel } from "@/lib/teams"
+import { mailCampaignName } from "@/lib/automation-engine"
+import { berufsbildLabel } from "@/lib/berufsbild"
+import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
 
 export default async function CandidateDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string }>
 }) {
   const { id } = await params
+  const { tab } = await searchParams
   const supabase = await createSupabaseServerClient()
 
   const [
@@ -21,6 +31,12 @@ export default async function CandidateDetailPage({
     { data: profileRows },
     { data: customFieldDefinitionRows },
     { data: kanzleiCampaignRows },
+    { data: kanzleiClientRows },
+    { data: kanzleiLocationRows },
+    { data: kanzleiPositionRows },
+    profileFieldConfig,
+    { data: taskRows },
+    { data: { user } },
   ] = await Promise.all([
     supabase
       .from("candidates")
@@ -69,6 +85,19 @@ export default async function CandidateDetailPage({
       .eq("status", "active")
       .eq("is_demo", false)
       .order("title", { ascending: true }),
+    // Kanzleien im Umkreis mit Standorten und gesuchten Stellen (Paket 46).
+    supabase.from("clients").select("id, name, ort, lat, lng, status").order("name"),
+    supabase.from("client_locations").select("client_id, lat, lng"),
+    supabase.from("client_positions").select("*").order("sort_order").order("title"),
+    loadProfileFieldConfig(supabase),
+    // Reiter "Aufgaben" am Kandidaten (Paket 46).
+    supabase
+      .from("tasks")
+      .select("id, title, description, status, due_date, assigned_to, assigned_team, created_by, assignee:profiles!tasks_assigned_to_fkey(full_name), creator:profiles!tasks_created_by_fkey(full_name)")
+      .eq("candidate_id", id)
+      .order("status")
+      .order("due_date", { ascending: true, nullsFirst: false }),
+    supabase.auth.getUser(),
   ])
 
   if (!candidate) notFound()
@@ -150,6 +179,7 @@ export default async function CandidateDetailPage({
     source: candidate.source,
     notes: candidate.notes,
     offene_fragen: candidate.offene_fragen ?? null,
+    bewerbung: candidate.bewerbung ?? null,
     cv_werdegang: candidate.cv_werdegang ?? null,
     tags: candidate.tags ?? [],
     description: candidate.description,
@@ -218,7 +248,8 @@ export default async function CandidateDetailPage({
   const communication = {
     vars: {
       Kandidatenname: `${candidate.first_name} ${candidate.last_name}`.trim(),
-      Kampagnenname: campaigns?.title ?? assignmentCampaign?.title ?? "",
+      // Stellentitel statt internem Meta-Kampagnennamen (Paket 46).
+      Kampagnenname: assignmentCampaign?.title ?? mailCampaignName(campaigns, berufsbildLabel(candidate.berufsbild, await loadBerufsbilder())),
       Kundenname: campaigns?.clients?.name ?? clients.find((c) => c.id === firstAssignment?.client_id)?.name ?? "",
       Email: candidate.email ?? "",
       Telefon: candidate.phone ?? "",
@@ -252,7 +283,30 @@ export default async function CandidateDetailPage({
       customFieldDefinitions={customFieldDefinitionRows ?? []}
       templateFieldKeys={templateFieldKeys}
       kanzleiCampaigns={kanzleiCampaigns}
+      kanzleien={buildKanzleiOptions(
+        (kanzleiClientRows ?? []).filter((c) => c.status !== "Archiviert"),
+        kanzleiLocationRows ?? [],
+        kanzleiPositionRows ?? [],
+        resolveFields("stelle", profileFieldConfig.settings)
+      )}
       communication={communication}
+      tasks={(taskRows ?? []).map((t) => {
+        const one = <T,>(v: T | T[] | null) => (Array.isArray(v) ? v[0] ?? null : v)
+        return {
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          status: t.status,
+          due_date: t.due_date,
+          assigned_to: t.assigned_to,
+          assigned_team: t.assigned_team,
+          created_by: t.created_by,
+          assigneeName: assigneeLabel(t, (one(t.assignee) as { full_name: string | null } | null)?.full_name ?? null),
+          creatorName: (one(t.creator) as { full_name: string | null } | null)?.full_name ?? null,
+        }
+      })}
+      currentUserId={user?.id ?? ""}
+      initialTab={tab === "aufgaben" || tab === "zuordnung" || tab === "dateien" || tab === "kommunikation" ? tab : undefined}
       knownTags={knownTags}
     />
   )

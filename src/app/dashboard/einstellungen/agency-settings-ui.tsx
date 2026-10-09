@@ -74,11 +74,13 @@ export function ConfirmationSettings({
 export function AgencyLogoCard({ logoUrl, isAdmin }: { logoUrl: string | null; isAdmin: boolean }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
   function upload(file: File | undefined) {
     if (!file) return
     setError(null)
+    setSaved(null)
     startTransition(async () => {
       // Vor dem Hochladen auf Mail-Größe verkleinern (Paket 38).
       let resized: Awaited<ReturnType<typeof resizeImageFile>>
@@ -91,8 +93,29 @@ export function AgencyLogoCard({ logoUrl, isAdmin }: { logoUrl: string | null; i
       fd.set("logo", resized.file)
       fd.set("width", String(resized.width))
       fd.set("height", String(resized.height))
-      const result = await uploadAgencyLogoAction(fd)
-      if ("error" in result) return setError(result.error)
+      // Fehler sichtbar machen statt sie zu verschlucken (Paket 46).
+      try {
+        const result = await uploadAgencyLogoAction(fd)
+        if ("error" in result) return setError(result.error)
+      } catch (err) {
+        return setError(`Hochladen fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      setSaved("Logo gespeichert – neue Mails verwenden es in wenigen Minuten.")
+      router.refresh()
+    })
+  }
+
+  function remove() {
+    setError(null)
+    setSaved(null)
+    startTransition(async () => {
+      try {
+        const r = await removeAgencyLogoAction()
+        if (r?.error) return setError(r.error)
+      } catch (err) {
+        return setError(`Entfernen fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      setSaved("Logo entfernt.")
       router.refresh()
     })
   }
@@ -119,7 +142,7 @@ export function AgencyLogoCard({ logoUrl, isAdmin }: { logoUrl: string | null; i
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => startTransition(async () => { const r = await removeAgencyLogoAction(); if (r?.error) setError(r.error); else router.refresh() })}
+                onClick={remove}
                 className="w-fit text-xs text-gray-500 hover:text-red-600 hover:underline"
               >
                 Logo entfernen
@@ -129,6 +152,7 @@ export function AgencyLogoCard({ logoUrl, isAdmin }: { logoUrl: string | null; i
         )}
       </div>
       {pending && <p className="text-xs text-gray-400">Wird gespeichert…</p>}
+      {saved && !pending && <p className="text-xs text-green-700">{saved}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   )

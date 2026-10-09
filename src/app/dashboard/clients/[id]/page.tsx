@@ -124,7 +124,7 @@ export default async function ClientDetailPage({
     supabase.from("client_locations").select("id, strasse, plz, ort, lat, lng, is_primary").eq("client_id", id).order("created_at"),
     supabase
       .from("tasks")
-      .select("id, title, description, status, due_date, assigned_to, assigned_team, assignee:profiles!tasks_assigned_to_fkey(full_name)")
+      .select("id, title, description, status, due_date, assigned_to, assigned_team, created_by, assignee:profiles!tasks_assigned_to_fkey(full_name)")
       .eq("client_id", id)
       .order("status")
       .order("due_date", { ascending: true, nullsFirst: false }),
@@ -149,6 +149,7 @@ export default async function ClientDetailPage({
     due_date: t.due_date,
     assigned_to: t.assigned_to,
     assigned_team: t.assigned_team,
+    created_by: t.created_by,
     assigneeName: assigneeLabel(t, ((Array.isArray(t.assignee) ? t.assignee[0] : t.assignee) as { full_name: string | null } | null)?.full_name ?? null),
   }))
   const team = (teamRows ?? []).map((t) => ({ id: t.id, full_name: t.full_name }))

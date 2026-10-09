@@ -13,6 +13,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Bug,
+  LayoutGrid,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLocalStorageValue } from "@/lib/use-local-storage"
@@ -32,6 +33,7 @@ function buildNavItems(
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/dashboard/clients", label: "Kunden", icon: Users, badge: String(clientsCount) },
     { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: String(candidatesCount) },
+    { href: "/dashboard/leads", label: "Kandidaten nach Kampagnen", icon: LayoutGrid },
     { href: "/dashboard/tasks", label: "Aufgaben", icon: ListTodo, badge: String(myOpenTasksCount) },
     { href: "/dashboard/map", label: "Karte", icon: MapPin },
   ] as const

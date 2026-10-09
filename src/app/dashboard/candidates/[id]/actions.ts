@@ -6,7 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getStaffContext, requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
-import { ensureCampaignAssignment } from "@/lib/client-assignment"
+import { ensureCampaignAssignment, ensureClientAssignment } from "@/lib/client-assignment"
 import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
@@ -509,19 +509,8 @@ export async function updateCandidateTagsAction(candidateId: string, tags: strin
   return null
 }
 
-// Werdegang für den Lebenslauf (Paket 43): von Hand speichern oder per KI ausformulieren
-// und um typische Aufgaben des Berufsbilds anreichern.
-export async function saveCvWerdegangAction(candidateId: string, text: string): Promise<{ error: string } | null> {
-  const supabase = await createSupabaseServerClient()
-  const staffError = await requireStaffUser(supabase)
-  if (staffError) return staffError
-  const { error } = await supabase.from("candidates").update({ cv_werdegang: text.trim() || null }).eq("id", candidateId)
-  if (error) return { error: error.message }
-  revalidatePath(`/dashboard/candidates/${candidateId}`)
-  revalidatePath(`/lebenslauf/${candidateId}`)
-  return null
-}
-
+// Werdegang für den Lebenslauf (Paket 43) per KI ausformulieren und um typische Aufgaben
+// des Berufsbilds anreichern - aus der Lebenslauf-Ansicht.
 export async function enrichCvWerdegangAction(candidateId: string): Promise<{ error: string } | { text: string }> {
   const supabase = await createSupabaseServerClient()
   const staffError = await requireStaffUser(supabase)
@@ -535,4 +524,27 @@ export async function enrichCvWerdegangAction(candidateId: string): Promise<{ er
     console.error("Werdegang per KI fehlgeschlagen:", err)
     return { error: err instanceof Error ? err.message : "Werdegang konnte nicht erstellt werden." }
   }
+}
+
+// Zuordnung zur Kanzlei ohne Kampagne ("Kanzlei allgemein") aus dem Reiter Zuordnung
+// (Paket 46) - für Kanzleien, die noch keine Kanzlei-Kampagne haben.
+export async function assignCandidateToClientAction(candidateId: string, clientId: string): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
+  try {
+    await ensureClientAssignment(supabase, candidateId, clientId)
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+  const { data: client } = await supabase.from("clients").select("name").eq("id", clientId).maybeSingle()
+  await supabase.from("candidate_history").insert({
+    candidate_id: candidateId,
+    type: "note",
+    content: `Zugeordnet zu Kanzlei „${client?.name ?? "Unbekannt"}“ (ohne Kampagne)`,
+    created_by: guard.staff.userId,
+  })
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
+  revalidatePath(`/dashboard/clients/${clientId}`)
+  return null
 }
