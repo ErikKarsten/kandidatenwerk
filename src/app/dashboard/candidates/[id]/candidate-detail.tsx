@@ -253,80 +253,99 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             </button>
           </div>
         )}
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                {candidate.first_name} {candidate.last_name}
-              </h1>
-              {/* Worauf und worüber beworben (Paket 46). */}
-              {(candidate.bewerbung || candidate.campaigns?.title) && (
-                <p className="mt-0.5 text-sm text-gray-500">
-                  {candidate.bewerbung && <>Bewerbung: <span className="text-gray-700">{candidate.bewerbung}</span></>}
-                  {candidate.bewerbung && candidate.campaigns?.title && " · "}
-                  {candidate.campaigns?.title && candidate.campaign_id && (
-                    <>
-                      über Kampagne{" "}
-                      <Link href={`/dashboard/campaigns/${candidate.campaign_id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
-                        „{candidate.campaigns.title}“
-                      </Link>
-                    </>
-                  )}
-                </p>
-              )}
+        {/* Kopf im Raster der Spalten darunter (Paket 47): links Name und Herkunft, rechts -
+            bündig mit Beschreibung und Verlauf - Aktionen, Status und Berufsbild. */}
+        <div className="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-[60%_minmax(0,1fr)] lg:gap-6">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 [overflow-wrap:anywhere]">
+              {candidate.first_name} {candidate.last_name}
+            </h1>
+            {/* Worauf und worüber beworben (Paket 46). */}
+            {(candidate.bewerbung || candidate.campaigns?.title) && (
+              <p className="mt-1 text-sm leading-snug text-gray-500 [overflow-wrap:anywhere]">
+                {candidate.bewerbung && (
+                  <span className="block">
+                    Bewerbung: <span className="text-gray-700">{candidate.bewerbung}</span>
+                  </span>
+                )}
+                {candidate.campaigns?.title && candidate.campaign_id && (
+                  <span className="block">
+                    über Kampagne{" "}
+                    <Link href={`/dashboard/campaigns/${candidate.campaign_id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
+                      „{candidate.campaigns.title}“
+                    </Link>
+                  </span>
+                )}
+              </p>
+            )}
+            <div className="mt-2">
+              <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} />
             </div>
-            <select
-              defaultValue={candidate.status}
-              onChange={handleStatusChange}
-              disabled={statusPending}
-              className="rounded-full px-3 py-1.5 text-sm font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 disabled:opacity-50"
-              style={{ backgroundColor: colors.bg, color: colors.text }}
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <div className="flex items-center gap-1.5">
-              <select
-                value={candidate.berufsbild ?? ""}
-                onChange={handleBerufsbildChange}
-                disabled={berufsbildPending}
-                aria-label="Berufsbild"
-                className="rounded-full border px-3 py-1.5 text-sm font-semibold focus:outline-none focus:ring-1 disabled:opacity-50"
-                style={
-                  candidate.berufsbild
-                    ? { borderColor: "#1e56a0", color: "#1e56a0", backgroundColor: "#1e56a010" }
-                    : { borderColor: "#dc2626", color: "#dc2626", backgroundColor: "#dc262610" }
-                }
-              >
-                <option value="">Berufsbild fehlt – bitte wählen</option>
-                {bb.choices(candidate.berufsbild).map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} />
           </div>
-          <div className="flex items-center gap-2">
-            <ShowModeToggle on={false} onChange={setShowMode} />
-            <CvExportMenu candidateId={candidate.id} />
-            <button
-              onClick={() => { setModalStep("choice"); setModalError(null) }}
-              className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-red-50"
-              style={{ borderColor: "#fca5a5", color: "#dc2626" }}
-            >
-              Löschen
-            </button>
+
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              <ShowModeToggle on={false} onChange={setShowMode} />
+              <CvExportMenu candidateId={candidate.id} />
+              <button
+                type="button"
+                onClick={() => setTaskModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+              >
+                <ListTodo size={15} /> Aufgabe erstellen
+              </button>
+              <button
+                onClick={() => { setModalStep("choice"); setModalError(null) }}
+                className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-red-50"
+                style={{ borderColor: "#fca5a5", color: "#dc2626" }}
+              >
+                Löschen
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-gray-500">
+                Status
+                <select
+                  defaultValue={candidate.status}
+                  onChange={handleStatusChange}
+                  disabled={statusPending}
+                  className="w-full cursor-pointer rounded-md border-0 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-1 disabled:opacity-50"
+                  style={{ backgroundColor: colors.bg, color: colors.text }}
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-gray-500">
+                Berufsbild
+                <select
+                  value={candidate.berufsbild ?? ""}
+                  onChange={handleBerufsbildChange}
+                  disabled={berufsbildPending}
+                  className="w-full rounded-md border px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 disabled:opacity-50"
+                  style={
+                    candidate.berufsbild
+                      ? { borderColor: "#1e56a0", color: "#1e56a0", backgroundColor: "#1e56a010" }
+                      : { borderColor: "#dc2626", color: "#dc2626", backgroundColor: "#dc262610" }
+                  }
+                >
+                  <option value="">Berufsbild fehlt – bitte wählen</option>
+                  {bb.choices(candidate.berufsbild).map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {!candidate.berufsbild && (
+              <p className="text-xs font-medium text-red-600">Ohne Berufsbild gibt es kein Matching und keine passenden Kanzlei-Kampagnen.</p>
+            )}
+            {berufsbildError && <p className="text-xs text-red-600">{berufsbildError}</p>}
           </div>
         </div>
-        {!candidate.berufsbild && (
-          <p className="mt-2 text-xs font-medium text-red-600">
-            Ohne Berufsbild gibt es kein Matching und keine passenden Kanzlei-Kampagnen.
-          </p>
-        )}
-        {berufsbildError && <p className="mt-2 text-xs text-red-600">{berufsbildError}</p>}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[60%_minmax(0,1fr)]">
@@ -416,15 +435,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
         {/* Rechte Spalte */}
         <div className="flex flex-col gap-4">
           <ContactChips email={candidate.email} phone={candidate.phone} />
-          <button
-            type="button"
-            onClick={() => setTaskModalOpen(true)}
-            className="flex items-center justify-center gap-2 rounded-xl border border-dashed bg-white p-3 text-sm font-medium transition-colors hover:bg-gray-50"
-            style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-          >
-            <ListTodo size={16} />
-            Aufgabe erstellen
-          </button>
           <ClientNotesSection notes={clientNotes} />
           <DescriptionSection candidateId={candidate.id} notes={candidate.notes} />
           <DescriptionSection
