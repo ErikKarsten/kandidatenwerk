@@ -5,7 +5,8 @@
 // Abschlüsse, keine genauen Daten, die nicht in den Angaben stehen.
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { BERUFSBILD_OPTIONS, berufsbildLabel, type BerufsbildOption } from "@/lib/berufsbild"
+import { fetchBerufsbilder } from "@/lib/berufsbild-db"
 import { generateText } from "@/lib/llm"
 
 export interface WerdegangInput {
@@ -32,8 +33,8 @@ function mask(text: string): string {
   return text.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[E-Mail]").replace(/(?:\+|\b0)\d[\d ()/-]{6,}\d/g, "[Telefon]")
 }
 
-export function buildWerdegangPrompt(c: WerdegangInput, year = new Date().getFullYear()): string {
-  const berufsbild = BERUFSBILD_OPTIONS.find((o) => o.value === c.berufsbild)?.label ?? "unbekannt"
+export function buildWerdegangPrompt(c: WerdegangInput, year = new Date().getFullYear(), berufsbilder: BerufsbildOption[] = BERUFSBILD_OPTIONS): string {
+  const berufsbild = berufsbildLabel(c.berufsbild, berufsbilder) ?? "unbekannt"
   const cf = c.custom_fields ?? {}
   const facts = FIELDS.map(([k, label]) => [label, typeof cf[k] === "string" || typeof cf[k] === "number" ? String(cf[k]).trim() : ""])
     .filter(([, v]) => v)
@@ -97,12 +98,15 @@ export function parseWerdegang(text: string): WerdegangStation[] {
 }
 
 export async function generateWerdegang(db: SupabaseClient<Database>, candidateId: string): Promise<string> {
-  const { data: c, error } = await db.from("candidates").select("berufsbild, custom_fields, notes, cv_werdegang").eq("id", candidateId).single()
+  const [{ data: c, error }, berufsbilder] = await Promise.all([
+    db.from("candidates").select("berufsbild, custom_fields, notes, cv_werdegang").eq("id", candidateId).single(),
+    fetchBerufsbilder(db),
+  ])
   if (error) throw new Error(error.message)
   const answer = await generateText({
     tier: "smart",
     system: "Du schreibst Lebensläufe für Bewerber in Steuerkanzleien. Du bleibst bei den Fakten und ergänzt nur branchenübliche Aufgaben.",
-    prompt: buildWerdegangPrompt({ ...c, custom_fields: (c.custom_fields ?? {}) as Record<string, unknown> }),
+    prompt: buildWerdegangPrompt({ ...c, custom_fields: (c.custom_fields ?? {}) as Record<string, unknown> }, undefined, berufsbilder),
     maxTokens: 2000,
     timeoutMs: 120_000,
   })

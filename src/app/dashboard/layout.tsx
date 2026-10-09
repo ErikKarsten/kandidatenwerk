@@ -5,6 +5,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { getAgencyLogoUrl } from "@/lib/agency-logo"
 import { OPEN_BUG_REPORT_STATUSES } from "@/lib/bug-reports/shared"
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { loadBerufsbilder } from "@/lib/berufsbilder-server"
+import { BerufsbildProvider } from "@/components/berufsbild-context"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient()
@@ -20,23 +22,29 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { count: clientsCount },
     { data: { user } },
     logoUrl,
+    berufsbilder,
   ] = await Promise.all([
     supabase.from("candidates").select("id", { count: "exact", head: true }).eq("is_demo", false),
     supabase.from("clients").select("id", { count: "exact", head: true }),
     supabase.auth.getUser(),
     getAgencyLogoUrl(),
+    loadBerufsbilder(),
   ])
 
-  const [{ count: myOpenTasksCount }, { data: profile }] = user
+  // Offene Team-Aufgaben (Paket 44) werden in derselben Runde geladen und erst hier dem
+  // eigenen Team zugerechnet - sonst bräuchte es eine dritte Runde für profile.team.
+  const [{ count: ownOpenTasks }, { data: openTeamTasks }, { data: profile }] = user
     ? await Promise.all([
         supabase
           .from("tasks")
           .select("id", { count: "exact", head: true })
           .eq("assigned_to", user.id)
           .eq("status", "offen"),
-        supabase.from("profiles").select("full_name, email, role, agency_id").eq("id", user.id).single(),
+        supabase.from("tasks").select("assigned_team").eq("status", "offen").not("assigned_team", "is", null),
+        supabase.from("profiles").select("full_name, email, role, agency_id, team").eq("id", user.id).single(),
       ])
-    : [{ count: 0 }, { data: null }]
+    : [{ count: 0 }, { data: [] }, { data: null }]
+  const myOpenTasksCount = (ownOpenTasks ?? 0) + (openTeamTasks ?? []).filter((t) => profile?.team && t.assigned_team === profile.team).length
 
   // Offene Fehlermeldungen nur für Admins zählen - bug_reports ist ohne RLS-Policy für
   // Logins (siehe 20261002000001_bug_reports.sql), daher per Admin-Client, aber streng
@@ -60,7 +68,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <Sidebar
           candidatesCount={candidatesCount ?? 0}
           clientsCount={clientsCount ?? 0}
-          myOpenTasksCount={myOpenTasksCount ?? 0}
+          myOpenTasksCount={myOpenTasksCount}
           userName={profile?.full_name || profile?.email || "Unbekannt"}
           isAdmin={isAdmin}
           openBugReportsCount={openBugReportsCount}
@@ -68,7 +76,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         />
       }
     >
-      {children}
+      <BerufsbildProvider options={berufsbilder}>{children}</BerufsbildProvider>
     </ResponsiveShell>
   )
 }

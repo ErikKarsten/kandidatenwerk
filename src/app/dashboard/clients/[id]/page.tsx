@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { ClientDetail } from "./client-detail"
 import { loadProfileFieldConfig } from "@/lib/profile-field-config"
+import { assigneeLabel } from "@/lib/teams"
 
 const CAMPAIGN_STATUS_VALUES = new Set(["active", "paused", "completed", "Archiviert"])
 const PAGE_SIZES: readonly PageSize[] = [10, 20, 50]
@@ -123,7 +124,7 @@ export default async function ClientDetailPage({
     supabase.from("client_locations").select("id, strasse, plz, ort, lat, lng, is_primary").eq("client_id", id).order("created_at"),
     supabase
       .from("tasks")
-      .select("id, title, description, status, due_date, assigned_to, assignee:profiles!tasks_assigned_to_fkey(full_name)")
+      .select("id, title, description, status, due_date, assigned_to, assigned_team, assignee:profiles!tasks_assigned_to_fkey(full_name)")
       .eq("client_id", id)
       .order("status")
       .order("due_date", { ascending: true, nullsFirst: false }),
@@ -147,7 +148,8 @@ export default async function ClientDetailPage({
     status: t.status,
     due_date: t.due_date,
     assigned_to: t.assigned_to,
-    assigneeName: ((Array.isArray(t.assignee) ? t.assignee[0] : t.assignee) as { full_name: string | null } | null)?.full_name ?? null,
+    assigned_team: t.assigned_team,
+    assigneeName: assigneeLabel(t, ((Array.isArray(t.assignee) ? t.assignee[0] : t.assignee) as { full_name: string | null } | null)?.full_name ?? null),
   }))
   const team = (teamRows ?? []).map((t) => ({ id: t.id, full_name: t.full_name }))
   const nameOf = (profileId: string | null) => (profileId ? team.find((t) => t.id === profileId)?.full_name ?? "Unbekannt" : "System")

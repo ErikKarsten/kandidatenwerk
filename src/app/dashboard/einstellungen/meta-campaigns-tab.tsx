@@ -6,7 +6,7 @@ import Link from "next/link"
 import { RefreshCw } from "lucide-react"
 import { syncMetaCampaignsNowAction } from "./actions"
 import type { LeadCampaignOverview } from "@/lib/meta-campaigns-queries"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 
 const STATUS_STYLE: Record<string, { label: string; bg: string; text: string }> = {
   active: { label: "Läuft", bg: "#1a9a6a18", text: "#1a9a6a" },
@@ -33,6 +33,7 @@ export function MetaCampaignsTab({
   isAdmin: boolean
   warnings?: { campaignId: string; campaignTitle: string; message: string }[]
 }) {
+  const bb = useBerufsbilder()
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
@@ -137,7 +138,7 @@ export function MetaCampaignsTab({
                         {c.title}
                       </Link>
                       <div className="text-xs text-gray-400">
-                        {BERUFSBILD_OPTIONS.find((o) => o.value === c.berufsbild)?.label ?? "Berufsbild offen"}
+                        {bb.label(c.berufsbild) ?? "Berufsbild offen"}
                       </div>
                     </td>
                     <td className="px-3 py-2">

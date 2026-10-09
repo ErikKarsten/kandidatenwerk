@@ -9,6 +9,7 @@ import { matchCandidateToCampaigns } from "@/lib/matching"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { createSampleCandidates } from "@/lib/sample-candidates"
+import { canCreateSamples } from "@/lib/teams"
 
 export type CreateCandidateState = { error: string } | null
 
@@ -136,6 +137,8 @@ export async function createSampleCandidatesAction(berufsbild: string, plz: stri
   const staffError = await requireStaffUser(supabase)
   if (staffError) return staffError
   const { data: { user } } = await supabase.auth.getUser()
+  const { data: me } = user ? await supabase.from("profiles").select("role, team").eq("id", user.id).maybeSingle() : { data: null }
+  if (!canCreateSamples(me)) return { error: "Musterdatensätze können nur Admins und der Vertrieb anlegen." }
   const cleanPlz = plz.trim()
   if (!/^\d{5}$/.test(cleanPlz) || !geocodePlz(cleanPlz)) return { error: "Bitte eine gültige PLZ eingeben." }
   try {

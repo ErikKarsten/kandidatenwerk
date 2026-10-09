@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Sparkles } from "lucide-react"
 import { useShowMode } from "@/lib/show-mode"
-import { SAMPLE_BERUFSBILDER } from "@/lib/berufsbild-samples"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { createSampleCandidatesAction } from "./actions"
 
 const inputClass = "w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
@@ -16,7 +16,9 @@ export function SampleCandidatesButton() {
   const router = useRouter()
   const [showMode] = useShowMode()
   const [open, setOpen] = useState(false)
-  const [berufsbild, setBerufsbild] = useState<string>(SAMPLE_BERUFSBILDER[0].value)
+  const bb = useBerufsbilder()
+  const sampleBerufsbilder = bb.choices().filter((o) => o.value !== "sonstige")
+  const [berufsbild, setBerufsbild] = useState<string>(sampleBerufsbilder[0]?.value ?? "")
   const [plz, setPlz] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<number | null>(null)
@@ -69,7 +71,7 @@ export function SampleCandidatesButton() {
               <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
                 Berufsbild
                 <select value={berufsbild} onChange={(e) => setBerufsbild(e.target.value)} className={inputClass} style={{ ...inputStyle, backgroundColor: "white" }} disabled={pending}>
-                  {SAMPLE_BERUFSBILDER.map((o) => (
+                  {sampleBerufsbilder.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>

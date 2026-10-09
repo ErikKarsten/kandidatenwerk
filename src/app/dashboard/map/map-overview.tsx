@@ -10,7 +10,7 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { searchLocationAction } from "./actions"
 import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { anonymousName, useShowMode } from "@/lib/show-mode"
-import { berufsbildLabel } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 
 // Leaflet greift beim Modul-Import auf Browser-Globals zu - muss deshalb clientseitig-only
 // geladen werden (ssr:false), sonst schlägt das Server-Rendering fehl (gleiches Muster
@@ -87,6 +87,7 @@ export function MapOverview({
   candidates: MapCandidatePoint[]
   adAreas?: AdArea[]
 }) {
+  const bb = useBerufsbilder()
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all")
   // Ebene "Werbegebiete" (Atlas T-38): Radius jeder aktiven Anzeigengruppe laufender
   // Meta-Kampagnen, ein-/ausblendbar.
@@ -145,10 +146,10 @@ export function MapOverview({
     }
     for (const c of candidates) {
       if (!c.name.toLowerCase().includes(q)) continue
-      out.push({ key: `c:${c.id}`, kind: "Kandidat", label: c.name, sublabel: berufsbildLabel(c.berufsbild), lat: c.lat, lng: c.lng })
+      out.push({ key: `c:${c.id}`, kind: "Kandidat", label: c.name, sublabel: bb.label(c.berufsbild), lat: c.lat, lng: c.lng })
     }
     return out.slice(0, MAX_SUGGESTIONS)
-  }, [locationQuery, clients, candidates, showMode])
+  }, [locationQuery, clients, candidates, showMode, bb])
 
   function pickSuggestion(s: Suggestion) {
     setLocationQuery(s.label)
@@ -215,7 +216,7 @@ export function MapOverview({
       lat: c.lat,
       lng: c.lng,
       label: showMode ? anonymousName(c.id) : c.name,
-      sublabel: [showMode ? null : "Kandidat", berufsbildLabel(c.berufsbild)].filter(Boolean).join(" · ") || "Kandidat",
+      sublabel: [showMode ? null : "Kandidat", bb.label(c.berufsbild)].filter(Boolean).join(" · ") || "Kandidat",
       color: CANDIDATE_COLOR,
       approximate: c.approximate,
       note: c.approximate ? "Ungefährer Standort, keine eigene PLZ hinterlegt" : undefined,
@@ -223,7 +224,7 @@ export function MapOverview({
     }))
 
     return [...clientPoints, ...candidatePoints]
-  }, [clients, candidates, includeClients, includeCandidates, showMode])
+  }, [clients, candidates, includeClients, includeCandidates, showMode, bb])
 
   const circles = useMemo<MapCircle[]>(
     () => [

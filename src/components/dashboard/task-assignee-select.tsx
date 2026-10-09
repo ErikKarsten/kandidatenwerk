@@ -4,8 +4,10 @@ import { useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { updateTaskAssigneeAction } from "@/app/dashboard/tasks/actions"
 import type { ProfileOption } from "@/components/dashboard/task-form-modal"
+import { TEAM_OPTIONS } from "@/lib/teams"
 
 // Aufgabe neu zuweisen (Paket 14, T-69). Die neue Person bekommt sofort eine Mail.
+// assignedTo: Profil-ID oder "team:<team>" (assigneeValue, Paket 44).
 export function TaskAssigneeSelect({
   taskId,
   assignedTo,
@@ -19,7 +21,8 @@ export function TaskAssigneeSelect({
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const options = team.some((p) => p.id === assignedTo) ? team : [{ id: assignedTo, full_name: "Unbekannt" }, ...team]
+  const isTeamValue = assignedTo.startsWith("team:")
+  const options = isTeamValue || team.some((p) => p.id === assignedTo) ? team : [{ id: assignedTo, full_name: "Unbekannt" }, ...team]
 
   return (
     <select
@@ -37,11 +40,20 @@ export function TaskAssigneeSelect({
       style={{ borderColor: "#dde3ea" }}
       aria-label="Zugewiesen an"
     >
-      {options.map((p) => (
-        <option key={p.id} value={p.id}>
-          {p.full_name ?? "Unbenannt"}
-        </option>
-      ))}
+      <optgroup label="Teams">
+        {TEAM_OPTIONS.map((t) => (
+          <option key={t.value} value={`team:${t.value}`}>
+            Team {t.label}
+          </option>
+        ))}
+      </optgroup>
+      <optgroup label="Personen">
+        {options.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.full_name ?? "Unbenannt"}
+          </option>
+        ))}
+      </optgroup>
     </select>
   )
 }

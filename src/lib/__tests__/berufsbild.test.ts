@@ -1,22 +1,25 @@
 import { describe, expect, it } from "vitest"
-import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
+import { berufsbildChoices, berufsbildKey, berufsbildLabel } from "@/lib/berufsbild"
 
-describe("mapKanzleistelleBerufsbild", () => {
-  it.each([
-    ["Steuerfachangestellte*r (m/w/d)", "steuerfachangestellte"],
-    ["Fachangestellter für Steuern", "steuerfachangestellte"],
-    ["Aachen - SFA", "steuerfachangestellte"],
-    ["Steuerfachwirt (m/w/d)", "steuerfachwirt"],
-    ["Schwarz Partners - SFW", "steuerfachwirt"],
-    ["Bilanzbuchhalter", "bilanzbuchhalter"],
-    ["Steuerberater/in", "steuerberater"],
-    ["Lohnbuchhalter (m/w/d)", "sonstige"],
-    ["FiBu Teilzeit", "sonstige"],
-  ])("%s -> %s", (input, expected) => {
-    expect(mapKanzleistelleBerufsbild(input)).toBe(expected)
+describe("Berufsbilder", () => {
+  const options = [
+    { value: "steuerfachangestellte", label: "Steuerfachangestellte", active: true },
+    { value: "alt", label: "Altes Berufsbild", active: false },
+  ]
+
+  it("zeigt Bezeichnungen, unbekannte Schlüssel unverändert", () => {
+    expect(berufsbildLabel("steuerfachangestellte", options)).toBe("Steuerfachangestellte")
+    expect(berufsbildLabel("unbekannt", options)).toBe("unbekannt")
+    expect(berufsbildLabel(null, options)).toBeNull()
   })
 
-  it("liefert null für Unbekanntes", () => {
-    expect(mapKanzleistelleBerufsbild("Bäcker")).toBeNull()
+  it("Formulare zeigen aktive plus den aktuellen Wert", () => {
+    expect(berufsbildChoices(options).map((o) => o.value)).toEqual(["steuerfachangestellte"])
+    expect(berufsbildChoices(options, "alt").map((o) => o.value)).toEqual(["steuerfachangestellte", "alt"])
+  })
+
+  it("baut Schlüssel aus Bezeichnungen", () => {
+    expect(berufsbildKey("Lohn- & Gehaltsbuchhalter (m/w/d)")).toBe("lohn_gehaltsbuchhalter")
+    expect(berufsbildKey("Kauffrau für Büromanagement")).toBe("kauffrau_fuer_bueromanagement")
   })
 })

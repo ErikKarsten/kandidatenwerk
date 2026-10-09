@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { PortalCandidateRow } from "@/components/portal/portal-candidate-row"
 import { berufsbildLabel } from "@/lib/berufsbild"
+import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { ArrowLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { assignmentStatusLabel } from "@/lib/assignment-status"
@@ -22,6 +23,7 @@ export default async function PortalCampaignDetailPage({
 }) {
   const { id } = await params
   const supabase = await createSupabaseServerClient()
+  const berufsbilderPromise = loadBerufsbilder()
 
   // RLS ("Kunde sieht Kampagnen des eigenen Kunden") liefert hier automatisch nur etwas
   // zurück, wenn die Kampagne auch wirklich dem eigenen Kunden gehört - sonst kommt
@@ -54,6 +56,7 @@ export default async function PortalCampaignDetailPage({
 
   const s = CAMPAIGN_STATUS_LABEL[campaign.status] ?? CAMPAIGN_STATUS_LABEL.completed
 
+  const berufsbilder = await berufsbilderPromise
   return (
     <div className="p-4 sm:p-6 max-w-3xl">
       <Link href="/portal/campaigns" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
@@ -89,7 +92,7 @@ export default async function PortalCampaignDetailPage({
                 assignmentId={a.id}
                 href={`/portal/candidates/${c.id}`}
                 name={`${c.first_name} ${c.last_name}`.trim()}
-                meta={[berufsbildLabel(c.berufsbild), c.plz].filter(Boolean).join(" · ")}
+                meta={[berufsbildLabel(c.berufsbild, berufsbilder), c.plz].filter(Boolean).join(" · ")}
                 status={assignmentStatusLabel(a.status)}
               />
             )

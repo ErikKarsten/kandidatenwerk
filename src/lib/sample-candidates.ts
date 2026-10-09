@@ -4,7 +4,7 @@
 // Paket 28 (Beschreibung, offene Fragen, Zusatzfelder).
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
-import { SAMPLE_BERUFSBILDER } from "@/lib/berufsbild-samples"
+import { fetchBerufsbilder } from "@/lib/berufsbild-db"
 import { geocodePlz, plzWithin } from "@/lib/geocode-plz"
 import { generateText } from "@/lib/llm"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
@@ -108,7 +108,8 @@ export async function createSampleCandidates(
   input: { berufsbild: string; plz: string },
   createdBy: string | null
 ): Promise<string[]> {
-  const option = SAMPLE_BERUFSBILDER.find((o) => o.value === input.berufsbild)
+  // Alle aktiven Berufsbilder außer "Sonstige" (pflegbar, Paket 45).
+  const option = (await fetchBerufsbilder(db)).find((o) => o.value === input.berufsbild && o.value !== "sonstige" && o.active !== false)
   if (!option) throw new Error("Bitte ein Berufsbild wählen.")
   const people = pickSamplePeople(input.plz)
   const answer = await generateText({

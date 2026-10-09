@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ExternalLink, Mail, Phone, X } from "lucide-react"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import { updateCandidateBerufsbildAction } from "@/app/dashboard/candidates/[id]/actions"
@@ -38,6 +38,7 @@ export function CandidatePanel({
   onAssigned?: (candidateId: string) => void
   anonymize?: boolean
 }) {
+  const bb = useBerufsbilder()
   const router = useRouter()
   const [data, setData] = useState<CandidatePanelData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -134,7 +135,7 @@ export function CandidatePanel({
                   aria-label="Berufsbild"
                 >
                   <option value="">Berufsbild fehlt</option>
-                  {BERUFSBILD_OPTIONS.map((o) => (
+                  {bb.choices(current.berufsbild).map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>

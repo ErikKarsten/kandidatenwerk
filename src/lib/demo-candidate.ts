@@ -6,7 +6,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { geocodePlz } from "@/lib/geocode-plz"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { berufsbildLabel } from "@/lib/berufsbild"
+import { fetchBerufsbilder } from "@/lib/berufsbild-db"
 
 export const DEMO_FALLBACK_BERUFSBILD = "steuerfachangestellte"
 
@@ -22,15 +23,14 @@ export function pickDemoTarget(
 ): DemoTarget {
   const first = [...positions].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at))[0]
   return {
-    // Nur erlaubte Werte (CHECK-Constraint auf candidates.berufsbild).
-    berufsbild: BERUFSBILD_OPTIONS.some((o) => o.value === first?.berufsbild) ? first!.berufsbild! : DEMO_FALLBACK_BERUFSBILD,
+    // Gültig sind die Schlüssel der Tabelle berufsbilder (Paket 45); alles andere -> Rückfall.
+    berufsbild: first?.berufsbild && /^[a-z0-9_]+$/.test(first.berufsbild) ? first.berufsbild : DEMO_FALLBACK_BERUFSBILD,
     plz: first?.plz?.trim() || clientPlz?.trim() || null,
   }
 }
 
-export function buildDemoCandidate(target: DemoTarget) {
+export function buildDemoCandidate(target: DemoTarget, label = berufsbildLabel(target.berufsbild) ?? "Steuerfachangestellte") {
   const coords = target.plz ? geocodePlz(target.plz) : null
-  const label = BERUFSBILD_OPTIONS.find((o) => o.value === target.berufsbild)?.label ?? "Steuerfachangestellte"
   return {
     first_name: "Max",
     last_name: "Mustermann (Beispiel)",
@@ -81,13 +81,13 @@ export async function createDemoCandidateForClient(db: SupabaseClient<Database>,
       db.from("client_positions").select("berufsbild, plz, sort_order, created_at").eq("client_id", clientId),
     ])
     const target = pickDemoTarget(positions ?? [], client?.plz ?? null)
-    const { data: candidate, error } = await db.from("candidates").insert(buildDemoCandidate(target)).select("id").single()
+    const label = berufsbildLabel(target.berufsbild, await fetchBerufsbilder(db)) ?? "Steuerfachangestellte"
+    const { data: candidate, error } = await db.from("candidates").insert(buildDemoCandidate(target, label)).select("id").single()
     if (error) throw new Error(error.message)
 
     // Beispielkampagne (Paket 18, T-82), in der der Beispiel-Lead liegt - so sieht der
     // Kunde im Gespräch und im Portal, wie Kampagne und Kandidat zusammengehören.
     const coords = target.plz ? geocodePlz(target.plz) : null
-    const label = BERUFSBILD_OPTIONS.find((o) => o.value === target.berufsbild)?.label ?? "Steuerfachangestellte"
     const { data: campaign, error: campaignError } = await db
       .from("campaigns")
       .insert({

@@ -8,7 +8,7 @@ import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS, type CandidateStatusValue } from "@/lib/candidate-status"
 import { createCandidateAction, type CreateCandidateState } from "../actions"
 
@@ -39,6 +39,7 @@ export function CandidateForm({
   campaigns: Campaign[]
   defaultCampaignId?: string
 }) {
+  const bb = useBerufsbilder()
   const [state, formAction] = useActionState<CreateCandidateState, FormData>(
     createCandidateAction,
     null
@@ -140,7 +141,7 @@ export function CandidateForm({
             defaultValue=""
           >
             <option value="">Kein Berufsbild</option>
-            {BERUFSBILD_OPTIONS.map((o) => (
+            {bb.choices().map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>

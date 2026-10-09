@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Pencil, Plus, RotateCcw, Trash2 } from "lucide-react"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { PROFILE_GROUPS } from "@/lib/client-project"
 import { resolveAllFields, type FieldScope, type PositionSnippet, type ProfileFieldSetting, type ResolvedField } from "@/lib/profile-fields"
 import {
@@ -168,8 +168,9 @@ export function ProfileFieldsEditor({ scope, settings }: { scope: FieldScope; se
 
 // Textbausteine je Berufsbild für Aufgaben und Anforderungen (Paket 18, T-80).
 export function SnippetsEditor({ snippets }: { snippets: PositionSnippet[] }) {
+  const bb = useBerufsbilder()
   const router = useRouter()
-  const options = [...BERUFSBILD_OPTIONS.filter((o) => o.value !== "sonstige"), { value: "sonstige", label: "Sonstige / ohne Berufsbild" }]
+  const options = [...bb.choices().filter((o) => o.value !== "sonstige"), { value: "sonstige", label: "Sonstige / ohne Berufsbild" }]
   const [berufsbild, setBerufsbild] = useState<string>(options[0].value)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [editId, setEditId] = useState<string | null>(null)

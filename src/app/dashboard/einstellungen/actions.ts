@@ -1,5 +1,6 @@
 "use server"
 
+import { isTeam, type Team } from "@/lib/teams"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
@@ -56,8 +57,15 @@ export interface TeamMember {
   full_name: string | null
   email: string | null
   role: "agency_admin" | "agency_member"
+  // Team zusätzlich zur Rolle (Paket 44).
+  team: Team | null
   phone: string | null
   avatarUrl: string | null
+}
+
+function teamFrom(formData: FormData): Team | null {
+  const team = formData.get("team")
+  return isTeam(team) ? team : null
 }
 
 // Teamliste der eigenen Agentur - fuer die Seite selbst (page.tsx), nicht als Action,
@@ -73,7 +81,7 @@ export async function getTeamMembers(agencyId: string): Promise<TeamMember[]> {
   if (staffError) return []
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, full_name, email, role, phone, avatar_path")
+    .select("id, full_name, email, role, team, phone, avatar_path")
     .eq("agency_id", agencyId)
     .in("role", ["agency_admin", "agency_member"])
     .order("created_at", { ascending: true })
@@ -97,6 +105,7 @@ export async function inviteTeamMemberAction(formData: FormData): Promise<{ erro
   const fullName = String(formData.get("full_name") ?? "").trim()
   const phone = String(formData.get("phone") ?? "").trim()
   const role = formData.get("role") === "agency_admin" ? "agency_admin" : "agency_member"
+  const team = teamFrom(formData)
   const avatar = formData.get("avatar") as File | null
   if (!fullName) return { error: "Name ist ein Pflichtfeld." }
   if (!trimmedEmail) return { error: "E-Mail-Adresse ist ein Pflichtfeld." }
@@ -141,6 +150,7 @@ export async function inviteTeamMemberAction(formData: FormData): Promise<{ erro
   const { error: profileError } = await admin.from("profiles").insert({
     id: data.user.id,
     role,
+    team,
     agency_id: ownProfile.agency_id,
     email: trimmedEmail,
     full_name: fullName,
@@ -165,6 +175,7 @@ export async function updateTeamMemberAction(profileId: string, formData: FormDa
   const name = String(formData.get("full_name") ?? "").trim()
   const phone = String(formData.get("phone") ?? "").trim()
   const role = String(formData.get("role") ?? "")
+  const team = teamFrom(formData)
   const avatar = formData.get("avatar") as File | null
   if (!name) return { error: "Name ist ein Pflichtfeld." }
   if (role !== "agency_admin" && role !== "agency_member") return { error: "Ungültige Rolle." }
@@ -202,7 +213,7 @@ export async function updateTeamMemberAction(profileId: string, formData: FormDa
     }
   }
 
-  const { error } = await admin.from("profiles").update({ full_name: name, role, phone: phone || null, avatar_path: avatarPath }).eq("id", profileId)
+  const { error } = await admin.from("profiles").update({ full_name: name, role, team, phone: phone || null, avatar_path: avatarPath }).eq("id", profileId)
   if (error) return { error: error.message }
   revalidatePath("/dashboard/einstellungen")
   return null

@@ -31,7 +31,7 @@ import { AutomationsTab, type Automation } from "./automations-tab"
 import { AvailableCandidatesPanel } from "./available-candidates-panel"
 import type { AutomationTemplate, AutomationTemplateSet } from "../../einstellungen/automation-template-actions"
 import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 
 const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
@@ -67,11 +67,6 @@ interface Candidate {
   // Kanzlei-Kampagne: Zuordnung mit Status beim Kunden (Paket 35).
   assignmentId?: string
   assignmentStatus?: string
-}
-
-function berufsbildLabel(value: string | null): string {
-  if (!value) return "—"
-  return BERUFSBILD_OPTIONS.find((o) => o.value === value)?.label ?? value
 }
 
 interface Campaign {
@@ -140,6 +135,9 @@ function triggerCSVDownload(csv: string, filename: string) {
 }
 
 export function CampaignDetail({ campaign, candidates, automations, automationTemplates, clients, fieldTemplates }: CampaignDetailProps) {
+  const bb = useBerufsbilder()
+  const isKanzleiCampaign = campaign.kind === "kanzlei"
+  const berufsbildLabel = (value: string | null) => bb.label(value) ?? "—"
   const [tab, setTab] = useState<"kandidaten" | "matches" | "einrichtung" | "automatisierungen">("kandidaten")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [selectedOption, setSelectedOption] = useState<CandidateOption | null>(null)
@@ -363,17 +361,23 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                       {
                         value: "export_delete" as CandidateOption,
                         label: "Exportieren & löschen",
-                        desc: "CSV mit Name, E-Mail, Telefon und Custom-Feldern wird heruntergeladen. Anschließend werden Kandidaten und Kampagne gelöscht.",
+                        desc: isKanzleiCampaign
+                          ? "CSV wird heruntergeladen. Anschließend werden die zugeordneten Kandidaten endgültig gelöscht – auch bei anderen Kanzleien – und die Kampagne entfernt."
+                          : "CSV mit Name, E-Mail, Telefon und Custom-Feldern wird heruntergeladen. Anschließend werden Kandidaten und Kampagne gelöscht.",
                       },
                       {
                         value: "delete_all" as CandidateOption,
                         label: "Kandidaten mit löschen",
-                        desc: "Alle Kandidaten werden zusammen mit der Kampagne unwiderruflich gelöscht. Kein Export.",
+                        desc: isKanzleiCampaign
+                          ? "Die zugeordneten Kandidaten werden endgültig gelöscht – auch bei anderen Kanzleien. Kein Export."
+                          : "Alle Kandidaten werden zusammen mit der Kampagne unwiderruflich gelöscht. Kein Export.",
                       },
                       {
                         value: "keep" as CandidateOption,
                         label: "Kandidaten behalten",
-                        desc: "Kandidaten bleiben erhalten, werden aber keiner Kampagne mehr zugeordnet.",
+                        desc: isKanzleiCampaign
+                          ? "Kandidaten bleiben im Kandidatenpool, die Zuordnung zu dieser Kanzlei wird beendet. Beispiel-Leads werden gelöscht."
+                          : "Kandidaten bleiben erhalten, werden aber keiner Kampagne mehr zugeordnet.",
                       },
                     ] as const
                   ).map((opt) => (
@@ -739,7 +743,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                 style={{ borderColor: "#dde3ea" }}
               >
                 <option value="alle">Alle Berufsbilder</option>
-                {BERUFSBILD_OPTIONS.map((opt) => (
+                {bb.all.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>

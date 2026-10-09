@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { TagChip } from "@/components/dashboard/tag-editor"
@@ -90,6 +90,7 @@ export function CandidatesList({
   knownTags,
   sort,
 }: CandidatesListProps) {
+  const bb = useBerufsbilder()
   const [showMode, setShowMode] = useShowMode()
   const router = useRouter()
   const pathname = usePathname()
@@ -234,7 +235,7 @@ export function CandidatesList({
           style={{ borderColor: "#dde3ea" }}
         >
           <option value="alle">Alle Berufsbilder</option>
-          {BERUFSBILD_OPTIONS.map((opt) => (
+          {bb.all.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>

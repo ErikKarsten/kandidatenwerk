@@ -1,10 +1,10 @@
 "use client"
 
-import { berufsbildLabel } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { useState, useTransition, useEffect } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Send, ClipboardCheck, Search, UserCheck } from "lucide-react"
+import { Send, ClipboardCheck, Search, UserCheck, Presentation } from "lucide-react"
 import {
   updateClientAction,
   archiveClientAction,
@@ -165,6 +165,9 @@ export function ClientDetail({
   const router = useRouter()
   const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "projekt" | "aufgaben">(initialTab ?? "kampagnen")
   const [editMode, setEditMode] = useState(false)
+  // Terminmodus (Paket 46): beim Kunden-Termin die eigene Plattform zeigen - ohne interne
+  // Kommentarspalte und ohne Löschen/Archivieren.
+  const [meetingMode, setMeetingMode] = useState(false)
   const [displayLogoUrl, setDisplayLogoUrl] = useState(client.logo_url)
 
   // Modal state
@@ -422,19 +425,23 @@ export function ClientDetail({
             </>
           )}
 
+          {!meetingMode && (
+            <button
+              onClick={openModal}
+              className="ml-auto rounded-md border px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              style={{ borderColor: "#dde3ea" }}
+            >
+              Löschen / Archivieren
+            </button>
+          )}
           <button
-            onClick={openModal}
-            className="ml-auto rounded-md border px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-            style={{ borderColor: "#dde3ea" }}
+            onClick={() => setMeetingMode(!meetingMode)}
+            className={`${meetingMode ? "ml-auto " : ""}inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium`}
+            style={meetingMode ? { backgroundColor: "#1e56a0", borderColor: "#1e56a0", color: "white" } : { borderColor: "#1e56a0", color: "#1e56a0" }}
+            title={meetingMode ? "Kommentare wieder einblenden" : "Kommentarspalte für den Kundentermin ausblenden"}
           >
-            Löschen / Archivieren
-          </button>
-          <button
-            onClick={() => { setTab("stammdaten"); setEditMode(true) }}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-white"
-            style={{ backgroundColor: "#1e56a0" }}
-          >
-            Bearbeiten
+            <Presentation size={15} />
+            {meetingMode ? "Terminmodus beenden" : "Terminmodus"}
           </button>
         </div>
       </div>
@@ -453,8 +460,8 @@ export function ClientDetail({
       </div>
 
       {/* ── Tabs + Kommentare (auf jedem Reiter sichtbar, Paket 13) ── */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-      <div className="min-w-0 xl:col-span-2">
+      <div className={`grid grid-cols-1 gap-4 ${meetingMode ? "" : "xl:grid-cols-3"}`}>
+      <div className={`min-w-0 ${meetingMode ? "" : "xl:col-span-2"}`}>
         <div className="flex flex-wrap gap-0 border-b" style={{ borderColor: "#dde3ea" }}>
           <TabButton active={tab === "kampagnen"} onClick={() => setTab("kampagnen")}>
             Kampagnen ({campaignTotalCount})
@@ -537,15 +544,17 @@ export function ClientDetail({
           )}
         </div>
       </div>
-      <div className="min-w-0 xl:sticky xl:top-4 xl:self-start">
-        <ProjectComments
-          clientId={client.id}
-          comments={project.comments}
-          team={project.team}
-          currentUserId={project.currentUserId}
-          isAdmin={project.isAdmin}
-        />
-      </div>
+      {!meetingMode && (
+        <div className="min-w-0 xl:sticky xl:top-4 xl:self-start">
+          <ProjectComments
+            clientId={client.id}
+            comments={project.comments}
+            team={project.team}
+            currentUserId={project.currentUserId}
+            isAdmin={project.isAdmin}
+          />
+        </div>
+      )}
       </div>
     </div>
   )
@@ -776,6 +785,7 @@ function KandidatenTab({
   candidates: AssignedCandidate[]
   kanzleiCampaigns: KanzleiCampaign[]
 }) {
+  const bb = useBerufsbilder()
   // Sortiert nach Kanzlei-Kampagne; ältere Zuordnungen ohne Kampagne ans Ende.
   const sortedCandidates = [...candidates].sort((a, b) => {
     if (!a.assignmentCampaignTitle !== !b.assignmentCampaignTitle) return a.assignmentCampaignTitle ? -1 : 1
@@ -855,7 +865,7 @@ function KandidatenTab({
                       {c.firstName} {c.lastName}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-gray-600">{berufsbildLabel(c.berufsbild) ?? (c.berufsbild || "—")}</TableCell>
+                  <TableCell className="text-gray-600">{bb.label(c.berufsbild) ?? "—"}</TableCell>
                   <TableCell className="text-gray-600">{c.assignmentCampaignTitle ?? "Kanzlei allgemein"}</TableCell>
                   <TableCell className="text-gray-400">{c.campaignTitle || "—"}</TableCell>
                   <TableCell>

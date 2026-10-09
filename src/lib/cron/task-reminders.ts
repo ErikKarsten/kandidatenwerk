@@ -23,7 +23,8 @@ interface DueTask {
   id: string
   title: string
   due_date: string
-  assigned_to: string
+  assigned_to: string | null
+  assigned_team?: string | null
   candidate_id: string | null
   client_id: string | null
 }
@@ -65,7 +66,7 @@ export async function sendTaskReminders(supabase: Supabase): Promise<TaskReminde
   const today = berlinToday()
   const { data, error } = await supabase
     .from("tasks")
-    .select("id, title, due_date, assigned_to, candidate_id, client_id")
+    .select("id, title, due_date, assigned_to, assigned_team, candidate_id, client_id")
     .eq("status", "offen")
     .not("due_date", "is", null)
     .lte("due_date", today)
@@ -73,8 +74,17 @@ export async function sendTaskReminders(supabase: Supabase): Promise<TaskReminde
   if (error) throw new Error(error.message)
 
   const tasks = (data ?? []) as DueTask[]
+  // Team-Aufgaben (Paket 44) landen in der Sammel-Mail jedes Team-Mitglieds.
+  const teams = [...new Set(tasks.map((t) => t.assigned_team).filter((t): t is string => !!t))]
+  const { data: teamMembers } = teams.length
+    ? await supabase.from("profiles").select("id, team").in("team", teams).in("role", ["agency_admin", "agency_member"])
+    : { data: [] as { id: string; team: string | null }[] }
   const byAssignee = new Map<string, DueTask[]>()
-  for (const t of tasks) byAssignee.set(t.assigned_to, [...(byAssignee.get(t.assigned_to) ?? []), t])
+  const add = (id: string, t: DueTask) => byAssignee.set(id, [...(byAssignee.get(id) ?? []), t])
+  for (const t of tasks) {
+    if (t.assigned_to) add(t.assigned_to, t)
+    else for (const m of teamMembers ?? []) if (m.team === t.assigned_team) add(m.id, t)
+  }
 
   const result: TaskRemindersResult = { dueTasks: tasks.length, mailsSent: 0, skippedNoEmail: 0, errors: 0 }
 

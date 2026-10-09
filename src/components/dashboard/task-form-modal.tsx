@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { createTaskAction } from "@/app/dashboard/tasks/actions"
+import { TEAM_OPTIONS } from "@/lib/teams"
 
 export interface ProfileOption {
   id: string
@@ -104,10 +105,18 @@ export function TaskFormModal({
               className={inputClass}
               style={{ ...inputStyle, backgroundColor: "white" }}
             >
-              <option value="" disabled>Person auswählen…</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{profileLabel(p)}</option>
-              ))}
+              <option value="" disabled>Person oder Team auswählen…</option>
+              {/* Team-Aufgabe (Paket 44): alle Mitglieder sehen sie als ihre Aufgabe. */}
+              <optgroup label="Teams">
+                {TEAM_OPTIONS.map((t) => (
+                  <option key={t.value} value={`team:${t.value}`}>Team {t.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Personen">
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{profileLabel(p)}</option>
+                ))}
+              </optgroup>
             </select>
           </Field>
 

@@ -7,6 +7,7 @@ import { Plus, Trash2 } from "lucide-react"
 import { updateTaskStatusAction, deleteTaskAction } from "./actions"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
 import { TaskAssigneeSelect } from "@/components/dashboard/task-assignee-select"
+import { assigneeValue, isAssignedTo } from "@/lib/teams"
 
 export interface TaskListItem {
   id: string
@@ -16,7 +17,9 @@ export interface TaskListItem {
   due_date: string | null
   created_at: string
   completed_at: string | null
-  assigned_to: string
+  assigned_to: string | null
+  // Team-Aufgabe (Paket 44): statt einer Person ein ganzes Team.
+  assigned_team: string | null
   created_by: string
   candidate_id: string | null
   assigneeName: string | null
@@ -49,10 +52,12 @@ export function TasksList({
   tasks,
   profiles,
   currentUserId,
+  currentUserTeam,
 }: {
   tasks: TaskListItem[]
   profiles: ProfileOption[]
   currentUserId: string
+  currentUserTeam: string | null
 }) {
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("mine")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("offen")
@@ -60,12 +65,12 @@ export function TasksList({
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
-      if (assigneeFilter === "mine" && t.assigned_to !== currentUserId) return false
+      if (assigneeFilter === "mine" && !isAssignedTo(t, currentUserId, currentUserTeam)) return false
       if (assigneeFilter === "created" && t.created_by !== currentUserId) return false
       if (statusFilter !== "alle" && t.status !== statusFilter) return false
       return true
     })
-  }, [tasks, assigneeFilter, statusFilter, currentUserId])
+  }, [tasks, assigneeFilter, statusFilter, currentUserId, currentUserTeam])
 
   return (
     <div className="flex flex-col gap-4">
@@ -190,7 +195,7 @@ function TaskRow({ task, currentUserId, team }: { task: TaskListItem; currentUse
             {isDone ? (
               (task.assigneeName ?? "Unbenannt")
             ) : (
-              <TaskAssigneeSelect taskId={task.id} assignedTo={task.assigned_to} team={team} onError={setError} />
+              <TaskAssigneeSelect taskId={task.id} assignedTo={assigneeValue(task)} team={team} onError={setError} />
             )}
           </span>
           <span>Erstellt von: {task.creatorName ?? "Unbenannt"}</span>
