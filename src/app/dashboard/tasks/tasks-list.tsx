@@ -5,6 +5,7 @@ import { Plus } from "lucide-react"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
 import { TaskItem } from "@/components/dashboard/task-item"
 import { isAssignedTo } from "@/lib/teams"
+import { berlinDate, DUE_FILTER_OPTIONS, matchesDue, type DueFilter } from "@/lib/task-due"
 
 export interface TaskListItem {
   id: string
@@ -54,9 +55,12 @@ export function TasksList({
 }) {
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("mine")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("offen")
+  // Fälligkeit (Paket 48): überfällig, heute, diese Woche, ohne Datum.
+  const [dueFilter, setDueFilter] = useState<DueFilter>("alle")
+  const [today] = useState(() => berlinDate())
   const [modalOpen, setModalOpen] = useState(false)
 
-  const filteredTasks = useMemo(() => {
+  const baseTasks = useMemo(() => {
     return tasks.filter((t) => {
       if (assigneeFilter === "mine" && !isAssignedTo(t, currentUserId, currentUserTeam)) return false
       if (assigneeFilter === "created" && t.created_by !== currentUserId) return false
@@ -64,6 +68,12 @@ export function TasksList({
       return true
     })
   }, [tasks, assigneeFilter, statusFilter, currentUserId, currentUserTeam])
+  const filteredTasks = useMemo(() => baseTasks.filter((t) => matchesDue(t.due_date, dueFilter, today)), [baseTasks, dueFilter, today])
+  // Anzahl je Fälligkeit innerhalb der übrigen Filter, z. B. "Heute (3)".
+  const dueOptions = DUE_FILTER_OPTIONS.map((o) => {
+    const n = baseTasks.filter((t) => matchesDue(t.due_date, o.value, today)).length
+    return { value: o.value, label: o.value === "alle" ? o.label : `${o.label} (${n})` }
+  })
 
   return (
     <div className="flex flex-col gap-4">
@@ -72,6 +82,8 @@ export function TasksList({
           <FilterGroup value={assigneeFilter} options={ASSIGNEE_FILTER_OPTIONS} onChange={setAssigneeFilter} />
           <div className="mx-1 h-5 w-px" style={{ backgroundColor: "#dde3ea" }} />
           <FilterGroup value={statusFilter} options={STATUS_FILTER_OPTIONS} onChange={setStatusFilter} />
+          <div className="mx-1 h-5 w-px" style={{ backgroundColor: "#dde3ea" }} />
+          <FilterGroup value={dueFilter} options={dueOptions} onChange={setDueFilter} />
         </div>
         <button
           onClick={() => setModalOpen(true)}

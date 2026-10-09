@@ -153,16 +153,10 @@ export default async function CandidatesPage({
   return (
     <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Kandidaten</h1>
           <p className="mt-1 text-sm text-gray-500">{totalCount} Einträge</p>
-          {campaignFilter && (
-            <p className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-full px-3 py-1 text-xs font-medium" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
-              Kampagne: {filterCampaign?.title ?? "unbekannt"}
-              <Link href="/dashboard/leads" className="underline">zurück zu den Kampagnen</Link>
-              <Link href="/dashboard/candidates" className="underline">Filter entfernen</Link>
-            </p>
-          )}
+
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -186,6 +180,17 @@ export default async function CandidatesPage({
           </Button>
         </div>
       </div>
+
+      {/* Aus "Kandidaten nach Kampagnen" (Paket 46/48): eigene Zeile, langer Name gekürzt. */}
+      {campaignFilter && (
+        <div className="-mt-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2 text-xs font-medium" style={{ backgroundColor: "#1e56a012", color: "#1e56a0" }}>
+          <span className="min-w-0 max-w-full truncate" title={filterCampaign?.title ?? undefined}>
+            Kampagne: {filterCampaign?.title?.replace(/^\s*ks[\s-]?24\s*[-–|:]\s*/i, "") ?? "unbekannt"}
+          </span>
+          <Link href="/dashboard/leads" className="shrink-0 underline">zurück zu den Kampagnen</Link>
+          <Link href="/dashboard/candidates" className="shrink-0 underline">Filter entfernen</Link>
+        </div>
+      )}
 
       <CandidatesList
         candidates={candidateList}
