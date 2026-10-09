@@ -116,7 +116,7 @@ export function ProfileFieldsEditor({ scope, settings }: { scope: FieldScope; se
         editing?.key === f.key ? (
           <div key={f.key}>{form}</div>
         ) : (
-          <div key={f.key} className="flex flex-wrap items-center gap-2 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "#dde3ea", opacity: f.active ? 1 : 0.55 }}>
+          <div key={f.key} className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "#dde3ea", opacity: f.active ? 1 : 0.55 }}>
             <div className="min-w-0 flex-1">
               <p className="text-sm text-gray-900">
                 {f.label}

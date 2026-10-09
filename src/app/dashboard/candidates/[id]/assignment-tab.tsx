@@ -161,8 +161,8 @@ export function AssignmentTab({
             {activeAssignments.map((a) => {
               const colors = assignmentStatusLabel(a.status)
               return (
-                <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
-                  <div className="min-w-0">
+                <li key={a.id} className="flex items-center justify-between gap-3 rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
+                  <div className="min-w-0 flex-1">
                     <Link href={`/dashboard/clients/${a.clientId}`} className="block truncate text-sm font-medium hover:underline" style={{ color: "#1e56a0" }}>
                       {clientName(a.clientId)}
                     </Link>
@@ -171,7 +171,9 @@ export function AssignmentTab({
                       <span style={{ color: colors.text }}>{colors.label}</span>
                     </p>
                   </div>
-                  <AssignmentControl assignment={a} />
+                  <div className="shrink-0">
+                    <AssignmentControl assignment={a} />
+                  </div>
                 </li>
               )
             })}
@@ -222,8 +224,8 @@ export function AssignmentTab({
                   const assigned = activeAssignments.find((a) => a.clientId === k.id)
                   return (
                     <li key={k.id} className="rounded-lg border p-3" style={{ borderColor: fits ? `${MATCH_COLOR}66` : "#dde3ea" }}>
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
                           <Link href={`/dashboard/clients/${k.id}`} className="block truncate text-sm font-medium hover:underline" style={{ color: fits ? MATCH_COLOR : "#1e56a0" }}>
                             {k.name}
                           </Link>
@@ -248,7 +250,7 @@ export function AssignmentTab({
                           </p>
                         </div>
                         {assigned ? (
-                          <span className="rounded-md px-3 py-1.5 text-xs font-medium" style={{ backgroundColor: "#1a9a6a18", color: "#1a9a6a" }}>
+                          <span className="shrink-0 rounded-md px-3 py-1.5 text-xs font-medium" style={{ backgroundColor: "#1a9a6a18", color: "#1a9a6a" }}>
                             Zugeordnet{assigned.campaignTitle ? ` (${assigned.campaignTitle})` : ""}
                           </span>
                         ) : (
@@ -257,7 +259,7 @@ export function AssignmentTab({
                             disabled={!assignable || assigningId !== null}
                             onClick={() => assign(k.id, target?.id ?? null)}
                             title={target ? `Über Kampagne „${target.title}“` : "Ohne Kampagne (Kanzlei allgemein)"}
-                            className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                            className="shrink-0 rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                             style={{ backgroundColor: "#1e56a0" }}
                           >
                             {assigningId === k.id ? "…" : "Zuordnen"}

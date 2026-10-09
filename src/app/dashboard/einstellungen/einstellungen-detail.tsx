@@ -88,7 +88,8 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
           <TabButton active={tab === "leadanbindung"} onClick={() => setTab("leadanbindung")}>Lead-Anbindung</TabButton>
         </div>
 
-        <div className={tab === "konto" || tab === "team" ? "mt-4 max-w-lg" : "mt-4 max-w-4xl"}>
+        {/* Team breiter (Paket 51), damit Rolle, Team und Aktionen rechts neben dem Namen stehen. */}
+        <div className={tab === "konto" ? "mt-4 max-w-lg" : tab === "team" ? "mt-4 max-w-3xl" : "mt-4 max-w-4xl"}>
           {tab === "konto" && (
             <div className="flex flex-col gap-4">
               <KontoTab ownProfile={ownProfile} />
@@ -479,18 +480,18 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
               {editError && <p className="text-xs text-red-600">{editError}</p>}
             </div>
             ) : (
-            <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
-              <div className="flex min-w-0 items-center gap-3">
+            <div key={m.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <TeamAvatar member={m} />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{m.full_name ?? "—"}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-sm font-medium text-gray-900 [overflow-wrap:anywhere]">{m.full_name ?? "—"}</p>
+                  <p className="text-xs text-gray-500 [overflow-wrap:anywhere]">
                     {[m.email, m.phone].filter(Boolean).join(" · ") || "—"}
                   </p>
 
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex shrink-0 items-center gap-3">
                 <span
                   className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                   style={
@@ -866,7 +867,7 @@ function ZusatzfelderTab({
 
         <div className="flex flex-col gap-2">
           {activeFields.map((field) => (
-            <div key={field.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
+            <div key={field.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
               {editingId === field.id ? (
                 <div className="flex flex-1 items-center gap-2">
                   <input
@@ -980,8 +981,8 @@ function ZusatzfelderTab({
           </p>
           <div className="flex flex-col gap-2">
             {inactiveFields.map((field) => (
-              <div key={field.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5 opacity-60" style={{ borderColor: "#dde3ea" }}>
-                <div className="min-w-0">
+              <div key={field.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 opacity-60" style={{ borderColor: "#dde3ea" }}>
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-gray-900">{field.label}</p>
                   <p className="text-xs text-gray-400">{field.key}</p>
                 </div>
@@ -1015,7 +1016,7 @@ function ZusatzfelderTab({
           <div className="flex flex-col gap-2">
             {reviewQueue.map((entry) => (
               <div key={entry.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-gray-900 truncate">{entry.example_value || "(kein Beispielwert)"}</p>
                   <p className="text-xs text-gray-400">
                     {entry.raw_key} · {entry.occurrences}× gesehen

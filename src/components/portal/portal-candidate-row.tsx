@@ -90,9 +90,9 @@ export function PortalCandidateRow({
         </div>
       </div>
       {confirming && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3" style={{ borderColor: "#eef2f6", backgroundColor: "#fef2f2" }}>
-          <p className="text-xs text-red-800">{name} aus deiner Liste entfernen? Der Kandidat wird dir dann nicht mehr angezeigt.</p>
-          <div className="flex gap-2">
+        <div className="flex items-center justify-between gap-3 border-t px-4 py-3" style={{ borderColor: "#eef2f6", backgroundColor: "#fef2f2" }}>
+          <p className="min-w-0 flex-1 text-xs text-red-800">{name} aus deiner Liste entfernen? Der Kandidat wird dir dann nicht mehr angezeigt.</p>
+          <div className="flex shrink-0 gap-2">
             <button type="button" onClick={() => setConfirming(false)} disabled={pending} className="rounded-md border bg-white px-2.5 py-1 text-xs font-medium text-gray-700" style={{ borderColor: "#dde3ea" }}>
               Abbrechen
             </button>
