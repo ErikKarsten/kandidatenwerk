@@ -105,14 +105,14 @@ function TemplatesCard({ templates }: { templates: AutomationTemplate[] }) {
 
       {templates.length === 0 && <p className="text-sm text-gray-400">Noch keine Vorlagen.</p>}
       {templates.map((t) => (
-        <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900">{t.name}</p>
+        <div key={t.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-gray-900 [overflow-wrap:anywhere]">{t.name}</p>
             <p className="text-xs text-gray-500">
               {automationTriggerLabel(t.trigger, t.trigger_status)} · an {automationRecipientLabel(t.recipient)} · nach {automationDelayLabel(t.delay_seconds)}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <button
               type="button"
               onClick={() => (setEditing({ id: t.id, form: { ...t } }), setError(null))}
@@ -258,8 +258,8 @@ function SetsCard({ templates, sets }: { templates: AutomationTemplate[]; sets: 
       {sets.length === 0 && <p className="text-sm text-gray-400">Noch keine Vorlagensets.</p>}
       {sets.map((s) =>
         editing?.id === s.id ? null : (
-          <div key={s.id} className="flex flex-wrap items-start justify-between gap-2 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
-            <div className="min-w-0">
+          <div key={s.id} className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>
+            <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
                 {s.name}
                 {s.is_default && (
@@ -270,7 +270,7 @@ function SetsCard({ templates, sets }: { templates: AutomationTemplate[]; sets: 
               </p>
               <p className="text-xs text-gray-500">{s.templateIds.map(nameOf).join(" · ") || "leer"}</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-3">
               <button
                 type="button"
                 onClick={() => (setEditing({ id: s.id, name: s.name, isDefault: s.is_default, templateIds: s.templateIds }), setError(null))}

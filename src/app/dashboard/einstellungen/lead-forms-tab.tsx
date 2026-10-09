@@ -33,8 +33,8 @@ export function LeadFormsTab({ forms, fields, isAdmin }: { forms: LeadFormOvervi
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#dde3ea" }}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold text-gray-900">Lead-Formulare</h2>
             <p className="mt-1 max-w-2xl text-xs text-gray-500">
               Für jedes Meta-Formular legst du fest, in welches Kandidatenfeld die Antwort auf jede Frage kommt. Neue
@@ -46,7 +46,7 @@ export function LeadFormsTab({ forms, fields, isAdmin }: { forms: LeadFormOvervi
             <button
               onClick={handleSync}
               disabled={pending}
-              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               style={{ backgroundColor: "#1e56a0" }}
             >
               <RefreshCw size={13} className={pending ? "animate-spin" : undefined} />

@@ -102,13 +102,13 @@ function OnboardingBanner({ clientId, profile, missing }: { clientId: string; pr
 
   if (profile?.finalized_at) {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3" style={{ borderColor: "#1a9a6a55", backgroundColor: "#1a9a6a0d" }}>
-        <p className="flex items-center gap-2 text-sm" style={{ color: "#1a9a6a" }}>
-          <CheckCircle2 size={16} />
+      <div className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3" style={{ borderColor: "#1a9a6a55", backgroundColor: "#1a9a6a0d" }}>
+        <p className="flex min-w-0 flex-1 items-center gap-2 text-sm" style={{ color: "#1a9a6a" }}>
+          <CheckCircle2 size={16} className="shrink-0" />
           Kanzleiprofil abgeschlossen am {new Date(profile.finalized_at).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}
           {profile.finalized_by_name ? ` von ${profile.finalized_by_name}` : ""}
         </p>
-        <button type="button" onClick={() => toggle(false)} disabled={pending} className="text-xs text-gray-500 hover:underline">
+        <button type="button" onClick={() => toggle(false)} disabled={pending} className="shrink-0 text-xs text-gray-500 hover:underline">
           Wieder öffnen
         </button>
       </div>

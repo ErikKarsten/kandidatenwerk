@@ -44,8 +44,8 @@ export function KanzleistelleCard({ clientId, status }: { clientId: string; stat
       }.`
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white px-5 py-4" style={{ borderColor: "#dde3ea" }}>
-      <div className="min-w-0">
+    <div className="flex items-center justify-between gap-3 rounded-xl border bg-white px-5 py-4" style={{ borderColor: "#dde3ea" }}>
+      <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-gray-900">Kanzleistelle24</p>
         <p className="text-xs text-gray-500">{statusText}</p>
         {status.error && !message && (
@@ -63,7 +63,7 @@ export function KanzleistelleCard({ clientId, status }: { clientId: string; stat
         type="button"
         onClick={handleClick}
         disabled={pending || !status.finalized}
-        className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
         style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
       >
         <Globe size={12} className={pending ? "animate-spin" : undefined} />

@@ -103,11 +103,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <p className="mb-3 text-xs text-gray-500">Kunden in der Phase Onboarding, deren Kanzleiprofil noch nicht abgeschlossen ist.</p>
           <ul className="flex flex-col divide-y" style={{ borderColor: "#eef2f6" }}>
             {onboardingOpen.slice(0, 8).map((c) => (
-              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                <Link href={`/dashboard/clients/${c.id}?tab=projekt`} className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
+              <li key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <Link href={`/dashboard/clients/${c.id}?tab=projekt`} className="min-w-0 flex-1 font-medium hover:underline [overflow-wrap:anywhere]" style={{ color: "#1e56a0" }}>
                   {c.name}
                 </Link>
-                <span className="text-xs text-gray-500">
+                <span className="shrink-0 text-right text-xs text-gray-500">
                   {kamName(c.key_account_manager_id) ? `KAM: ${kamName(c.key_account_manager_id)}` : "Kein KAM"} · seit{" "}
                   {new Date(c.created_at).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}
                 </span>

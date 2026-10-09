@@ -126,8 +126,8 @@ export function CommunicationTab({
               marginRight: m.direction === "eingehend" ? 24 : 0,
             }}
           >
-            <button type="button" onClick={() => setOpenId(openId === m.id ? null : m.id)} className="flex w-full flex-wrap items-center justify-between gap-2 text-left">
-              <span className="text-sm font-medium text-gray-900">
+            <button type="button" onClick={() => setOpenId(openId === m.id ? null : m.id)} className="flex w-full items-center justify-between gap-3 text-left">
+              <span className="min-w-0 flex-1 text-sm font-medium text-gray-900 [overflow-wrap:anywhere]">
                 {m.direction === "eingehend" && (
                   <span className="mr-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
                     Antwort
@@ -135,7 +135,7 @@ export function CommunicationTab({
                 )}
                 {m.subject || "(ohne Betreff)"}
               </span>
-              <span className="text-xs text-gray-500">
+              <span className="shrink-0 text-xs text-gray-500">
                 {new Date(m.createdAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}
                 {m.direction === "eingehend" ? (m.fromAddress ? ` · von ${m.fromAddress}` : "") : m.senderName ? ` · ${m.senderName}` : ""}
                 {m.status === "fehler" ? " · fehlgeschlagen" : ""}

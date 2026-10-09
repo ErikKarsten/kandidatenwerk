@@ -215,8 +215,8 @@ export function CandidatePanel({
                 ) : (
                   <ul className="flex flex-col gap-1 text-sm">
                     {current.assignments.map((a) => (
-                      <li key={a.id} className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="min-w-0">
+                      <li key={a.id} className="flex items-center justify-between gap-3">
+                        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                           <Link href={`/dashboard/clients/${a.clientId}`} className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
                             {a.clientName}
                           </Link>
