@@ -29,6 +29,8 @@ import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
 import { AvailableCandidatesPanel } from "./available-candidates-panel"
+import { useMeetingMode } from "@/lib/meeting-mode"
+import { MeetingModeToggle } from "@/components/dashboard/meeting-mode-toggle"
 import type { AutomationTemplate, AutomationTemplateSet } from "../../einstellungen/automation-template-actions"
 import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"
 import { useBerufsbilder } from "@/components/berufsbild-context"
@@ -138,7 +140,11 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
   const bb = useBerufsbilder()
   const isKanzleiCampaign = campaign.kind === "kanzlei"
   const berufsbildLabel = (value: string | null) => bb.label(value) ?? "—"
-  const [tab, setTab] = useState<"kandidaten" | "matches" | "einrichtung" | "automatisierungen">("kandidaten")
+  const [selectedTab, setTab] = useState<"kandidaten" | "matches" | "einrichtung" | "automatisierungen">("kandidaten")
+  // Terminmodus (Paket 49, vom Kunden übernommen): nur der Reiter Kandidaten, keine
+  // Verwaltungs-Aktionen.
+  const [meetingMode, setMeetingMode] = useMeetingMode()
+  const tab = meetingMode ? "kandidaten" : selectedTab
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [selectedOption, setSelectedOption] = useState<CandidateOption | null>(null)
   const [modalError, setModalError] = useState<string | null>(null)
@@ -604,14 +610,17 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
             </div>
             <p className="text-sm text-gray-500">
               {campaign.client?.name ?? "Kein Kunde"}
-              {campaign.meta_campaign_id ? ` · Meta-ID: ${campaign.meta_campaign_id}` : ""}
+              {campaign.meta_campaign_id && !meetingMode ? ` · Meta-ID: ${campaign.meta_campaign_id}` : ""}
             </p>
             {campaign.description && (
               <p className="mt-1 text-sm text-gray-600">{campaign.description}</p>
             )}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {(campaign.kind === "kanzlei" || meetingMode) && <MeetingModeToggle on={meetingMode} onChange={setMeetingMode} />}
+            {!meetingMode && (
+            <>
             <button
               onClick={openDuplicateModal}
               className="rounded-md border px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -639,6 +648,8 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                 Kandidat anlegen
               </Link>
             </Button>
+            </>
+            )}
           </div>
         </div>
       </div>
@@ -651,22 +662,26 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
             ({candidates.length})
           </span>
         </TabButton>
-        {campaign.kind === "kanzlei" && (
+        {campaign.kind === "kanzlei" && !meetingMode && (
           <TabButton active={tab === "matches"} onClick={() => setTab("matches")}>
             Passende Kandidaten
           </TabButton>
         )}
-        <TabButton active={tab === "einrichtung"} onClick={() => setTab("einrichtung")}>
-          Einrichtung
-        </TabButton>
-        <TabButton active={tab === "automatisierungen"} onClick={() => setTab("automatisierungen")}>
-          Automatisierungen{" "}
-          {automations.length > 0 && (
-            <span className="ml-1 text-xs font-normal" style={{ opacity: 0.7 }}>
-              ({automations.length})
-            </span>
-          )}
-        </TabButton>
+        {!meetingMode && (
+          <>
+            <TabButton active={tab === "einrichtung"} onClick={() => setTab("einrichtung")}>
+              Einrichtung
+            </TabButton>
+            <TabButton active={tab === "automatisierungen"} onClick={() => setTab("automatisierungen")}>
+              Automatisierungen{" "}
+              {automations.length > 0 && (
+                <span className="ml-1 text-xs font-normal" style={{ opacity: 0.7 }}>
+                  ({automations.length})
+                </span>
+              )}
+            </TabButton>
+          </>
+        )}
       </div>
 
       {/* Kandidaten-Tab */}

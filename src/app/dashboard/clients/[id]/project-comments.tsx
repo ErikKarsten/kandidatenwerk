@@ -2,10 +2,10 @@
 
 import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { ListPlus, Paperclip, Pencil, Trash2 } from "lucide-react"
-import { addCommentAction, deleteCommentAction, getCommentFileUrlAction, updateCommentAction } from "./project-actions"
+import { ChevronDown, ChevronUp, ListPlus, MessageSquare, Paperclip, Pencil, SmilePlus, ThumbsUp, Trash2 } from "lucide-react"
+import { addCommentAction, deleteCommentAction, getCommentFileUrlAction, toggleCommentReactionAction, updateCommentAction } from "./project-actions"
 import { TaskFormModal } from "@/components/dashboard/task-form-modal"
-import { parseCommentLines, splitLinks, taskTitleFromLine } from "@/lib/comment-text"
+import { parseCommentLines, splitLinks, splitMentions, taskTitleFromLine } from "@/lib/comment-text"
 
 export interface ProjectComment {
   id: string
@@ -15,11 +15,16 @@ export interface ProjectComment {
   content: string
   createdAt: string
   editedAt: string | null
+  // Antwort auf diesen Kommentar (Paket 50); null = oberster Kommentar.
+  parentId: string | null
+  reactions: { emoji: string; userId: string }[]
   files: { id: string; name: string; path: string }[]
 }
 
+type TeamMember = { id: string; full_name: string | null }
+
 const KIND_STYLE: Record<string, { label: string; color: string }> = {
-  notiz: { label: "Notiz", color: "#6b7280" },
+  notiz: { label: "Notiz", color: "#6366f1" },
   termin: { label: "Termin", color: "#1e56a0" },
   telefonat: { label: "Telefonat", color: "#1a9a6a" },
   email: { label: "E-Mail", color: "#8b5cf6" },
@@ -27,12 +32,32 @@ const KIND_STYLE: Record<string, { label: string; color: string }> = {
   system: { label: "System", color: "#9ca3af" },
 }
 
+const EMOJIS = ["👍", "❤️", "🎉", "👀", "✅"]
+const AVATAR_COLORS = ["#1e56a0", "#7c3aed", "#0e7490", "#b45309", "#be185d", "#15803d", "#4338ca"]
+
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
 }
 
-// Kommentare im Projekt-Reiter (Paket 9): mit Art, Anhängen und @Erwähnung (Mail an
-// die erwähnte Person). Eigene Kommentare bearbeiten/löschen, Admins alle.
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join("") || "?"
+}
+
+function Avatar({ name, size = 28 }: { name: string; size?: number }) {
+  const color = AVATAR_COLORS[[...name].reduce((n, ch) => n + ch.charCodeAt(0), 0) % AVATAR_COLORS.length]
+  return (
+    <span
+      className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white"
+      style={{ width: size, height: size, fontSize: size * 0.4, backgroundColor: color }}
+      title={name}
+    >
+      {initials(name)}
+    </span>
+  )
+}
+
+// Kommentare im Projekt-Reiter (Paket 9, überarbeitet in Paket 50): jeder Kommentar als
+// eigene Karte mit hervorgehobenen @Erwähnungen, Reaktionen und ein-/ausklappbaren Antworten.
 export function ProjectComments({
   clientId,
   comments,
@@ -42,9 +67,44 @@ export function ProjectComments({
 }: {
   clientId: string
   comments: ProjectComment[]
-  team: { id: string; full_name: string | null }[]
+  team: TeamMember[]
   currentUserId: string
   isAdmin: boolean
+}) {
+  const topLevel = comments.filter((c) => !c.parentId)
+  const repliesOf = (id: string) => comments.filter((c) => c.parentId === id).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
+      <h3 className="text-sm font-semibold text-gray-900">Kommentare</h3>
+      <CommentComposer clientId={clientId} team={team} currentUserId={currentUserId} allowFiles />
+      <div className="flex flex-col gap-3 border-t pt-3" style={{ borderColor: "#eef2f6" }}>
+        {topLevel.length === 0 && <p className="text-sm text-gray-400">Noch keine Kommentare.</p>}
+        {topLevel.map((c) => (
+          <CommentThread key={c.id} clientId={clientId} comment={c} replies={repliesOf(c.id)} team={team} currentUserId={currentUserId} isAdmin={isAdmin} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Eingabe mit @Erwähnung (Mail an die erwähnte Person) - für neue Kommentare und Antworten.
+function CommentComposer({
+  clientId,
+  team,
+  currentUserId,
+  parentId,
+  allowFiles = false,
+  autoFocus = false,
+  onDone,
+}: {
+  clientId: string
+  team: TeamMember[]
+  currentUserId: string
+  parentId?: string
+  allowFiles?: boolean
+  autoFocus?: boolean
+  onDone?: () => void
 }) {
   const router = useRouter()
   const [content, setContent] = useState("")
@@ -86,6 +146,7 @@ export function ProjectComments({
     fd.append("content", content)
     fd.append("kind", "notiz")
     fd.append("mentions", JSON.stringify(mentions))
+    if (parentId) fd.append("parent_id", parentId)
     for (const f of files) fd.append("files", f)
     startTransition(async () => {
       const result = await addCommentAction(clientId, fd)
@@ -93,80 +154,206 @@ export function ProjectComments({
       setContent("")
       setFiles([])
       if (fileInput.current) fileInput.current.value = ""
+      onDone?.()
       router.refresh()
     })
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
-      <h3 className="text-sm font-semibold text-gray-900">Kommentare</h3>
-
-      <div className="relative flex flex-col gap-2">
-        <textarea
-          ref={textarea}
-          value={content}
-          onChange={(e) => handleChange(e.target.value, e.target.selectionStart)}
-          onKeyDown={(e) => {
-            if (suggestions.length > 0 && (e.key === "Enter" || e.key === "Tab")) {
-              e.preventDefault()
-              insertMention(suggestions[0].full_name!)
-            } else if (e.key === "Escape") setMentionQuery(null)
-          }}
-          onBlur={() => setTimeout(() => setMentionQuery(null), 150)}
-          rows={3}
-          placeholder="Kommentar schreiben … Kollegen mit @Name erwähnen"
-          className="w-full rounded-md border px-3 py-2 text-sm"
-          style={{ borderColor: "#dde3ea" }}
-        />
-        {suggestions.length > 0 && (
-          <ul className="absolute left-2 top-full z-10 -mt-1 w-56 overflow-hidden rounded-md border bg-white text-sm shadow-lg" style={{ borderColor: "#dde3ea" }}>
-            {suggestions.map((t) => (
-              <li key={t.id}>
-                <button type="button" onMouseDown={(e) => (e.preventDefault(), insertMention(t.full_name!))} className="w-full px-3 py-1.5 text-left hover:bg-gray-50">
-                  @{t.full_name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="relative flex flex-col gap-2">
+      <textarea
+        ref={textarea}
+        value={content}
+        autoFocus={autoFocus}
+        onChange={(e) => handleChange(e.target.value, e.target.selectionStart)}
+        onKeyDown={(e) => {
+          if (suggestions.length > 0 && (e.key === "Enter" || e.key === "Tab")) {
+            e.preventDefault()
+            insertMention(suggestions[0].full_name!)
+          } else if (e.key === "Escape") setMentionQuery(null)
+        }}
+        onBlur={() => setTimeout(() => setMentionQuery(null), 150)}
+        rows={parentId ? 2 : 3}
+        placeholder={parentId ? "Antworten … Kollegen mit @Name erwähnen" : "Kommentar schreiben … Kollegen mit @Name erwähnen"}
+        className="w-full rounded-md border bg-white px-3 py-2 text-sm"
+        style={{ borderColor: "#dde3ea" }}
+      />
+      {suggestions.length > 0 && (
+        <ul className="absolute left-2 top-full z-10 -mt-1 w-56 overflow-hidden rounded-md border bg-white text-sm shadow-lg" style={{ borderColor: "#dde3ea" }}>
+          {suggestions.map((t) => (
+            <li key={t.id}>
+              <button type="button" onMouseDown={(e) => (e.preventDefault(), insertMention(t.full_name!))} className="w-full px-3 py-1.5 text-left hover:bg-gray-50">
+                @{t.full_name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {allowFiles && (
           <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-gray-600 hover:text-gray-900">
             <Paperclip size={13} />
             {files.length > 0 ? `${files.length} Datei${files.length === 1 ? "" : "en"}` : "Anhang"}
             <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
           </label>
+        )}
+        {mentions.length > 0 && (
+          <span className="text-xs text-gray-500">Benachrichtigt: {mentions.map((id) => team.find((t) => t.id === id)?.full_name ?? "?").join(", ")}</span>
+        )}
+        <span className="ml-auto flex items-center gap-2">
+          {onDone && (
+            <button type="button" onClick={onDone} className="text-xs text-gray-500 hover:underline">
+              Abbrechen
+            </button>
+          )}
           <button
             type="button"
             onClick={handleSubmit}
             disabled={pending || (!content.trim() && files.length === 0)}
-            className="ml-auto rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+            className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
             style={{ backgroundColor: "#1e56a0" }}
           >
-            {pending ? "Speichert…" : "Kommentieren"}
+            {pending ? "Speichert…" : parentId ? "Antworten" : "Kommentieren"}
           </button>
-        </div>
-        {mentions.length > 0 && (
-          <p className="text-xs text-gray-500">
-            Benachrichtigt per Mail: {mentions.map((id) => team.find((t) => t.id === id)?.full_name ?? "?").join(", ")}
-          </p>
-        )}
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        </span>
       </div>
-
-      <div className="flex flex-col gap-3 border-t pt-3" style={{ borderColor: "#eef2f6" }}>
-        {comments.length === 0 && <p className="text-sm text-gray-400">Noch keine Kommentare.</p>}
-        {comments.map((c) => (
-          <CommentItem
-            key={c.id}
-            clientId={clientId}
-            comment={c}
-            canEdit={c.kind !== "system" && (c.authorId === currentUserId || isAdmin)}
-            team={team}
-            currentUserId={currentUserId}
-          />
-        ))}
-      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
+  )
+}
+
+// Ein oberster Kommentar als Karte mit Reaktionen und Antworten.
+function CommentThread({
+  clientId,
+  comment,
+  replies,
+  team,
+  currentUserId,
+  isAdmin,
+}: {
+  clientId: string
+  comment: ProjectComment
+  replies: ProjectComment[]
+  team: TeamMember[]
+  currentUserId: string
+  isAdmin: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [replying, setReplying] = useState(false)
+  const style = KIND_STYLE[comment.kind] ?? KIND_STYLE.notiz
+  const replyAuthors = [...new Set(replies.map((r) => r.authorName))]
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-white shadow-sm" style={{ borderColor: "#e5e7eb", borderLeft: `3px solid ${style.color}` }}>
+      <div className="p-3">
+        <CommentItem clientId={clientId} comment={comment} canEdit={comment.kind !== "system" && (comment.authorId === currentUserId || isAdmin)} team={team} currentUserId={currentUserId} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2 border-t px-3 py-1.5" style={{ borderColor: "#f1f5f9" }}>
+        <Reactions clientId={clientId} comment={comment} team={team} currentUserId={currentUserId} />
+        <span className="ml-auto flex items-center gap-3">
+          {replies.length > 0 && (
+            <button type="button" onClick={() => setExpanded(!expanded)} className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900">
+              {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              {replies.length} {replies.length === 1 ? "Antwort" : "Antworten"}
+              <span className="flex -space-x-1.5">
+                {replyAuthors.slice(0, 3).map((n) => (
+                  <Avatar key={n} name={n} size={18} />
+                ))}
+              </span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setReplying(true)
+              setExpanded(true)
+            }}
+            className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-900"
+          >
+            <MessageSquare size={13} /> Antworten
+          </button>
+        </span>
+      </div>
+      {expanded && (replies.length > 0 || replying) && (
+        <div className="flex flex-col gap-2 border-t px-3 py-2.5" style={{ borderColor: "#f1f5f9", backgroundColor: "#f8fafc" }}>
+          {replies.map((r) => (
+            <div key={r.id} className="rounded-md border bg-white" style={{ borderColor: "#e5e7eb" }}>
+              <div className="p-2.5">
+                <CommentItem clientId={clientId} comment={r} canEdit={r.authorId === currentUserId || isAdmin} team={team} currentUserId={currentUserId} compact />
+              </div>
+              <div className="border-t px-2.5 py-1" style={{ borderColor: "#f1f5f9" }}>
+                <Reactions clientId={clientId} comment={r} team={team} currentUserId={currentUserId} />
+              </div>
+            </div>
+          ))}
+          {replying ? (
+            <CommentComposer clientId={clientId} team={team} currentUserId={currentUserId} parentId={comment.id} autoFocus onDone={() => setReplying(false)} />
+          ) : (
+            <button type="button" onClick={() => setReplying(true)} className="w-fit text-xs font-medium hover:underline" style={{ color: "#1e56a0" }}>
+              Antworten
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Reaktionen: vorhandene als Chips (eigene hervorgehoben), Daumen per Klick, weitere über
+// die Auswahl.
+function Reactions({ clientId, comment, team, currentUserId }: { clientId: string; comment: ProjectComment; team: TeamMember[]; currentUserId: string }) {
+  const router = useRouter()
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pending, startTransition] = useTransition()
+  const nameOf = (id: string) => team.find((t) => t.id === id)?.full_name ?? "Unbekannt"
+  const grouped = EMOJIS.map((emoji) => ({ emoji, users: comment.reactions.filter((r) => r.emoji === emoji).map((r) => r.userId) })).filter((g) => g.users.length > 0)
+  const hasThumb = grouped.some((g) => g.emoji === "👍")
+
+  function toggle(emoji: string) {
+    setPickerOpen(false)
+    startTransition(async () => {
+      await toggleCommentReactionAction(clientId, comment.id, emoji)
+      router.refresh()
+    })
+  }
+
+  return (
+    <span className="relative flex flex-wrap items-center gap-1.5">
+      {grouped.map((g) => {
+        const mine = g.users.includes(currentUserId)
+        return (
+          <button
+            key={g.emoji}
+            type="button"
+            disabled={pending}
+            onClick={() => toggle(g.emoji)}
+            title={g.users.map(nameOf).join(", ")}
+            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs disabled:opacity-60"
+            style={mine ? { borderColor: "#a5b4fc", backgroundColor: "#eef2ff", color: "#3730a3" } : { borderColor: "#e5e7eb", color: "#374151" }}
+          >
+            <span>{g.emoji}</span>
+            <span className="font-medium">{g.users.length}</span>
+          </button>
+        )
+      })}
+      {!hasThumb && (
+        <button type="button" disabled={pending} onClick={() => toggle("👍")} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Daumen hoch" title="Daumen hoch">
+          <ThumbsUp size={14} />
+        </button>
+      )}
+      <button type="button" onClick={() => setPickerOpen(!pickerOpen)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Reaktion hinzufügen" title="Reaktion hinzufügen">
+        <SmilePlus size={14} />
+      </button>
+      {pickerOpen && (
+        <span className="absolute left-0 top-full z-20 mt-1 flex gap-1 rounded-lg border bg-white p-1 shadow-lg" style={{ borderColor: "#e5e7eb" }}>
+          {EMOJIS.map((e) => (
+            <button key={e} type="button" onClick={() => toggle(e)} className="rounded px-1.5 py-0.5 text-base hover:bg-gray-100">
+              {e}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -176,12 +363,14 @@ function CommentItem({
   canEdit,
   team,
   currentUserId,
+  compact = false,
 }: {
   clientId: string
   comment: ProjectComment
   canEdit: boolean
-  team: { id: string; full_name: string | null }[]
+  team: TeamMember[]
   currentUserId: string
+  compact?: boolean
 }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
@@ -191,6 +380,7 @@ function CommentItem({
   const style = KIND_STYLE[comment.kind] ?? KIND_STYLE.notiz
   // Aufgabe aus einem Punkt der Gesprächszusammenfassung (Paket 30, T-120).
   const [taskFrom, setTaskFrom] = useState<string | null>(null)
+  const names = team.map((t) => t.full_name).filter((n): n is string => !!n)
 
   function save() {
     setError(null)
@@ -218,18 +408,21 @@ function CommentItem({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div className="group flex min-w-0 flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="font-medium text-gray-900">{comment.authorName}</span>
-        <span className="rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: `${style.color}18`, color: style.color }}>
-          {style.label}
-        </span>
+        <Avatar name={comment.authorName} size={compact ? 22 : 28} />
+        <span className={`font-semibold text-gray-900 ${compact ? "text-xs" : "text-sm"}`}>{comment.authorName}</span>
         <span className="text-gray-400">
           {formatTime(comment.createdAt)}
           {comment.editedAt ? " · bearbeitet" : ""}
         </span>
+        {comment.kind !== "notiz" && (
+          <span className="rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: `${style.color}18`, color: style.color }}>
+            {style.label}
+          </span>
+        )}
         {canEdit && !editing && (
-          <span className="ml-auto flex items-center gap-1">
+          <span className="ml-auto flex items-center gap-1 opacity-60 group-hover:opacity-100">
             <button type="button" onClick={() => setEditing(true)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Bearbeiten">
               <Pencil size={12} />
             </button>
@@ -252,7 +445,7 @@ function CommentItem({
           </div>
         </div>
       ) : (
-        <CommentBody comment={comment} onCreateTask={setTaskFrom} />
+        <CommentBody comment={comment} names={names} onCreateTask={setTaskFrom} />
       )}
       {comment.files.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -284,7 +477,7 @@ function CommentItem({
 // werden gegliedert (Paket 35): Titelzeile, Zwischenüberschriften (Kurzfazit, Besprochen,
 // Vereinbart / nächste Schritte, Offene Fragen), Aufzählungen und "In Close ansehen" als
 // Link. Punkte unter nächsten Schritten und offenen Fragen haben einen Knopf "Aufgabe".
-function LinkedText({ text }: { text: string }) {
+function LinkedText({ text, names = [] }: { text: string; names?: string[] }) {
   return (
     <>
       {splitLinks(text).map((part, j) =>
@@ -293,14 +486,23 @@ function LinkedText({ text }: { text: string }) {
             {part.value}
           </a>
         ) : (
-          <span key={j}>{part.value}</span>
+          // @Erwähnungen hervorheben (Paket 50).
+          splitMentions(part.value, names).map((m, k) =>
+            m.type === "mention" ? (
+              <span key={`${j}-${k}`} className="rounded px-1 font-medium" style={{ backgroundColor: "#ede9fe", color: "#6d28d9" }}>
+                @{m.value}
+              </span>
+            ) : (
+              <span key={`${j}-${k}`}>{m.value}</span>
+            )
+          )
         )
       )}
     </>
   )
 }
 
-function CommentBody({ comment, onCreateTask }: { comment: ProjectComment; onCreateTask: (line: string) => void }) {
+function CommentBody({ comment, names, onCreateTask }: { comment: ProjectComment; names: string[]; onCreateTask: (line: string) => void }) {
   const structured = comment.kind === "gespraech" || comment.kind === "telefonat"
   const lines = parseCommentLines(comment.content, structured)
   return (
@@ -328,7 +530,7 @@ function CommentBody({ comment, onCreateTask }: { comment: ProjectComment; onCre
             <div key={i} className="group mt-1 flex items-start gap-2">
               <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400" />
               <p className="min-w-0 flex-1 whitespace-pre-wrap">
-                <LinkedText text={line.text} />
+                <LinkedText text={line.text} names={names} />
               </p>
               {line.actionable && (
                 <button
@@ -345,7 +547,7 @@ function CommentBody({ comment, onCreateTask }: { comment: ProjectComment; onCre
           )
         return (
           <p key={i} className="whitespace-pre-wrap">
-            <LinkedText text={line.text} />
+            <LinkedText text={line.text} names={names} />
           </p>
         )
       })}

@@ -33,3 +33,17 @@ describe("Kommentartexte", () => {
     expect(taskTitleFromLine("- " + "a".repeat(200))).toHaveLength(118)
   })
 })
+
+describe("splitMentions", () => {
+  it("hebt erwähnte Team-Mitglieder hervor, längere Namen zuerst", async () => {
+    const { splitMentions } = await import("@/lib/comment-text")
+    expect(splitMentions("Hallo @Elea Günther und @Noah Giesecke!", ["Noah Giesecke", "Elea Günther"])).toEqual([
+      { type: "text", value: "Hallo " },
+      { type: "mention", value: "Elea Günther" },
+      { type: "text", value: " und " },
+      { type: "mention", value: "Noah Giesecke" },
+      { type: "text", value: "!" },
+    ])
+    expect(splitMentions("ohne", [])).toEqual([{ type: "text", value: "ohne" }])
+  })
+})

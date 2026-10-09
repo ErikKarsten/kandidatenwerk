@@ -73,3 +73,23 @@ export function taskTitleFromLine(line: string): string {
   const clean = line.replace(/^\s*[-•*]\s+/, "").trim()
   return clean.length > 120 ? `${clean.slice(0, 117).trimEnd()}…` : clean
 }
+
+// "@Vorname Nachname" von Team-Mitgliedern hervorheben (Paket 50). Längere Namen zuerst,
+// damit "@Anna Maria Schulz" nicht als "@Anna Maria" erkannt wird.
+export type MentionPart = { type: "text"; value: string } | { type: "mention"; value: string }
+
+export function splitMentions(text: string, names: string[]): MentionPart[] {
+  const sorted = [...new Set(names.filter(Boolean))].sort((a, b) => b.length - a.length)
+  if (sorted.length === 0) return [{ type: "text", value: text }]
+  const escaped = sorted.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  const re = new RegExp(`@(${escaped.join("|")})`, "g")
+  const parts: MentionPart[] = []
+  let last = 0
+  for (const m of text.matchAll(re)) {
+    if (m.index! > last) parts.push({ type: "text", value: text.slice(last, m.index) })
+    parts.push({ type: "mention", value: m[1] })
+    last = m.index! + m[0].length
+  }
+  if (last < text.length) parts.push({ type: "text", value: text.slice(last) })
+  return parts
+}
