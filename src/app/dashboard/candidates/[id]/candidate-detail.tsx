@@ -7,6 +7,8 @@ import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import {
   saveDescriptionAction,
   saveOpenQuestionsAction,
+  saveCvWerdegangAction,
+  enrichCvWerdegangAction,
   addNoteAction,
   archiveCandidateAction,
   deleteCandidateAction,
@@ -55,6 +57,7 @@ interface Candidate {
   source: string
   notes: string | null
   offene_fragen: string | null
+  cv_werdegang: string | null
   tags: string[]
   description: string | null
   berufsbild: string | null
@@ -350,6 +353,8 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             )}
             {tab === "zuordnung" && (
               <AssignmentTab
+                candidateId={candidate.id}
+                candidateStatus={candidate.status}
                 candidateName={`${candidate.first_name} ${candidate.last_name}`.trim()}
                 berufsbild={candidate.berufsbild}
                 selfLat={candidate.lat}
@@ -399,6 +404,16 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             label="Offene Fragen aus Bewerberrunde"
             placeholder="Was möchte der Kandidat vom neuen Arbeitgeber wissen?"
             save={saveOpenQuestionsAction}
+          />
+          {/* Werdegang für den Lebenslauf (Paket 43): Stationen der letzten zehn Jahre. */}
+          <DescriptionSection
+            key={candidate.cv_werdegang ?? ""}
+            candidateId={candidate.id}
+            notes={candidate.cv_werdegang}
+            label="Werdegang für den Lebenslauf"
+            placeholder={"Stationen der letzten 10 Jahre, je Station eine Zeile „Zeitraum · Position · Arbeitgeber (neutral)“, darunter Aufgaben mit „- “.\nLeer lassen oder Stichworte eintragen und „Mit KI anreichern“ wählen."}
+            save={saveCvWerdegangAction}
+            enrich={enrichCvWerdegangAction}
           />
           <NoteSection candidateId={candidate.id} />
           <HistorySection
@@ -485,12 +500,15 @@ function DescriptionSection({
   label = "Beschreibung",
   placeholder = "Notizen zum Kandidaten…",
   save = saveDescriptionAction,
+  enrich,
 }: {
   candidateId: string
   notes: string | null
   label?: string
   placeholder?: string
   save?: (candidateId: string, text: string) => Promise<{ error: string } | null>
+  // Optional: Text per KI erzeugen bzw. anreichern (speichert selbst).
+  enrich?: (candidateId: string) => Promise<{ error: string } | { text: string }>
 }) {
   const router = useRouter()
   const [value, setValue] = useState(notes ?? "")
@@ -505,6 +523,26 @@ function DescriptionSection({
     el.style.height = "auto"
     el.style.height = `${el.scrollHeight + 2}px`
   }, [value])
+
+  function handleEnrich() {
+    if (!enrich) return
+    setError(null)
+    startTransition(async () => {
+      // Erst den aktuellen Stand speichern, damit die KI ihn als Quelle nutzt.
+      const saved = await save(candidateId, value)
+      if (saved?.error) {
+        setError(saved.error)
+        return
+      }
+      const result = await enrich(candidateId)
+      if ("error" in result) {
+        setError(result.error)
+        return
+      }
+      setValue(result.text)
+      router.refresh()
+    })
+  }
 
   function handleSave() {
     setError(null)
@@ -537,8 +575,19 @@ function DescriptionSection({
         className="mt-2 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         style={{ backgroundColor: "#1e56a0" }}
       >
-        {pending ? "Wird gespeichert…" : "Speichern"}
+        {pending ? (enrich ? "Bitte warten…" : "Wird gespeichert…") : "Speichern"}
       </button>
+      {enrich && (
+        <button
+          type="button"
+          onClick={handleEnrich}
+          disabled={pending}
+          className="ml-2 mt-2 rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+          style={{ borderColor: "#1e56a0", color: "#1e56a0" }}
+        >
+          {pending ? "KI arbeitet (ca. 1 Minute)…" : "Mit KI anreichern"}
+        </button>
+      )}
     </div>
   )
 }

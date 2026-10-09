@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { generateWerdegang } from "@/lib/cv-werdegang"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getStaffContext, requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
@@ -504,4 +505,32 @@ export async function updateCandidateTagsAction(candidateId: string, tags: strin
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   revalidatePath("/dashboard/candidates")
   return null
+}
+
+// Werdegang für den Lebenslauf (Paket 43): von Hand speichern oder per KI ausformulieren
+// und um typische Aufgaben des Berufsbilds anreichern.
+export async function saveCvWerdegangAction(candidateId: string, text: string): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+  const { error } = await supabase.from("candidates").update({ cv_werdegang: text.trim() || null }).eq("id", candidateId)
+  if (error) return { error: error.message }
+  revalidatePath(`/dashboard/candidates/${candidateId}`)
+  revalidatePath(`/lebenslauf/${candidateId}`)
+  return null
+}
+
+export async function enrichCvWerdegangAction(candidateId: string): Promise<{ error: string } | { text: string }> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+  try {
+    const text = await generateWerdegang(supabase, candidateId)
+    revalidatePath(`/dashboard/candidates/${candidateId}`)
+    revalidatePath(`/lebenslauf/${candidateId}`)
+    return { text }
+  } catch (err) {
+    console.error("Werdegang per KI fehlgeschlagen:", err)
+    return { error: err instanceof Error ? err.message : "Werdegang konnte nicht erstellt werden." }
+  }
 }
