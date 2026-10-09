@@ -846,6 +846,7 @@ export type Database = {
           is_demo: boolean
           tags: string[]
           offene_fragen: string | null
+          cv_werdegang: string | null
         }
         Insert: {
           id?: string
@@ -871,6 +872,7 @@ export type Database = {
           is_demo?: boolean
           tags?: string[]
           offene_fragen?: string | null
+          cv_werdegang?: string | null
         }
         Update: {
           id?: string
@@ -896,6 +898,7 @@ export type Database = {
           is_demo?: boolean
           tags?: string[]
           offene_fragen?: string | null
+          cv_werdegang?: string | null
         }
         Relationships: [
           {

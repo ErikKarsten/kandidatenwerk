@@ -150,6 +150,7 @@ export default async function CandidateDetailPage({
     source: candidate.source,
     notes: candidate.notes,
     offene_fragen: candidate.offene_fragen ?? null,
+    cv_werdegang: candidate.cv_werdegang ?? null,
     tags: candidate.tags ?? [],
     description: candidate.description,
     berufsbild: candidate.berufsbild ?? null,
