@@ -5,7 +5,8 @@ import { ChevronDown, FileText } from "lucide-react"
 
 // Auswahl "Lebenslauf" (Paket 24, T-97): vollständig oder anonymisiert, öffnet die
 // druckfertige Seite in einem neuen Tab. anonymOnly (Anonymisierter Modus): direkt der anonymisierte.
-export function CvExportMenu({ candidateId, openUp = false, anonymOnly = false }: { candidateId: string; openUp?: boolean; anonymOnly?: boolean }) {
+// block: volle Breite (Kopf der Kandidatenseite, Paket 48).
+export function CvExportMenu({ candidateId, openUp = false, anonymOnly = false, block = false }: { candidateId: string; openUp?: boolean; anonymOnly?: boolean; block?: boolean }) {
   const [open, setOpen] = useState(false)
   if (anonymOnly) {
     return (
@@ -21,11 +22,11 @@ export function CvExportMenu({ candidateId, openUp = false, anonymOnly = false }
     )
   }
   return (
-    <div className="relative">
+    <div className={block ? "relative w-full" : "relative"}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+        className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 ${block ? "w-full justify-center" : ""}`}
         style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
         aria-expanded={open}
       >

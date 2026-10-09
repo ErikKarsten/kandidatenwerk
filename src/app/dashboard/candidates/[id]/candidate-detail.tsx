@@ -11,7 +11,6 @@ import {
   archiveCandidateAction,
   deleteCandidateAction,
   deleteDemoCandidateAction,
-  updateCandidateBerufsbildAction,
 } from "./actions"
 import { ProfileTab, type CustomFieldDefinition } from "./profile-tab"
 import { FilesTab } from "./files-tab"
@@ -24,7 +23,6 @@ import { AssignmentTab, type KanzleiCampaignOption } from "./assignment-tab"
 import type { KanzleiOption } from "@/lib/kanzlei-umkreis"
 import { TasksPanel } from "@/components/dashboard/tasks-panel"
 import type { TaskItemData } from "@/components/dashboard/task-item"
-import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
 import { CommunicationTab, type CandidateMessage, type MessageTemplate } from "./communication-tab"
@@ -95,12 +93,9 @@ interface CandidateDetailProps {
 type ModalStep = null | "choice"
 
 export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, kanzleien, communication, knownTags, tasks, currentUserId, initialTab }: CandidateDetailProps) {
-  const bb = useBerufsbilder()
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung" | "kommunikation" | "aufgaben">(initialTab ?? "profil")
-  const [berufsbildPending, startBerufsbildTransition] = useTransition()
-  const [berufsbildError, setBerufsbildError] = useState<string | null>(null)
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [modalError, setModalError] = useState<string | null>(null)
   const [archivePending, startArchiveTransition] = useTransition()
@@ -109,19 +104,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
   const [showMode, setShowMode] = useShowMode()
 
   const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
-
-  function handleBerufsbildChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const value = e.target.value || null
-    setBerufsbildError(null)
-    startBerufsbildTransition(async () => {
-      const result = await updateCandidateBerufsbildAction(candidate.id, value)
-      if (result?.error) {
-        setBerufsbildError(result.error)
-        return
-      }
-      router.refresh()
-    })
-  }
 
   function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const newStatus = e.target.value
@@ -230,13 +212,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
       )}
 
       <div>
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-        >
-          ← Zurück zur Übersicht
-        </button>
         {candidate.is_demo && (
           <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-2.5 text-sm" style={{ borderColor: "#f59e0b", backgroundColor: "#fffbeb", color: "#92400e" }}>
             <span>
@@ -253,10 +228,17 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             </button>
           </div>
         )}
-        {/* Kopf im Raster der Spalten darunter (Paket 47): links Name und Herkunft, rechts -
-            bündig mit Beschreibung und Verlauf - Aktionen, Status und Berufsbild. */}
-        <div className="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-[60%_minmax(0,1fr)] lg:gap-6">
+        {/* Kopf im Raster der Spalten darunter (Paket 47/48): links Zurück, Name und Herkunft;
+            rechts - bündig mit Beschreibung und Verlauf - Aktionen, Status und Tags. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[60%_minmax(0,1fr)] lg:gap-6">
           <div className="min-w-0">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="mb-2 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+            >
+              ← Zurück zur Übersicht
+            </button>
             <h1 className="text-2xl font-bold text-gray-900 [overflow-wrap:anywhere]">
               {candidate.first_name} {candidate.last_name}
             </h1>
@@ -278,72 +260,48 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                 )}
               </p>
             )}
-            <div className="mt-2">
-              <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} />
-            </div>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-              <ShowModeToggle on={false} onChange={setShowMode} />
-              <CvExportMenu candidateId={candidate.id} />
+          <div className="flex min-w-0 flex-col gap-2 lg:pt-1">
+            {/* Gleich breite Buttons über die ganze Spalte - bündig mit den Kacheln darunter. */}
+            <div className="grid grid-cols-2 gap-2">
+              <ShowModeToggle on={false} onChange={setShowMode} className="w-full justify-center" />
+              <CvExportMenu candidateId={candidate.id} block />
               <button
                 type="button"
                 onClick={() => setTaskModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
                 style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
               >
                 <ListTodo size={15} /> Aufgabe erstellen
               </button>
               <button
                 onClick={() => { setModalStep("choice"); setModalError(null) }}
-                className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-red-50"
+                className="inline-flex w-full items-center justify-center rounded-md border bg-white px-3 py-1.5 text-sm font-medium hover:bg-red-50"
                 style={{ borderColor: "#fca5a5", color: "#dc2626" }}
               >
                 Löschen
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-gray-500">
-                Status
-                <select
-                  defaultValue={candidate.status}
-                  onChange={handleStatusChange}
-                  disabled={statusPending}
-                  className="w-full cursor-pointer rounded-md border-0 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-1 disabled:opacity-50"
-                  style={{ backgroundColor: colors.bg, color: colors.text }}
-                >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-gray-500">
-                Berufsbild
-                <select
-                  value={candidate.berufsbild ?? ""}
-                  onChange={handleBerufsbildChange}
-                  disabled={berufsbildPending}
-                  className="w-full rounded-md border px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 disabled:opacity-50"
-                  style={
-                    candidate.berufsbild
-                      ? { borderColor: "#1e56a0", color: "#1e56a0", backgroundColor: "#1e56a010" }
-                      : { borderColor: "#dc2626", color: "#dc2626", backgroundColor: "#dc262610" }
-                  }
-                >
-                  <option value="">Berufsbild fehlt – bitte wählen</option>
-                  {bb.choices(candidate.berufsbild).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </label>
+            <div className="grid grid-cols-2 items-start gap-2">
+              <select
+                defaultValue={candidate.status}
+                onChange={handleStatusChange}
+                disabled={statusPending}
+                aria-label="Status"
+                className="w-full cursor-pointer rounded-md border-0 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-1 disabled:opacity-50"
+                style={{ backgroundColor: colors.bg, color: colors.text }}
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <div className="min-w-0 rounded-md border bg-white px-2 py-1.5" style={{ borderColor: "#dde3ea" }}>
+                <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} />
+              </div>
             </div>
-            {!candidate.berufsbild && (
-              <p className="text-xs font-medium text-red-600">Ohne Berufsbild gibt es kein Matching und keine passenden Kanzlei-Kampagnen.</p>
-            )}
-            {berufsbildError && <p className="text-xs text-red-600">{berufsbildError}</p>}
           </div>
         </div>
       </div>
