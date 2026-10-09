@@ -4,7 +4,9 @@ import { useBerufsbilder } from "@/components/berufsbild-context"
 import { useState, useTransition, useEffect } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Send, ClipboardCheck, Search, UserCheck, Presentation } from "lucide-react"
+import { Send, ClipboardCheck, Search, UserCheck } from "lucide-react"
+import { useMeetingMode } from "@/lib/meeting-mode"
+import { MeetingModeToggle } from "@/components/dashboard/meeting-mode-toggle"
 import {
   updateClientAction,
   archiveClientAction,
@@ -165,9 +167,9 @@ export function ClientDetail({
   const router = useRouter()
   const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "projekt" | "aufgaben">(initialTab ?? "kampagnen")
   const [editMode, setEditMode] = useState(false)
-  // Terminmodus (Paket 46): beim Kunden-Termin die eigene Plattform zeigen - ohne interne
-  // Kommentarspalte und ohne Löschen/Archivieren.
-  const [meetingMode, setMeetingMode] = useState(false)
+  // Terminmodus (Paket 46/49): ohne interne Kommentarspalte und ohne Löschen/Archivieren;
+  // bleibt beim Wechsel in die Kampagnen an.
+  const [meetingMode, setMeetingMode] = useMeetingMode()
   const [displayLogoUrl, setDisplayLogoUrl] = useState(client.logo_url)
 
   // Modal state
@@ -434,15 +436,7 @@ export function ClientDetail({
               Löschen / Archivieren
             </button>
           )}
-          <button
-            onClick={() => setMeetingMode(!meetingMode)}
-            className={`${meetingMode ? "ml-auto " : ""}inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium`}
-            style={meetingMode ? { backgroundColor: "#1e56a0", borderColor: "#1e56a0", color: "white" } : { borderColor: "#1e56a0", color: "#1e56a0" }}
-            title={meetingMode ? "Kommentare wieder einblenden" : "Kommentarspalte für den Kundentermin ausblenden"}
-          >
-            <Presentation size={15} />
-            {meetingMode ? "Terminmodus beenden" : "Terminmodus"}
-          </button>
+          <MeetingModeToggle on={meetingMode} onChange={setMeetingMode} className={meetingMode ? "ml-auto" : ""} />
         </div>
       </div>
 
