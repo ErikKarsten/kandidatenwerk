@@ -853,6 +853,7 @@ export type Database = {
           tags: string[]
           offene_fragen: string | null
           cv_werdegang: string | null
+          bewerbung: string | null
         }
         Insert: {
           id?: string
@@ -879,6 +880,7 @@ export type Database = {
           tags?: string[]
           offene_fragen?: string | null
           cv_werdegang?: string | null
+          bewerbung?: string | null
         }
         Update: {
           id?: string
@@ -905,6 +907,7 @@ export type Database = {
           tags?: string[]
           offene_fragen?: string | null
           cv_werdegang?: string | null
+          bewerbung?: string | null
         }
         Relationships: [
           {

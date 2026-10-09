@@ -2,14 +2,12 @@
 
 import { useLayoutEffect, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { ListTodo } from "lucide-react"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import {
   saveDescriptionAction,
   saveOpenQuestionsAction,
-  saveCvWerdegangAction,
-  enrichCvWerdegangAction,
-  addNoteAction,
   archiveCandidateAction,
   deleteCandidateAction,
   deleteDemoCandidateAction,
@@ -23,6 +21,9 @@ import { type ClientOption } from "./client-assignment-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { type ActiveAssignment } from "./matches-section"
 import { AssignmentTab, type KanzleiCampaignOption } from "./assignment-tab"
+import type { KanzleiOption } from "@/lib/kanzlei-umkreis"
+import { TasksPanel } from "@/components/dashboard/tasks-panel"
+import type { TaskItemData } from "@/components/dashboard/task-item"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
@@ -57,6 +58,7 @@ interface Candidate {
   source: string
   notes: string | null
   offene_fragen: string | null
+  bewerbung: string | null
   cv_werdegang: string | null
   tags: string[]
   description: string | null
@@ -82,17 +84,21 @@ interface CandidateDetailProps {
   // Zusatzfelder laut Feld-Vorlage(n), null = alle (Paket 8).
   templateFieldKeys: string[] | null
   kanzleiCampaigns: KanzleiCampaignOption[]
+  kanzleien: KanzleiOption[]
+  tasks: TaskItemData[]
+  currentUserId: string
+  initialTab?: "zuordnung" | "dateien" | "kommunikation" | "aufgaben"
   communication: { vars: TemplateVars; templates: MessageTemplate[]; messages: CandidateMessage[] }
   knownTags: string[]
 }
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, communication, knownTags }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, kanzleien, communication, knownTags, tasks, currentUserId, initialTab }: CandidateDetailProps) {
   const bb = useBerufsbilder()
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
-  const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung" | "kommunikation">("profil")
+  const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung" | "kommunikation" | "aufgaben">(initialTab ?? "profil")
   const [berufsbildPending, startBerufsbildTransition] = useTransition()
   const [berufsbildError, setBerufsbildError] = useState<string | null>(null)
   const [modalStep, setModalStep] = useState<ModalStep>(null)
@@ -249,9 +255,26 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
         )}
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">
-              {candidate.first_name} {candidate.last_name}
-            </h1>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {candidate.first_name} {candidate.last_name}
+              </h1>
+              {/* Worauf und worüber beworben (Paket 46). */}
+              {(candidate.bewerbung || candidate.campaigns?.title) && (
+                <p className="mt-0.5 text-sm text-gray-500">
+                  {candidate.bewerbung && <>Bewerbung: <span className="text-gray-700">{candidate.bewerbung}</span></>}
+                  {candidate.bewerbung && candidate.campaigns?.title && " · "}
+                  {candidate.campaigns?.title && candidate.campaign_id && (
+                    <>
+                      über Kampagne{" "}
+                      <Link href={`/dashboard/campaigns/${candidate.campaign_id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
+                        „{candidate.campaigns.title}“
+                      </Link>
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
             <select
               defaultValue={candidate.status}
               onChange={handleStatusChange}
@@ -332,6 +355,9 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             <TabButton active={tab === "kommunikation"} onClick={() => setTab("kommunikation")}>
               Kommunikation ({communication.messages.length})
             </TabButton>
+            <TabButton active={tab === "aufgaben"} onClick={() => setTab("aufgaben")}>
+              Aufgaben ({tasks.filter((t) => t.status !== "erledigt").length})
+            </TabButton>
           </div>
 
           <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
@@ -370,8 +396,10 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                 activeAssignments={activeAssignments}
                 clients={clients}
                 kanzleiCampaigns={kanzleiCampaigns}
+                kanzleien={kanzleien}
               />
             )}
+            {tab === "aufgaben" && <TasksPanel tasks={tasks} team={profiles} currentUserId={currentUserId} candidateId={candidate.id} />}
             {tab === "kommunikation" && (
               <CommunicationTab
                 candidateId={candidate.id}
@@ -406,17 +434,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             placeholder="Was möchte der Kandidat vom neuen Arbeitgeber wissen?"
             save={saveOpenQuestionsAction}
           />
-          {/* Werdegang für den Lebenslauf (Paket 43): Stationen der letzten zehn Jahre. */}
-          <DescriptionSection
-            key={candidate.cv_werdegang ?? ""}
-            candidateId={candidate.id}
-            notes={candidate.cv_werdegang}
-            label="Werdegang für den Lebenslauf"
-            placeholder={"Stationen der letzten 10 Jahre, je Station eine Zeile „Zeitraum · Position · Arbeitgeber (neutral)“, darunter Aufgaben mit „- “.\nLeer lassen oder Stichworte eintragen und „Mit KI anreichern“ wählen."}
-            save={saveCvWerdegangAction}
-            enrich={enrichCvWerdegangAction}
-          />
-          <NoteSection candidateId={candidate.id} />
           <HistorySection
             history={history}
             leadtableDescription={candidate.description}
@@ -501,15 +518,12 @@ function DescriptionSection({
   label = "Beschreibung",
   placeholder = "Notizen zum Kandidaten…",
   save = saveDescriptionAction,
-  enrich,
 }: {
   candidateId: string
   notes: string | null
   label?: string
   placeholder?: string
   save?: (candidateId: string, text: string) => Promise<{ error: string } | null>
-  // Optional: Text per KI erzeugen bzw. anreichern (speichert selbst).
-  enrich?: (candidateId: string) => Promise<{ error: string } | { text: string }>
 }) {
   const router = useRouter()
   const [value, setValue] = useState(notes ?? "")
@@ -524,26 +538,6 @@ function DescriptionSection({
     el.style.height = "auto"
     el.style.height = `${el.scrollHeight + 2}px`
   }, [value])
-
-  function handleEnrich() {
-    if (!enrich) return
-    setError(null)
-    startTransition(async () => {
-      // Erst den aktuellen Stand speichern, damit die KI ihn als Quelle nutzt.
-      const saved = await save(candidateId, value)
-      if (saved?.error) {
-        setError(saved.error)
-        return
-      }
-      const result = await enrich(candidateId)
-      if ("error" in result) {
-        setError(result.error)
-        return
-      }
-      setValue(result.text)
-      router.refresh()
-    })
-  }
 
   function handleSave() {
     setError(null)
@@ -576,64 +570,8 @@ function DescriptionSection({
         className="mt-2 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         style={{ backgroundColor: "#1e56a0" }}
       >
-        {pending ? (enrich ? "Bitte warten…" : "Wird gespeichert…") : "Speichern"}
-      </button>
-      {enrich && (
-        <button
-          type="button"
-          onClick={handleEnrich}
-          disabled={pending}
-          className="ml-2 mt-2 rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-          style={{ borderColor: "#1e56a0", color: "#1e56a0" }}
-        >
-          {pending ? "KI arbeitet (ca. 1 Minute)…" : "Mit KI anreichern"}
-        </button>
-      )}
-    </div>
-  )
-}
-
-function NoteSection({ candidateId }: { candidateId: string }) {
-  const router = useRouter()
-  const [value, setValue] = useState("")
-  const [pending, startTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
-
-  function handleSave() {
-    if (!value.trim()) return
-    setError(null)
-    startTransition(async () => {
-      const result = await addNoteAction(candidateId, value)
-      if (result?.error) {
-        setError(result.error)
-        return
-      }
-      router.refresh()
-      setValue("")
-    })
-  }
-
-  return (
-    <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
-      <label className="mb-2 block text-sm font-semibold text-gray-700">Neue Notiz</label>
-      <textarea
-        rows={3}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="w-full resize-none rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
-        style={{ borderColor: "#dde3ea" }}
-        placeholder="Notiz eingeben…"
-      />
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-      <button
-        onClick={handleSave}
-        disabled={pending || !value.trim()}
-        className="mt-2 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        style={{ backgroundColor: "#1e56a0" }}
-      >
-        {pending ? "Wird gespeichert…" : "Notiz speichern"}
+        {pending ? "Wird gespeichert…" : "Speichern"}
       </button>
     </div>
   )
 }
-

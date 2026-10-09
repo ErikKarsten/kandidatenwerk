@@ -562,6 +562,7 @@ async function main() {
         leadtable_lead_id: c.lead._id,
         custom_fields: customFields,
         notes: leadDescription(c),
+        bewerbung: `${c.occupation || "Bewerbung"} – ${c.customer.name}`,
         ...(c.lead.createdAt ? { created_at: c.lead.createdAt } : {}),
       })
       .select("id")

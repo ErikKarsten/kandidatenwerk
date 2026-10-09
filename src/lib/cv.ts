@@ -66,6 +66,12 @@ function text(v: unknown): string {
   return typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : ""
 }
 
+// "32", "32 Jahre", "32 Jahre & wohnt in …" -> "32 Jahre"; ohne plausible Zahl leer.
+export function cvAge(raw: string): string {
+  const n = Number(raw.match(/\b(1[5-9]|[2-7]\d)\b/)?.[1])
+  return n ? `${n} Jahre` : ""
+}
+
 // Kurzkennung für anonymisierte Lebensläufe (stabil je Kandidat).
 export function cvReference(id: string): string {
   return `K-${id.replace(/-/g, "").slice(0, 6).toUpperCase()}`
@@ -86,7 +92,9 @@ export function buildCv(
   const facts: CvItem[] = [
     { label: "Berufsbild", value: berufsbild ?? "" },
     { label: "PLZ", value: plz },
-    { label: "Alter", value: value("alter") ? `${value("alter").replace(/\s*jahre?$/i, "")} Jahre` : "" },
+    // Nur die Zahl: Freitext wie "32 Jahre & wohnt in der Nähe von Stade" verriete sonst
+    // den Wohnort im anonymisierten Lebenslauf (Paket 46).
+    { label: "Alter", value: cvAge(value("alter")) },
     { label: "Kündigungsfrist", value: value("verfuegbar_ab") },
   ].filter((f) => f.value)
   used.add("alter")

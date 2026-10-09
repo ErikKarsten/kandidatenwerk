@@ -39,6 +39,7 @@ export default async function CandidatesPage({
     berufsbild?: string
     source?: string
     tag?: string
+    campaign?: string
     sort?: string
     page?: string
     pageSize?: string
@@ -51,6 +52,8 @@ export default async function CandidatesPage({
   const berufsbildFilter = sp.berufsbild && BERUFSBILD_KEY.test(sp.berufsbild) ? sp.berufsbild : "alle"
   const sourceFilter = sp.source && VALID_SOURCES.has(sp.source) ? sp.source : "alle"
   const tagFilter = (sp.tag ?? "").trim() || "alle"
+  // Aus "Kandidaten nach Kampagnen" (Paket 46): nur Kandidaten einer Lead-Kampagne.
+  const campaignFilter = /^[0-9a-f-]{36}$/.test(sp.campaign ?? "") ? sp.campaign! : null
   const sort: CandidatesSortOption =
     sp.sort && sp.sort in SORT_COLUMNS ? (sp.sort as CandidatesSortOption) : "newest"
   const pageSize: PageSize = PAGE_SIZES.includes(Number(sp.pageSize) as PageSize)
@@ -76,6 +79,7 @@ export default async function CandidatesPage({
   if (berufsbildFilter !== "alle") query = query.eq("berufsbild", berufsbildFilter)
   if (sourceFilter !== "alle") query = query.eq("source", sourceFilter)
   if (tagFilter !== "alle") query = query.contains("tags", [tagFilter])
+  if (campaignFilter) query = query.eq("campaign_id", campaignFilter)
   if (search) {
     // Gleiches Suchverhalten wie vorher: Treffer bei Name (Vor- UND Nachname
     // zusammen, siehe full_name in der View) ODER E-Mail. Komma/Klammern entfernt,
@@ -101,9 +105,10 @@ export default async function CandidatesPage({
   const to = from + pageSize - 1
   query = query.range(from, to)
 
-  const [{ data, count }, { data: tagRows }] = await Promise.all([
+  const [{ data, count }, { data: tagRows }, { data: filterCampaign }] = await Promise.all([
     query,
     supabase.from("candidate_tag_list").select("tag").order("tag"),
+    campaignFilter ? supabase.from("campaigns").select("title").eq("id", campaignFilter).maybeSingle() : Promise.resolve({ data: null }),
   ])
   const knownTags = (tagRows ?? []).map((r) => r.tag).filter((t): t is string => !!t)
 
@@ -142,6 +147,7 @@ export default async function CandidatesPage({
     berufsbildFilter === "alle" &&
     sourceFilter === "alle" &&
     tagFilter === "alle" &&
+    !campaignFilter &&
     !showArchived
 
   return (
@@ -150,6 +156,13 @@ export default async function CandidatesPage({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Kandidaten</h1>
           <p className="mt-1 text-sm text-gray-500">{totalCount} Einträge</p>
+          {campaignFilter && (
+            <p className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-full px-3 py-1 text-xs font-medium" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
+              Kampagne: {filterCampaign?.title ?? "unbekannt"}
+              <Link href="/dashboard/leads" className="underline">zurück zu den Kampagnen</Link>
+              <Link href="/dashboard/candidates" className="underline">Filter entfernen</Link>
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <Link

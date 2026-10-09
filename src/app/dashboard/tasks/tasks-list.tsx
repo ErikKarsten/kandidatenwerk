@@ -1,13 +1,10 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { Plus, Trash2 } from "lucide-react"
-import { updateTaskStatusAction, deleteTaskAction } from "./actions"
+import { useMemo, useState } from "react"
+import { Plus } from "lucide-react"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
-import { TaskAssigneeSelect } from "@/components/dashboard/task-assignee-select"
-import { assigneeValue, isAssignedTo } from "@/lib/teams"
+import { TaskItem } from "@/components/dashboard/task-item"
+import { isAssignedTo } from "@/lib/teams"
 
 export interface TaskListItem {
   id: string
@@ -43,10 +40,6 @@ const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "erledigt", label: "Erledigt" },
   { value: "alle", label: "Alle" },
 ]
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })
-}
 
 export function TasksList({
   tasks,
@@ -97,7 +90,7 @@ export function TasksList({
       ) : (
         <div className="flex flex-col gap-2">
           {filteredTasks.map((task) => (
-            <TaskRow key={task.id} task={task} currentUserId={currentUserId} team={profiles} />
+            <TaskItem key={task.id} task={task} currentUserId={currentUserId} team={profiles} />
           ))}
         </div>
       )}
@@ -134,128 +127,6 @@ function FilterGroup<T extends string>({
           {opt.label}
         </button>
       ))}
-    </div>
-  )
-}
-
-function TaskRow({ task, currentUserId, team }: { task: TaskListItem; currentUserId: string; team: ProfileOption[] }) {
-  const router = useRouter()
-  const [togglePending, startToggleTransition] = useTransition()
-  const [deleteConfirm, setDeleteConfirm] = useState(false)
-  const [deletePending, startDeleteTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
-
-  const isDone = task.status === "erledigt"
-  const isOwnTask = task.created_by === currentUserId
-  const isOverdue = !isDone && !!task.due_date && new Date(task.due_date) < new Date(new Date().toDateString())
-
-  function toggleDone() {
-    setError(null)
-    startToggleTransition(async () => {
-      const result = await updateTaskStatusAction(task.id, isDone ? "offen" : "erledigt")
-      if (result?.error) { setError(result.error); return }
-      router.refresh()
-    })
-  }
-
-  function handleDelete() {
-    setError(null)
-    startDeleteTransition(async () => {
-      const result = await deleteTaskAction(task.id)
-      if (result?.error) { setError(result.error); return }
-      router.refresh()
-    })
-  }
-
-  return (
-    <div
-      className="flex items-start gap-3 rounded-xl border bg-white p-4"
-      style={{ borderColor: "#dde3ea", opacity: isDone ? 0.65 : 1 }}
-    >
-      <input
-        type="checkbox"
-        checked={isDone}
-        onChange={toggleDone}
-        disabled={togglePending}
-        className="mt-1 h-4 w-4 shrink-0 cursor-pointer"
-        aria-label={isDone ? "Als offen markieren" : "Als erledigt markieren"}
-      />
-
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-gray-900" style={{ textDecoration: isDone ? "line-through" : undefined }}>
-          {task.title}
-        </p>
-        {task.description && (
-          <p className="mt-0.5 text-sm text-gray-500 whitespace-pre-wrap">{task.description}</p>
-        )}
-
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-          <span className="inline-flex items-center gap-1">
-            Zugewiesen:
-            {isDone ? (
-              (task.assigneeName ?? "Unbenannt")
-            ) : (
-              <TaskAssigneeSelect taskId={task.id} assignedTo={assigneeValue(task)} team={team} onError={setError} />
-            )}
-          </span>
-          <span>Erstellt von: {task.creatorName ?? "Unbenannt"}</span>
-          {task.due_date && (
-            <span style={{ color: isOverdue ? "#dc2626" : undefined }}>
-              Fällig: {formatDate(task.due_date)}
-            </span>
-          )}
-          {task.candidate_id && task.candidateName && (
-            <Link
-              href={`/dashboard/candidates/${task.candidate_id}`}
-              className="hover:underline"
-              style={{ color: "#1e56a0" }}
-            >
-              Kandidat: {task.candidateName}
-            </Link>
-          )}
-          {task.client_id && task.clientName && (
-            <Link href={`/dashboard/clients/${task.client_id}?tab=aufgaben`} className="hover:underline" style={{ color: "#1e56a0" }}>
-              Kunde: {task.clientName}
-            </Link>
-          )}
-        </div>
-
-        {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-      </div>
-
-      {isOwnTask && (
-        <div className="shrink-0">
-          {deleteConfirm ? (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-gray-500">Löschen?</span>
-              <button
-                onClick={handleDelete}
-                disabled={deletePending}
-                className="rounded px-2 py-0.5 text-xs font-medium text-white disabled:opacity-50"
-                style={{ backgroundColor: "#dc2626" }}
-              >
-                Ja
-              </button>
-              <button
-                onClick={() => setDeleteConfirm(false)}
-                disabled={deletePending}
-                className="rounded border px-2 py-0.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                style={{ borderColor: "#dde3ea" }}
-              >
-                Nein
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setDeleteConfirm(true)}
-              className="rounded p-1 text-gray-400 hover:text-red-500 hover:bg-red-50"
-              aria-label="Aufgabe löschen"
-            >
-              <Trash2 size={14} />
-            </button>
-          )}
-        </div>
-      )}
     </div>
   )
 }

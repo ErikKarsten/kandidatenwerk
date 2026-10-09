@@ -38,3 +38,13 @@ describe("Lebenslauf", () => {
     expect(cv.facts).toContainEqual({ label: "PLZ", value: "50668" })
   })
 })
+
+describe("cvAge", () => {
+  it("übernimmt nur die Zahl", async () => {
+    const { cvAge } = await import("@/lib/cv")
+    expect(cvAge("32 Jahre & wohnt in der Nähe von Stade")).toBe("32 Jahre")
+    expect(cvAge("54")).toBe("54 Jahre")
+    expect(cvAge("40 & Neuenkirchen")).toBe("40 Jahre")
+    expect(cvAge("Mitte dreißig")).toBe("")
+  })
+})

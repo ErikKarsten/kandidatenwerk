@@ -265,7 +265,9 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border" style={{ borderColor: "#dde3ea" }}>
+    // isolation: eigener Stapelkontext, damit Leaflets z-index (400-1000) nicht über
+    // Dialoge wie "Aufgabe erstellen" ragt (Paket 46).
+    <div className="overflow-hidden rounded-xl border" style={{ borderColor: "#dde3ea", isolation: "isolate" }}>
       <MapContainer
         ref={setMap}
         bounds={bounds}

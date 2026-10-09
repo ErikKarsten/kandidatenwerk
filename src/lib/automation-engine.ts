@@ -1,6 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { renderEmailLayout } from "@/lib/email-layout"
+import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
+
+// #Kampagnenname in Mails an Kandidaten (Paket 46): interne Meta-Kampagnennamen wie
+// "KS24 - Video Neele - Region Essen/ …" nie zeigen, stattdessen die Stelle (Berufsbild).
+// Kanzlei-Kampagnen tragen schon einen Stellentitel ("Steuerfachangestellte (m/w/d) – Bonn").
+export function mailCampaignName(campaign: { title?: string | null; kind?: string | null } | null | undefined, berufsbildLabel?: string | null): string {
+  const title = campaign?.title?.trim() ?? ""
+  if (title && campaign?.kind !== "lead" && !isKs24Campaign(title)) return title
+  return berufsbildLabel ? `${berufsbildLabel} (m/w/d)` : "Fachkraft in einer Steuerkanzlei"
+}
 
 type Supabase = SupabaseClient<Database>
 
