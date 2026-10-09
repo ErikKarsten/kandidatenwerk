@@ -9,6 +9,7 @@ import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { CandidatesList, type CandidateListItem, type CandidatesSortOption } from "./candidates-list"
 import { SampleCandidatesButton } from "./sample-candidates-button"
+import { canCreateSamples } from "@/lib/teams"
 
 const ARCHIVED_STATUS = "Archiviert"
 // Interner Status oder - mit Präfix "kunde:" - Status beim Kunden (Paket 31).
@@ -58,6 +59,9 @@ export default async function CandidatesPage({
   const page = Math.max(1, Number(sp.page) || 1)
 
   const supabase = await createSupabaseServerClient()
+  // Musterdatensätze nur für Admins und den Vertrieb (Paket 44).
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: me } = user ? await supabase.from("profiles").select("role, team").eq("id", user.id).maybeSingle() : { data: null }
 
   let query = supabase
     .from("candidate_list_rows")
@@ -160,7 +164,7 @@ export default async function CandidatesPage({
             <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: showArchived ? "#1e56a0" : "#d1d5db" }} />
             Archivierte anzeigen
           </Link>
-          <SampleCandidatesButton />
+          {canCreateSamples(me) && <SampleCandidatesButton />}
           <Button asChild style={{ backgroundColor: "#1e56a0" }}>
             <Link href="/dashboard/candidates/new">
               <Plus size={16} />

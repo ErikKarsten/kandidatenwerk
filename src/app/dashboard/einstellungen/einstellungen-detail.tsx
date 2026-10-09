@@ -1,5 +1,6 @@
 "use client"
 
+import { TEAM_OPTIONS, teamLabel } from "@/lib/teams"
 import { useState, useTransition } from "react"
 import { MetaCampaignsTab } from "./meta-campaigns-tab"
 import { setCustomFieldSectionAction, type FieldTemplate, type LeadFormOverview } from "./field-actions"
@@ -334,6 +335,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
   const [invitePhone, setInvitePhone] = useState("")
   const [inviteAvatar, setInviteAvatar] = useState<File | null>(null)
   const [inviteRole, setInviteRole] = useState<"agency_admin" | "agency_member">("agency_member")
+  const [inviteTeam, setInviteTeam] = useState("")
   const [invitePending, startInviteTransition] = useTransition()
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteKey, setInviteKey] = useState(0)
@@ -346,6 +348,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
   const [editPhone, setEditPhone] = useState("")
   const [editAvatar, setEditAvatar] = useState<File | null>(null)
   const [editRole, setEditRole] = useState<"agency_admin" | "agency_member">("agency_member")
+  const [editTeam, setEditTeam] = useState("")
   const [editError, setEditError] = useState<string | null>(null)
   const [editPending, startEditTransition] = useTransition()
 
@@ -355,6 +358,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
     setEditPhone(m.phone ?? "")
     setEditAvatar(null)
     setEditRole(m.role)
+    setEditTeam(m.team ?? "")
     setEditError(null)
     setRemoveConfirmId(null)
   }
@@ -366,6 +370,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
     fd.set("full_name", editName)
     fd.set("phone", editPhone)
     fd.set("role", editRole)
+    fd.set("team", editTeam)
     if (editAvatar) fd.set("avatar", editAvatar)
     startEditTransition(async () => {
       const result = await updateTeamMemberAction(editId, fd)
@@ -382,6 +387,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
     fd.set("full_name", inviteName)
     fd.set("phone", invitePhone)
     fd.set("role", inviteRole)
+    fd.set("team", inviteTeam)
     if (inviteAvatar) fd.set("avatar", inviteAvatar)
     startInviteTransition(async () => {
       const result = await inviteTeamMemberAction(fd)
@@ -392,6 +398,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
       setInviteAvatar(null)
       setInviteKey((k) => k + 1)
       setInviteRole("agency_member")
+      setInviteTeam("")
       router.refresh()
     })
   }
@@ -437,6 +444,20 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
                     <option value="agency_admin">Admin</option>
                   </select>
                 </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Team</label>
+                  <select
+                    className={inputClass}
+                    style={{ ...inputStyle, width: "auto" }}
+                    value={editTeam}
+                    onChange={(e) => setEditTeam(e.target.value)}
+                  >
+                    <option value="">Kein Team</option>
+                    {TEAM_OPTIONS.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <TeamAvatar member={m} size={40} />
@@ -475,6 +496,11 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
                 >
                   {m.role === "agency_admin" ? "Admin" : "Mitarbeiter"}
                 </span>
+                {m.team && (
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: "#4ba3c318", color: "#0e7490" }}>
+                    {teamLabel(m.team)}
+                  </span>
+                )}
                 <button onClick={() => startEdit(m)} className="text-xs text-gray-500 hover:text-gray-800 hover:underline">
                   Bearbeiten
                 </button>
@@ -527,6 +553,15 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
               >
                 <option value="agency_member">Mitarbeiter</option>
                 <option value="agency_admin">Admin</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">Team</label>
+              <select className={inputClass} style={inputStyle} value={inviteTeam} onChange={(e) => setInviteTeam(e.target.value)}>
+                <option value="">Kein Team</option>
+                {TEAM_OPTIONS.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
               </select>
             </div>
             <div className="flex flex-col gap-1 sm:col-span-2">

@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { TasksList } from "./tasks-list"
+import { assigneeLabel } from "@/lib/teams"
 
 interface ProfileJoin {
   full_name: string | null
@@ -14,12 +15,12 @@ export default async function TasksPage() {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const [{ data: taskRows }, { data: profileRows }] = await Promise.all([
+  const [{ data: taskRows }, { data: profileRows }, { data: me }] = await Promise.all([
     supabase
       .from("tasks")
       .select(
         `id, title, description, status, due_date, created_at, completed_at,
-         assigned_to, created_by, candidate_id, client_id,
+         assigned_to, assigned_team, created_by, candidate_id, client_id,
          assignee:profiles!tasks_assigned_to_fkey(full_name),
          creator:profiles!tasks_created_by_fkey(full_name),
          candidates(first_name, last_name),
@@ -28,6 +29,8 @@ export default async function TasksPage() {
       .order("created_at", { ascending: false }),
     // Nur Team-Mitglieder sind als Zuständige wählbar (keine Portal-Kunden).
     supabase.from("profiles").select("id, full_name").in("role", ["agency_admin", "agency_member"]).order("full_name", { ascending: true }),
+    // Eigenes Team (Paket 44): Team-Aufgaben zählen als "Mir zugewiesen".
+    user ? supabase.from("profiles").select("team").eq("id", user.id).maybeSingle() : Promise.resolve({ data: null }),
   ])
 
   const tasks = (taskRows ?? []).map((t) => {
@@ -43,9 +46,10 @@ export default async function TasksPage() {
       created_at: t.created_at,
       completed_at: t.completed_at,
       assigned_to: t.assigned_to,
+      assigned_team: t.assigned_team,
       created_by: t.created_by,
       candidate_id: t.candidate_id,
-      assigneeName: assignee?.full_name ?? null,
+      assigneeName: assigneeLabel(t, assignee?.full_name ?? null),
       creatorName: creator?.full_name ?? null,
       candidateName: candidate ? `${candidate.first_name} ${candidate.last_name}` : null,
       client_id: t.client_id,
@@ -66,6 +70,7 @@ export default async function TasksPage() {
         tasks={tasks}
         profiles={profiles}
         currentUserId={user?.id ?? ""}
+        currentUserTeam={me?.team ?? null}
       />
     </div>
   )

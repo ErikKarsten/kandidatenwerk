@@ -6,6 +6,7 @@ import { CheckCircle2, Circle, Plus } from "lucide-react"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
 import { updateTaskStatusAction } from "@/app/dashboard/tasks/actions"
 import { TaskAssigneeSelect } from "@/components/dashboard/task-assignee-select"
+import { assigneeValue } from "@/lib/teams"
 
 export interface ClientTask {
   id: string
@@ -13,7 +14,8 @@ export interface ClientTask {
   description: string | null
   status: string
   due_date: string | null
-  assigned_to: string
+  assigned_to: string | null
+  assigned_team: string | null
   assigneeName: string | null
 }
 
@@ -73,7 +75,7 @@ function TaskRow({ task, team }: { task: ClientTask; team: ProfileOption[] }) {
         <p className={`text-sm ${isDone ? "text-gray-400 line-through" : "font-medium text-gray-900"}`}>{task.title}</p>
         {task.description && <p className="text-xs text-gray-500">{task.description}</p>}
         <p className="flex flex-wrap items-center gap-1 text-xs text-gray-500">
-          {isDone ? (task.assigneeName ?? "Nicht zugewiesen") : <TaskAssigneeSelect taskId={task.id} assignedTo={task.assigned_to} team={team} />}
+          {isDone ? (task.assigneeName ?? "Nicht zugewiesen") : <TaskAssigneeSelect taskId={task.id} assignedTo={assigneeValue(task)} team={team} />}
           {task.due_date && <span style={{ color: overdue ? "#dc2626" : undefined }}> · fällig {formatDate(task.due_date)}</span>}
         </p>
       </div>

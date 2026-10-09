@@ -622,7 +622,8 @@ export type Database = {
           id: string
           title: string
           description: string | null
-          assigned_to: string
+          assigned_to: string | null
+          assigned_team: string | null
           created_by: string
           candidate_id: string | null
           client_id: string | null
@@ -635,7 +636,8 @@ export type Database = {
           id?: string
           title: string
           description?: string | null
-          assigned_to: string
+          assigned_to?: string | null
+          assigned_team?: string | null
           created_by: string
           candidate_id?: string | null
           client_id?: string | null
@@ -648,7 +650,8 @@ export type Database = {
           id?: string
           title?: string
           description?: string | null
-          assigned_to?: string
+          assigned_to?: string | null
+          assigned_team?: string | null
           created_by?: string
           candidate_id?: string | null
           client_id?: string | null
@@ -694,6 +697,7 @@ export type Database = {
           agency_id: string | null
           client_id: string | null
           role: string
+          team: string | null
           full_name: string | null
           created_at: string
           email: string | null
@@ -706,6 +710,7 @@ export type Database = {
           agency_id?: string | null
           client_id?: string | null
           role: string
+          team?: string | null
           full_name?: string | null
           created_at?: string
           email?: string | null
@@ -718,6 +723,7 @@ export type Database = {
           agency_id?: string | null
           client_id?: string | null
           role?: string
+          team?: string | null
           full_name?: string | null
           created_at?: string
           email?: string | null
