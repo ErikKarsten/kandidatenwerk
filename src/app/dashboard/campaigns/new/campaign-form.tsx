@@ -8,7 +8,7 @@ import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { createCampaignAction, type CreateCampaignState } from "../actions"
 
 const schema = z.object({
@@ -27,6 +27,7 @@ type FormValues = z.infer<typeof schema>
 // Standort, Umkreis). Der Kunde steht durch den Einstieg aus dem Kundenprofil fest und
 // ist nicht mehr auswählbar (Atlas T-32).
 export function CampaignForm({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const bb = useBerufsbilder()
   const [state, formAction] = useActionState<CreateCampaignState, FormData>(
     createCampaignAction,
     null
@@ -107,7 +108,7 @@ export function CampaignForm({ clientId, clientName }: { clientId: string; clien
           defaultValue=""
         >
           <option value="" disabled>Berufsbild auswählen…</option>
-          {BERUFSBILD_OPTIONS.map((o) => (
+          {bb.choices().map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>

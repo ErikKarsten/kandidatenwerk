@@ -30,6 +30,7 @@ import {
   type CustomFieldReviewQueueEntry,
 } from "./actions"
 import { ProfileFieldsEditor, SnippetsEditor } from "./profile-fields-tab"
+import { BerufsbilderEditor } from "./berufsbilder-tab"
 import type { ProfileFieldConfig } from "@/lib/profile-field-config"
 import { AgencyLogoCard, ConfirmationSettings } from "./agency-settings-ui"
 import type { AgencySettings } from "./agency-settings-actions"
@@ -121,6 +122,10 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
                 <div className="max-w-lg">
                   <ZusatzfelderTab agencyId={agencyId} isAgencyAdmin={isAdmin} fields={customFieldDefinitions} reviewQueue={customFieldReviewQueue} />
                 </div>
+              </Section>
+              {/* Berufsbilder pflegbar (Paket 45). */}
+              <Section title="Berufsbilder" meta="für Kandidaten, Kampagnen und Stellen">
+                <BerufsbilderEditor isAdmin={isAdmin} />
               </Section>
               <Section title="Feld-Vorlagen" meta={`${fieldTemplates.length} Vorlagen`}>
                 <FieldTemplatesTab templates={fieldTemplates} fields={activeFields.filter((f) => f.section !== "stammdaten")} isAdmin={isAdmin} />

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation"
 import { buildCv } from "@/lib/cv"
 import { maskContactData, anonymousName } from "@/lib/show-mode"
 import { visibleTags } from "@/lib/candidate-tags"
-import { berufsbildLabel } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
 import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { TagChip } from "@/components/dashboard/tag-editor"
@@ -33,6 +33,7 @@ export function CandidateShowView({
   customFieldDefinitions: CustomFieldDefinition[]
   onShowModeChange: (on: boolean) => void
 }) {
+  const bb = useBerufsbilder()
   const router = useRouter()
   const cv = buildCv({ ...candidate, email: null, phone: null }, customFieldDefinitions, true)
   const facts = cv.facts
@@ -49,7 +50,7 @@ export function CandidateShowView({
             <h1 className="text-2xl font-bold text-gray-900">{anonymousName(candidate.id)}</h1>
             {candidate.berufsbild && (
               <span className="rounded-full border px-3 py-1 text-xs font-semibold" style={{ borderColor: "#1e56a0", color: "#1e56a0", backgroundColor: "#1e56a010" }}>
-                {berufsbildLabel(candidate.berufsbild)}
+                {bb.label(candidate.berufsbild)}
               </span>
             )}
             {tags.map((t) => (

@@ -76,12 +76,9 @@ export function mapKanzleistelleBerufsbild(text: string): Berufsbild | null {
   if (/\bstb\b/.test(normalized)) return "steuerberater"
   if (/\bbb\b/.test(normalized)) return "bilanzbuchhalter"
 
-  // Berufe außerhalb der vier Kern-Kategorien, aber trotzdem eindeutig erkennbar -
-  // mappen bewusst auf "sonstige" statt auf null (Diagnose: "Lohnbuchhalter" war mit
-  // 9 von 49 unerkannten Kampagnen-Titeln die mit Abstand größte Einzelgruppe).
-  if (normalized.includes("lohnbuchhalter")) return "sonstige"
-  if (normalized.includes("finanzbuchhalter")) return "sonstige"
-  if (/\bfibu\b/.test(normalized)) return "sonstige"
+  // Lohn- und Finanzbuchhalter sind seit Paket 45 eigene Berufsbilder (vorher "sonstige").
+  if (normalized.includes("lohnbuchhalter") || /\blohn- und gehaltsbuchhalter/.test(normalized)) return "lohnbuchhalter"
+  if (normalized.includes("finanzbuchhalter") || normalized.includes("finanzbuchhaltung") || /\bfibu\b/.test(normalized)) return "finanzbuchhalter"
 
   return null
 }

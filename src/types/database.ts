@@ -950,6 +950,30 @@ export type Database = {
         }
         Relationships: []
       }
+      berufsbilder: {
+        Row: {
+          key: string
+          label: string
+          sort_order: number
+          active: boolean
+          created_at: string
+        }
+        Insert: {
+          key: string
+          label: string
+          sort_order?: number
+          active?: boolean
+          created_at?: string
+        }
+        Update: {
+          key?: string
+          label?: string
+          sort_order?: number
+          active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       campaigns: {
         Row: {
           id: string

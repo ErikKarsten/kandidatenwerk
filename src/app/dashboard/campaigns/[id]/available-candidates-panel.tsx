@@ -8,7 +8,7 @@ import dynamic from "next/dynamic"
 import { assignCandidateToCampaignAction, searchAvailableCandidatesAction } from "./actions"
 import type { MapPoint } from "@/components/dashboard/matches-map"
 import type { AvailableCandidate, AvailableSort } from "@/lib/available-candidates"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 
@@ -42,10 +42,6 @@ interface SearchState {
   effectiveRadiusKm: number | null
 }
 
-function berufsbildLabel(value: string | null): string {
-  return BERUFSBILD_OPTIONS.find((o) => o.value === value)?.label ?? "ohne Berufsbild"
-}
-
 // Reiter "Passende Kandidaten" einer Kanzlei-Kampagne (Atlas T-40): Kandidaten mit
 // gleichem Berufsbild im Umkreis der Kampagne, die ihr noch nicht zugeordnet sind, mit
 // Ein-Klick-Zuordnung. Einziger Ort, an dem Kandidaten Kanzlei-Kampagnen zugeordnet
@@ -55,6 +51,8 @@ export function AvailableCandidatesPanel({
 }: {
   campaign: { id: string; title: string; berufsbild: string | null; radius_km: number | null; lat: number | null; lng: number | null; extra_points?: { lat: number; lng: number; plz?: string | null }[] }
 }) {
+  const bb = useBerufsbilder()
+  const berufsbildLabel = (value: string | null) => bb.label(value) ?? "ohne Berufsbild"
   const router = useRouter()
   const campaignId = campaign.id
   const [q, setQ] = useState("")

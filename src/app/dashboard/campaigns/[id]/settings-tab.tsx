@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { updateCampaignSettingsAction, listMetaPagesAction, listMetaLeadFormsAction, requestMetaTestLeadAction } from "./actions"
 import type { MetaPage, MetaLeadForm } from "@/lib/meta-ads-client"
@@ -35,6 +35,7 @@ interface SettingsTabProps {
 }
 
 export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, plz, radiusKm, extraPlz, metaWebhookLastTestAt, kind, fieldTemplateId, fieldTemplates }: SettingsTabProps) {
+  const bb = useBerufsbilder()
   const isKanzlei = kind === "kanzlei"
   const [localTemplateId, setLocalTemplateId] = useState(fieldTemplateId ?? "")
   const router = useRouter()
@@ -179,7 +180,7 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
               style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
             >
               <option value="">Kein Berufsbild</option>
-              {BERUFSBILD_OPTIONS.map((o) => (
+              {bb.choices(localBerufsbild).map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>

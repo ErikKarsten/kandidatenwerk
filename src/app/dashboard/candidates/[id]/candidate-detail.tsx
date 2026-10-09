@@ -23,7 +23,7 @@ import { type ClientOption } from "./client-assignment-section"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { type ActiveAssignment } from "./matches-section"
 import { AssignmentTab, type KanzleiCampaignOption } from "./assignment-tab"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-form-modal"
 import { CommunicationTab, type CandidateMessage, type MessageTemplate } from "./communication-tab"
@@ -89,6 +89,7 @@ interface CandidateDetailProps {
 type ModalStep = null | "choice"
 
 export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, communication, knownTags }: CandidateDetailProps) {
+  const bb = useBerufsbilder()
   const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung" | "kommunikation">("profil")
@@ -278,7 +279,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                 }
               >
                 <option value="">Berufsbild fehlt – bitte wählen</option>
-                {BERUFSBILD_OPTIONS.map((o) => (
+                {bb.choices(candidate.berufsbild).map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>

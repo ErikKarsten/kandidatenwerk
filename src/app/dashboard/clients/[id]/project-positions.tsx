@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Copy, MapPinPlus, Pencil, Plus, Trash2 } from "lucide-react"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import type { ClientLocation } from "@/lib/client-locations"
 import { appendPoint, countPoints, missingPositionItems } from "@/lib/position-profile"
 import { fieldValue, snippetsFor, type PositionSnippet, type ResolvedField } from "@/lib/profile-fields"
@@ -55,6 +55,7 @@ export function ProjectPositions({
   fields: ResolvedField[]
   snippets: PositionSnippet[]
 }) {
+  const bb = useBerufsbilder()
   const router = useRouter()
   const [editing, setEditing] = useState<PositionInput | null>(null)
   const [selected, setSelected] = useState<string[]>([])
@@ -124,7 +125,7 @@ export function ProjectPositions({
               </p>
               <p className="text-xs text-gray-500">
                 {[
-                  BERUFSBILD_OPTIONS.find((o) => o.value === p.berufsbild)?.label ?? "Berufsbild offen",
+                  bb.label(p.berufsbild) ?? "Berufsbild offen",
                   p.plz ? `${p.plz}${p.ort ? ` ${p.ort}` : ""}${p.radius_km ? `, ${p.radius_km} km` : ""}` : p.ort,
                   p.arbeitszeit,
                   p.berufserfahrung,
@@ -388,6 +389,7 @@ function PositionForm({
   fields: ResolvedField[]
   snippets: PositionSnippet[]
 }) {
+  const bb = useBerufsbilder()
   const [v, setV] = useState<PositionInput>(value)
   const input = "w-full rounded-md border px-2 py-1.5 text-sm"
   const set = (key: keyof PositionInput, val: string) => setV({ ...v, [key]: val })
@@ -401,7 +403,7 @@ function PositionForm({
         <Field label="Berufsbild *">
           <select className={input} style={{ borderColor: "#dde3ea" }} value={v.berufsbild ?? ""} onChange={(e) => set("berufsbild", e.target.value)}>
             <option value="">Bitte wählen</option>
-            {BERUFSBILD_OPTIONS.map((o) => (
+            {bb.choices(v.berufsbild).map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>

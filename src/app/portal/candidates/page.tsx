@@ -1,5 +1,6 @@
 import { PortalCandidateRow } from "@/components/portal/portal-candidate-row"
 import { berufsbildLabel } from "@/lib/berufsbild"
+import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { assignmentStatusLabel } from "@/lib/assignment-status"
 import { isPortalVisible } from "@/lib/portal-visibility"
@@ -7,6 +8,7 @@ import { isPortalVisible } from "@/lib/portal-visibility"
 
 export default async function PortalCandidatesPage() {
   const supabase = await createSupabaseServerClient()
+  const berufsbilderPromise = loadBerufsbilder()
 
   // RLS filtert automatisch auf die eigenen, aktiven Zuordnungen (siehe
   // "Kunde sieht eigene Zuordnungen (nur lesend)" in
@@ -20,6 +22,7 @@ export default async function PortalCandidatesPage() {
 
   const rows = (assignments ?? []).filter((a) => a.candidates && isPortalVisible(a.candidates))
 
+  const berufsbilder = await berufsbilderPromise
   return (
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-bold text-gray-900 mb-1">Meine Kandidaten</h1>
@@ -40,7 +43,7 @@ export default async function PortalCandidatesPage() {
               assignmentId={a.id}
               href={`/portal/candidates/${c.id}`}
               name={`${c.first_name} ${c.last_name}`.trim()}
-              meta={[berufsbildLabel(c.berufsbild), c.plz].filter(Boolean).join(" · ")}
+              meta={[berufsbildLabel(c.berufsbild, berufsbilder), c.plz].filter(Boolean).join(" · ")}
               status={assignmentStatusLabel(a.status)}
             />
           )

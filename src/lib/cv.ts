@@ -3,7 +3,7 @@
 // Fachliches, aktuelle Situation, Wechselmotivation, Rahmen), ohne Beschreibung/Notizen.
 // Anonymisiert: ohne Name, Kontaktdaten und Erreichbarkeit; die PLZ bleibt sichtbar
 // (Entscheidung 07.10.2026).
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { BERUFSBILD_OPTIONS, berufsbildLabel, type BerufsbildOption } from "@/lib/berufsbild"
 
 export interface CvCandidate {
   id: string
@@ -71,10 +71,15 @@ export function cvReference(id: string): string {
   return `K-${id.replace(/-/g, "").slice(0, 6).toUpperCase()}`
 }
 
-export function buildCv(c: CvCandidate, definitions: { key: string; label: string; active: boolean }[], anonym: boolean): Cv {
+export function buildCv(
+  c: CvCandidate,
+  definitions: { key: string; label: string; active: boolean }[],
+  anonym: boolean,
+  berufsbilder: BerufsbildOption[] = BERUFSBILD_OPTIONS
+): Cv {
   const fields = c.custom_fields ?? {}
   const value = (key: string) => text(fields[key])
-  const berufsbild = BERUFSBILD_OPTIONS.find((o) => o.value === c.berufsbild)?.label ?? null
+  const berufsbild = berufsbildLabel(c.berufsbild, berufsbilder)
   const used = new Set<string>()
 
   const plz = c.plz?.trim() || value("wohnort_plz")

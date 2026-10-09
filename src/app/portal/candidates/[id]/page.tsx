@@ -7,7 +7,8 @@ import { NotesSection, type Note } from "./notes-section"
 import { PortalFilesList, type PortalFile } from "./files-list"
 import { PortalStatusSelector } from "./status-selector"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { berufsbildLabel } from "@/lib/berufsbild"
+import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { isPortalVisible } from "@/lib/portal-visibility"
 
 export default async function PortalCandidateDetailPage({
@@ -17,6 +18,7 @@ export default async function PortalCandidateDetailPage({
 }) {
   const { id } = await params
   const supabase = await createSupabaseServerClient()
+  const berufsbilderPromise = loadBerufsbilder()
 
   const [{ data: candidate }, { data: assignment }] = await Promise.all([
     // RLS ("Kunde sieht zugeordnete Kandidaten") liefert hier automatisch nur etwas
@@ -117,6 +119,7 @@ export default async function PortalCandidateDetailPage({
 
   const customFields = (candidate.custom_fields as Record<string, string> | null) ?? {}
 
+  const berufsbilder = await berufsbilderPromise
   return (
     <div className="p-4 sm:p-6 max-w-6xl">
       <Link href="/portal/candidates" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
@@ -138,7 +141,7 @@ export default async function PortalCandidateDetailPage({
           <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
             <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Stammdaten</span>
             <div className="mt-3 flex flex-col gap-2.5">
-              <FieldRow label="Berufsbild">{BERUFSBILD_OPTIONS.find((o) => o.value === candidate.berufsbild)?.label ?? (candidate.berufsbild || "—")}</FieldRow>
+              <FieldRow label="Berufsbild">{berufsbildLabel(candidate.berufsbild, berufsbilder) ?? "—"}</FieldRow>
               <FieldRow label="E-Mail">{candidate.email || "—"}</FieldRow>
               <FieldRow label="Telefon">{candidate.phone || "—"}</FieldRow>
               <FieldRow label="PLZ">{candidate.plz || "—"}</FieldRow>

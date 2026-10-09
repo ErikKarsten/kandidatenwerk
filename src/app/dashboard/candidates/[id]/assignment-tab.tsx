@@ -8,7 +8,7 @@ import type { MapCircle, MapPoint } from "@/components/dashboard/matches-map"
 import { haversineDistanceKm } from "@/lib/geo-distance"
 import { AssignmentControl, assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
 import type { ClientOption } from "./client-assignment-section"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
 import { assignCandidateToCampaignAction } from "../../campaigns/[id]/actions"
 
@@ -43,10 +43,6 @@ interface Origin {
   clientName: string | null
 }
 
-function berufsbildLabel(value: string | null): string {
-  return BERUFSBILD_OPTIONS.find((o) => o.value === value)?.label ?? "ohne Berufsbild"
-}
-
 // Reiter "Zuordnung" im Kandidatenprofil (Atlas T-35, Zielbild T-31): Herkunft des
 // Leads, Zuordnungen zu Kanzlei-Kampagnen (1:n) und eine Karte mit Wohnort und den
 // Kanzleien in der Nähe (Paket 13). Seit Paket 43 lassen sich die Kanzlei-Kampagnen im
@@ -74,6 +70,8 @@ export function AssignmentTab({
   clients: ClientOption[]
   kanzleiCampaigns: KanzleiCampaignOption[]
 }) {
+  const bb = useBerufsbilder()
+  const berufsbildLabel = (value: string | null) => bb.label(value) ?? "ohne Berufsbild"
   const clientName = (id: string) => clients.find((c) => c.id === id)?.name ?? "Unbekannter Kunde"
   const router = useRouter()
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM)

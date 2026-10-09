@@ -1,6 +1,6 @@
 "use client"
 
-import { berufsbildLabel } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { useState, useTransition, useEffect } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
@@ -776,6 +776,7 @@ function KandidatenTab({
   candidates: AssignedCandidate[]
   kanzleiCampaigns: KanzleiCampaign[]
 }) {
+  const bb = useBerufsbilder()
   // Sortiert nach Kanzlei-Kampagne; ältere Zuordnungen ohne Kampagne ans Ende.
   const sortedCandidates = [...candidates].sort((a, b) => {
     if (!a.assignmentCampaignTitle !== !b.assignmentCampaignTitle) return a.assignmentCampaignTitle ? -1 : 1
@@ -855,7 +856,7 @@ function KandidatenTab({
                       {c.firstName} {c.lastName}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-gray-600">{berufsbildLabel(c.berufsbild) ?? (c.berufsbild || "—")}</TableCell>
+                  <TableCell className="text-gray-600">{bb.label(c.berufsbild) ?? "—"}</TableCell>
                   <TableCell className="text-gray-600">{c.assignmentCampaignTitle ?? "Kanzlei allgemein"}</TableCell>
                   <TableCell className="text-gray-400">{c.campaignTitle || "—"}</TableCell>
                   <TableCell>

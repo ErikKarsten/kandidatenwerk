@@ -5,6 +5,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { getAgencyLogoUrl } from "@/lib/agency-logo"
 import { OPEN_BUG_REPORT_STATUSES } from "@/lib/bug-reports/shared"
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { loadBerufsbilder } from "@/lib/berufsbilder-server"
+import { BerufsbildProvider } from "@/components/berufsbild-context"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient()
@@ -20,11 +22,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { count: clientsCount },
     { data: { user } },
     logoUrl,
+    berufsbilder,
   ] = await Promise.all([
     supabase.from("candidates").select("id", { count: "exact", head: true }).eq("is_demo", false),
     supabase.from("clients").select("id", { count: "exact", head: true }),
     supabase.auth.getUser(),
     getAgencyLogoUrl(),
+    loadBerufsbilder(),
   ])
 
   // Offene Team-Aufgaben (Paket 44) werden in derselben Runde geladen und erst hier dem
@@ -72,7 +76,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         />
       }
     >
-      {children}
+      <BerufsbildProvider options={berufsbilder}>{children}</BerufsbildProvider>
     </ResponsiveShell>
   )
 }

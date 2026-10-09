@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url"
 import dotenv from "dotenv"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "../src/types/database"
-import { BERUFSBILD_OPTIONS } from "../src/lib/berufsbild"
+import { berufsbildLabel, type BerufsbildOption } from "../src/lib/berufsbild"
+import { fetchBerufsbilder } from "../src/lib/berufsbild-db"
 import { generateText } from "../src/lib/llm"
 import { matchCandidateToCampaigns } from "../src/lib/matching"
 
@@ -24,7 +25,6 @@ dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true })
 
 const EXECUTE = process.argv.includes("--ausfuehren")
 const BATCH = 20
-const VALUES = new Set<string>(BERUFSBILD_OPTIONS.map((o) => o.value))
 const CACHE = path.resolve(__dirname, "../neuimport/leadtable-cache.json")
 
 interface Row {
@@ -48,6 +48,8 @@ const RANKED: [string, RegExp][] = [
   ["steuerberater", /steuerberater(in)?\b/],
   ["steuerfachwirt", /steuerfachwirt/],
   ["bilanzbuchhalter", /bilanzbuchhalter/],
+  ["lohnbuchhalter", /lohn(- und gehalts)?buchhalter/],
+  ["finanzbuchhalter", /finanzbuchhalter|\bfibu\b/],
   ["steuerfachangestellte", /steuerfach(fach)?angestellte|steuerfachgehilf|fachangestellte[r]? für steuern|\bstfa\b/],
 ]
 const IN_PROGRESS = /\b(zur|zum|angehend|in ausbildung|azubi|auszubildend|umschulung|studium|studiere)/
@@ -73,7 +75,8 @@ function describe(r: Row, campaign: string | undefined): string {
     .join("\n")
 }
 
-async function classify(items: { id: string; text: string }[]): Promise<Map<string, string>> {
+async function classify(items: { id: string; text: string }[], options: BerufsbildOption[]): Promise<Map<string, string>> {
+  const values = new Set(options.filter((o) => o.active !== false).map((o) => o.value))
   const answer = await generateText({
     tier: "fast",
     system:
@@ -84,7 +87,12 @@ async function classify(items: { id: string; text: string }[]): Promise<Map<stri
       "- steuerfachwirt: Fortbildung Steuerfachwirt/in",
       "- bilanzbuchhalter: geprüfte/r Bilanzbuchhalter/in",
       "- steuerberater: bestellte/r Steuerberater/in",
-      "- sonstige: alles andere (z. B. Bürokaufleute, Lohn- oder Finanzbuchhalter ohne die obigen Abschlüsse, Quereinsteiger, Auszubildende, Studierende)",
+      "- finanzbuchhalter: Finanzbuchhalter/in (Ausbildung, Weiterbildung oder mehrjährige Praxis in der Finanzbuchhaltung) ohne die obigen Abschlüsse",
+      "- lohnbuchhalter: Lohn- und Gehaltsbuchhalter/in (Weiterbildung oder mehrjährige Praxis in der Lohnabrechnung) ohne die obigen Abschlüsse",
+      ...options
+        .filter((o) => o.active !== false && !["steuerfachangestellte", "steuerfachwirt", "bilanzbuchhalter", "steuerberater", "finanzbuchhalter", "lohnbuchhalter", "sonstige"].includes(o.value))
+        .map((o) => `- ${o.value}: ${o.label}`),
+      "- sonstige: alles andere (z. B. Bürokaufleute ohne Buchhaltungspraxis, Quereinsteiger, Auszubildende, Studierende)",
       "Bei mehreren Abschlüssen gilt der höchste. Im Zweifel oder ohne Angaben: sonstige.",
       "",
       ...items.map((it) => `### ${it.id}\n${it.text || "(keine Angaben)"}`),
@@ -97,7 +105,7 @@ async function classify(items: { id: string; text: string }[]): Promise<Map<stri
   const match = answer.match(/\{[\s\S]*\}/)
   if (!match) throw new Error("KI-Antwort ohne JSON")
   const parsed = JSON.parse(match[0]) as Record<string, string>
-  return new Map(Object.entries(parsed).filter(([, v]) => VALUES.has(v)))
+  return new Map(Object.entries(parsed).filter(([, v]) => values.has(v)))
 }
 
 async function main() {
@@ -114,6 +122,7 @@ async function main() {
   console.log(`Vorqualifiziert ohne Berufsbild: ${rows.length}`)
 
   const campaigns = leadtableCampaigns()
+  const options = await fetchBerufsbilder(db)
   const result = new Map<string, { value: string; via: string }>()
   const open: { id: string; text: string }[] = []
   for (const r of rows) {
@@ -123,7 +132,7 @@ async function main() {
   }
   for (let i = 0; i < open.length; i += BATCH) {
     const batch = open.slice(i, i + BATCH)
-    const answers = await classify(batch)
+    const answers = await classify(batch, options)
     for (const it of batch) result.set(it.id, { value: answers.get(it.id) ?? "sonstige", via: "KI-Einschätzung" })
     console.log(`KI: ${Math.min(i + BATCH, open.length)}/${open.length}`)
   }
@@ -135,7 +144,7 @@ async function main() {
 
   let done = 0
   for (const [id, { value, via }] of result) {
-    const label = BERUFSBILD_OPTIONS.find((o) => o.value === value)!.label
+    const label = berufsbildLabel(value, options)
     const { error: updateError } = await db.from("candidates").update({ berufsbild: value }).eq("id", id).is("berufsbild", null)
     if (updateError) {
       console.error(id, updateError.message)

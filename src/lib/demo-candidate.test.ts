@@ -21,6 +21,11 @@ describe("pickDemoTarget", () => {
     const target = pickDemoTarget([{ berufsbild: "Lohnbuchhalter", plz: null, sort_order: 0, created_at: "2026-10-01" }], "10115")
     expect(target).toEqual({ berufsbild: "steuerfachangestellte", plz: "10115" })
   })
+
+  it("übernimmt gepflegte Berufsbilder wie Lohnbuchhalter", () => {
+    const target = pickDemoTarget([{ berufsbild: "lohnbuchhalter", plz: "53111", sort_order: 0, created_at: "2026-10-01" }], null)
+    expect(target.berufsbild).toBe("lohnbuchhalter")
+  })
 })
 
 describe("buildDemoCandidate", () => {

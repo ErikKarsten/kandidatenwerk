@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
 import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { CandidatesList, type CandidateListItem, type CandidatesSortOption } from "./candidates-list"
@@ -17,7 +16,8 @@ const VALID_STATUSES: Set<string> = new Set([
   ...CANDIDATE_STATUS_OPTIONS.map((o) => o.value),
   ...ASSIGNMENT_STATUS_OPTIONS.map((o) => `kunde:${o.value}`),
 ])
-const VALID_BERUFSBILDER: Set<string> = new Set(BERUFSBILD_OPTIONS.map((o) => o.value))
+// Berufsbilder sind pflegbar (Paket 45) - nur das Format des Schlüssels prüfen.
+const BERUFSBILD_KEY = /^[a-z0-9_]+$/
 const VALID_SOURCES: Set<string> = new Set(SOURCE_OPTIONS.map((o) => o.value))
 const PAGE_SIZES: readonly PageSize[] = [10, 20, 50]
 const DEFAULT_PAGE_SIZE: PageSize = 10
@@ -48,7 +48,7 @@ export default async function CandidatesPage({
   const showArchived = sp.show_archived === "1"
   const search = (sp.q ?? "").trim()
   const statusFilter = sp.status && VALID_STATUSES.has(sp.status) ? sp.status : "alle"
-  const berufsbildFilter = sp.berufsbild && VALID_BERUFSBILDER.has(sp.berufsbild) ? sp.berufsbild : "alle"
+  const berufsbildFilter = sp.berufsbild && BERUFSBILD_KEY.test(sp.berufsbild) ? sp.berufsbild : "alle"
   const sourceFilter = sp.source && VALID_SOURCES.has(sp.source) ? sp.source : "alle"
   const tagFilter = (sp.tag ?? "").trim() || "alle"
   const sort: CandidatesSortOption =

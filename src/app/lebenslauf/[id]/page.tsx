@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getStaffContext } from "@/lib/auth-guards"
 import { buildCv } from "@/lib/cv"
 import { parseWerdegang } from "@/lib/cv-werdegang"
+import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { CvToolbar } from "./cv-toolbar"
 
 export const metadata = { title: "Lebenslauf – Kandidatenwerk" }
@@ -23,18 +24,19 @@ export default async function LebenslaufPage({
   const ctx = await getStaffContext(supabase)
   if ("error" in ctx) redirect("/login")
 
-  const [{ data: candidate }, { data: definitions }, { data: settings }, { data: agency }, { data: me }] = await Promise.all([
+  const [{ data: candidate }, { data: definitions }, { data: settings }, { data: agency }, { data: me }, berufsbilder] = await Promise.all([
     supabase.from("candidates").select("id, first_name, last_name, email, phone, plz, berufsbild, custom_fields, cv_werdegang").eq("id", id).maybeSingle(),
     supabase.from("custom_field_definitions").select("key, label, active").order("sort_order"),
     ctx.staff.agencyId ? supabase.from("agency_settings").select("logo_url").eq("agency_id", ctx.staff.agencyId).maybeSingle() : Promise.resolve({ data: null }),
     ctx.staff.agencyId ? supabase.from("agencies").select("name").eq("id", ctx.staff.agencyId).maybeSingle() : Promise.resolve({ data: null }),
     supabase.from("profiles").select("full_name, email, phone").eq("id", ctx.staff.userId).maybeSingle(),
+    loadBerufsbilder(),
   ])
   if (!candidate) notFound()
 
   // Werdegang (Paket 43): fehlt er, erzeugt die Werkzeugleiste ihn per KI und lädt neu.
   const werdegang = candidate.cv_werdegang ? parseWerdegang(candidate.cv_werdegang) : []
-  const cv = buildCv({ ...candidate, custom_fields: (candidate.custom_fields ?? {}) as Record<string, unknown> }, definitions ?? [], anonym)
+  const cv = buildCv({ ...candidate, custom_fields: (candidate.custom_fields ?? {}) as Record<string, unknown> }, definitions ?? [], anonym, berufsbilder)
   const today = new Date().toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })
   const contact = [me?.full_name, me?.email, me?.phone].filter(Boolean).join(" · ")
 

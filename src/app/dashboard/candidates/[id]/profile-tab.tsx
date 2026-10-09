@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Check, Copy } from "lucide-react"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { useBerufsbilder } from "@/components/berufsbild-context"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { updateCandidateProfileAction, updateCandidateCustomFieldAction } from "./actions"
 
@@ -51,6 +51,7 @@ export function ProfileTab({
   customFieldDefinitions,
   templateFieldKeys,
 }: ProfileTabProps) {
+  const bb = useBerufsbilder()
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [editMode, setEditMode] = useState(false)
@@ -200,11 +201,11 @@ export function ProfileTab({
                   onChange={(e) => setLocalBerufsbild(e.target.value)}
                 >
                   <option value="">Kein Berufsbild</option>
-                  {BERUFSBILD_OPTIONS.map((o) => (
+                  {bb.choices(localBerufsbild).map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
-              ) : (BERUFSBILD_OPTIONS.find((o) => o.value === berufsbild)?.label || "—")}
+              ) : (bb.label(berufsbild) || "—")}
             </FieldRow>
             <FieldRow label="PLZ" editMode={editMode}>
               {editMode ? (

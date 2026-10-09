@@ -7,7 +7,8 @@ import { getStaffContext, requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { ensureCampaignAssignment } from "@/lib/client-assignment"
-import { BERUFSBILD_OPTIONS } from "@/lib/berufsbild"
+import { berufsbildLabel } from "@/lib/berufsbild"
+import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { normalizeTags } from "@/lib/candidate-tags"
 import { ASSIGNMENT_STATUS_OPTIONS, assignmentStatusLabel } from "@/lib/assignment-status"
@@ -394,7 +395,8 @@ export async function updateCandidateBerufsbildAction(
   candidateId: string,
   berufsbild: string | null
 ): Promise<{ error: string } | null> {
-  if (berufsbild && !BERUFSBILD_OPTIONS.some((o) => o.value === berufsbild)) {
+  const berufsbilder = await loadBerufsbilder()
+  if (berufsbild && !berufsbilder.some((o) => o.value === berufsbild)) {
     return { error: "Unbekanntes Berufsbild." }
   }
 
@@ -409,7 +411,7 @@ export async function updateCandidateBerufsbildAction(
   const { error } = await supabase.from("candidates").update({ berufsbild: berufsbild || null }).eq("id", candidateId)
   if (error) return { error: error.message }
 
-  const label = (value: string | null) => BERUFSBILD_OPTIONS.find((o) => o.value === value)?.label ?? "keins"
+  const label = (value: string | null) => berufsbildLabel(value, berufsbilder) ?? "keins"
   const { error: historyError } = await supabase.from("candidate_history").insert({
     candidate_id: candidateId,
     type: "note",
