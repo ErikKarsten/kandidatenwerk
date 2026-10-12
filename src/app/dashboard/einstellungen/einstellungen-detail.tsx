@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ChevronDown, Clock, RefreshCw as SyncIcon, Send, Plus, Pencil } from "lucide-react"
 import {
+  teamPasswordLinkAction,
   updateOwnProfileAction,
   updateOwnPasswordAction,
   inviteTeamMemberAction,
@@ -383,6 +384,58 @@ function TeamAvatar({ member, size = 36 }: { member: Pick<TeamMember, "full_name
   )
 }
 
+// Passwort zurücksetzen (Paket 54): Link erzeugen und selbst verschicken.
+function PasswordLinkBox({ profileId, name }: { profileId: string; name: string }) {
+  const [pending, startTransition] = useTransition()
+  const [link, setLink] = useState<string | null>(null)
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+
+  function create() {
+    setMessage(null)
+    setLink(null)
+    startTransition(async () => {
+      const result = await teamPasswordLinkAction(profileId)
+      if ("error" in result) return setMessage({ ok: false, text: result.error })
+      setLink(result.link)
+      try {
+        await navigator.clipboard.writeText(result.link)
+        setMessage({ ok: true, text: "Link kopiert – zeitlich begrenzt gültig. Bitte selbst an die Person schicken." })
+      } catch {
+        setMessage({ ok: true, text: "Link erzeugt – bitte unten kopieren und selbst verschicken." })
+      }
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "#eef2f6" }}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 flex-1 text-xs text-gray-500">
+          Passwort zurücksetzen: Link für {name} erzeugen. Das bisherige Passwort gilt, bis ein neues festgelegt ist.
+        </p>
+        <button
+          type="button"
+          onClick={create}
+          disabled={pending}
+          className="shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+          style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+        >
+          {pending ? "…" : "Passwort-Link erzeugen"}
+        </button>
+      </div>
+      {message && <p className="text-xs" style={{ color: message.ok ? "#1a9a6a" : "#dc2626" }}>{message.text}</p>}
+      {link && (
+        <input
+          readOnly
+          value={link}
+          onFocus={(e) => e.target.select()}
+          className="w-full rounded-md border px-2 py-1 text-[11px] text-gray-600"
+          style={{ borderColor: "#dde3ea" }}
+        />
+      )}
+    </div>
+  )
+}
+
 // Team-Mitglieder: Name und E-Mail Pflicht, Telefon und Foto optional (Paket 24). Beim Key
 // Account Manager erscheinen sie als Ansprechpartner im Kundenportal.
 function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: string }) {
@@ -530,6 +583,7 @@ function TeamTab({ team, ownProfileId }: { team: TeamMember[]; ownProfileId: str
               </div>
               <p className="text-xs text-gray-400">{m.email ?? "—"} · Die E-Mail-Adresse ist der Login und lässt sich hier nicht ändern.</p>
               {editError && <p className="text-xs text-red-600">{editError}</p>}
+              <PasswordLinkBox profileId={m.id} name={m.full_name ?? m.email ?? "das Team-Mitglied"} />
             </div>
             ) : (
             <div key={m.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5" style={{ borderColor: "#dde3ea" }}>

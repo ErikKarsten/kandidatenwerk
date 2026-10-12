@@ -1,6 +1,7 @@
 "use server"
 
 import { isTeam, type Team } from "@/lib/teams"
+import { createPasswordResetLink } from "@/lib/password-reset"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
@@ -241,6 +242,27 @@ export async function updateTeamMemberAction(profileId: string, formData: FormDa
   if (error) return { error: error.message }
   revalidatePath("/dashboard/einstellungen")
   return null
+}
+
+// Passwort-Link für ein Team-Mitglied (Paket 54): nur Admins, nur eigene Agentur. Der Link
+// wird nicht verschickt, sondern angezeigt - der Admin schickt ihn selbst raus. Er führt
+// auf /set-password; das alte Passwort gilt, bis ein neues gesetzt ist.
+export async function teamPasswordLinkAction(profileId: string): Promise<{ error: string } | { link: string }> {
+  const supabase = await createSupabaseServerClient()
+  const guard = await getAgencyAdminContext(supabase)
+  if ("error" in guard) return guard
+  const admin = createSupabaseAdminClient()
+  const { data: target } = await admin.from("profiles").select("role, agency_id, email").eq("id", profileId).maybeSingle()
+  if (!target || !["agency_admin", "agency_member"].includes(target.role) || !guard.staff.agencyId || target.agency_id !== guard.staff.agencyId) {
+    return { error: "Team-Mitglied nicht gefunden." }
+  }
+  const email = target.email ?? (await admin.auth.admin.getUserById(profileId)).data.user?.email ?? null
+  if (!email) return { error: "Für dieses Team-Mitglied ist keine E-Mail-Adresse bekannt." }
+  try {
+    return { link: await createPasswordResetLink(email) }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
 }
 
 export async function removeTeamMemberAction(profileId: string): Promise<{ error: string } | null> {
