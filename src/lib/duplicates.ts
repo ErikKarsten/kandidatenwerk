@@ -6,6 +6,7 @@
 // Kunden: gleiche PLZ + ähnlicher Name (Rechtsform-Kürzel ignoriert, mind. 60 % der
 // Begriffe des kürzeren Namens auch im anderen).
 // Kandidaten: gleiche E-Mail-Adresse, oder gleicher Name + gleiche PLZ.
+import { SAMPLE_TAG } from "@/lib/candidate-tags"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 export type DuplicateKind = "kunde" | "kandidat"
@@ -108,7 +109,8 @@ export async function runDuplicateDetection(db: SupabaseClient): Promise<{ newCa
       db.from("clients").select("id, name, plz").neq("status", "Archiviert").range(from, to)
     ),
     fetchAll<{ id: string; first_name: string; last_name: string; email: string | null; plz: string | null }>((from, to) =>
-      db.from("candidates").select("id, first_name, last_name, email, plz").eq("is_demo", false).range(from, to)
+      // Beispiel-Leads und Musterdatensätze (Paket 58) nie als Dublette melden.
+      db.from("candidates").select("id, first_name, last_name, email, plz").eq("is_demo", false).not("tags", "cs", `{${SAMPLE_TAG}}`).range(from, to)
     ),
   ])
   const findings = [...findClientDuplicates(clients), ...findCandidateDuplicates(candidates)]
