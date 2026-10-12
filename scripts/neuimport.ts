@@ -23,6 +23,10 @@
 //   npx tsx scripts/neuimport.ts --ausfuehren --nur-beschreibungen
 //       trägt bei schon importierten Kandidaten nur Beschreibung (leeres Feld) und Notizen
 //       aus Leadtable nach (Paket 40), Kunden bleiben unverändert
+//   npx tsx scripts/neuimport.ts --neu-laden --abgleich [--ausfuehren]
+//       Abgleich (Paket 59): neue Leads anlegen (mit Zuordnung zu bestehenden Kunden), bestehende
+//       Kandidaten verknüpfen und um Beschreibung, Notizen, Bewerbung ergänzen; Zuordnungen nur,
+//       wenn es zu Kandidat und Kanzlei noch nie eine gab. Status: scripts/leadtable-status-sync.ts
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -52,6 +56,10 @@ const ONLY = process.argv.find((a) => a.startsWith("--nur="))?.slice("--nur=".le
 const RELOAD = process.argv.includes("--neu-laden")
 // Nur Beschreibung und Notizen aus Leadtable bei schon importierten Kandidaten nachtragen.
 const ONLY_TEXTS = process.argv.includes("--nur-beschreibungen")
+// Laufender Abgleich nach dem Neuimport (Paket 59): neue Leads anlegen, bestehende
+// Kandidaten verknüpfen und ergänzen - Kunden bleiben unverändert.
+const SYNC = process.argv.includes("--abgleich")
+const SKIP_CLIENTS = ONLY_TEXTS || SYNC
 const OUT = path.resolve(__dirname, "../neuimport")
 const CACHE = path.join(OUT, "leadtable-cache.json")
 const POOL = /kanzleistelle24/i
@@ -279,14 +287,14 @@ async function main() {
   const { count: candidateCount } = await db.from("candidates").select("id", { count: "exact", head: true }).eq("source", "leadtable")
   // Kunden aus einem vorherigen (abgebrochenen) Lauf werden wiederverwendet; gesperrt wird
   // nur, wenn schon Leadtable-Kandidaten importiert sind.
-  if (EXECUTE && !ONLY && !ONLY_TEXTS && (candidateCount ?? 0) > 0) {
+  if (EXECUTE && !ONLY && !SKIP_CLIENTS && (candidateCount ?? 0) > 0) {
     throw new Error(`Datenbank ist nicht leer (${clientCount} Kunden, ${candidateCount} Kandidaten) - erst scripts/live-bereinigen.ts.`)
   }
 
   const customers = await loadLeadtable()
   // Nur Texte nachtragen: Kunden werden nicht angefasst, Close und ClickUp nicht gebraucht.
   const won = ONLY_TEXTS ? [] : await closeList<{ id: string; display_name: string }>(`/lead/?query=${encodeURIComponent('lead_status:"Gewonnen"')}&_fields=id,display_name`, 2000)
-  const clickupTasks = ONLY_TEXTS ? null : await loadClickup()
+  const clickupTasks = SKIP_CLIENTS ? null : await loadClickup()
 
   // 1. Kunden planen
   interface PlannedClient {
@@ -406,19 +414,36 @@ async function main() {
     `- übersprungen: Absagen ${skipped.absage}, ohne E-Mail und Telefon ${skipped.ohneKontakt}, Testleads ${skipped.test}, in Leadtable gelöscht ${skipped.geloescht}`,
     `- zusammengeführte Mehrfach-Bewerbungen: ${candidates.filter((c) => c.others.length > 0).length}`,
   ].join("\n")
-  if (!ONLY_TEXTS) fs.writeFileSync(path.join(OUT, "bericht.md"), report + "\n")
-  if (!ONLY_TEXTS) fs.writeFileSync(
+  if (!SKIP_CLIENTS) fs.writeFileSync(path.join(OUT, "bericht.md"), report + "\n")
+  if (!SKIP_CLIENTS) fs.writeFileSync(
     path.join(OUT, "kunden.csv"),
     "﻿" +
       ["kunde;quelle;leadtable_name;close_abgleich;close_lead;close_id;clickup_eintrag"]
         .concat(planned.map((p) => [csvEsc(p.name), p.source, csvEsc(customers.find((c) => c.id === p.leadtableId)?.name ?? ""), csvEsc(p.closeMatch), csvEsc(p.close?.display_name ?? ""), p.close?.id ?? "", csvEsc(p.clickup?.name ?? "")].join(";")))
         .join("\n")
   )
-  if (clickupTasks && !ONLY_TEXTS) {
+  if (clickupTasks && !SKIP_CLIENTS) {
     const usedTasks = new Set(planned.map((p) => p.clickup?.id).filter(Boolean))
     fs.writeFileSync(path.join(OUT, "clickup-ohne-zuordnung.csv"), "﻿clickup_eintrag;clickup_id\n" + clickupTasks.filter((t) => !usedTasks.has(t.id)).map((t) => `${csvEsc(t.name)};${t.id}`).join("\n"))
   }
   console.log(report)
+
+  // Abgleich: welche Leads gibt es schon in Kandidatenwerk (Lead-ID oder E-Mail)?
+  const knownLeadIds = new Set<string>()
+  const knownEmails = new Set<string>()
+  if (SYNC) {
+    for (let from = 0; ; from += 1000) {
+      const { data } = await db.from("candidates").select("leadtable_lead_id, email").range(from, from + 999)
+      for (const r of data ?? []) {
+        if (r.leadtable_lead_id) knownLeadIds.add(r.leadtable_lead_id)
+        if (r.email) knownEmails.add(r.email.toLowerCase())
+      }
+      if (!data || data.length < 1000) break
+    }
+    const fresh = candidates.filter((c) => !c.leadIds.some((id) => knownLeadIds.has(id)) && !(c.email && knownEmails.has(c.email)))
+    console.log(`Abgleich: ${fresh.length} neue Kandidaten, ${candidates.length - fresh.length} schon vorhanden (werden ergänzt).`)
+    for (const c of fresh.slice(0, 15)) console.log(`  neu: ${c.lead.createdAt?.slice(0, 10) ?? "?"} · ${c.customer.name} · ${c.ltStatus}`)
+  }
   if (!EXECUTE) return
 
   // ── Ausführen ──────────────────────────────────────────────────────────────────────
@@ -427,7 +452,19 @@ async function main() {
   const [leadLabels, activityLabels] = await Promise.all([leadFieldLabels(), customActivityLabels()])
   const profileStats = { befuellt: 0, fehler: 0 }
   let done = 0
-  await pool(ONLY_TEXTS ? [] : planned, 5, async (p) => {
+  // Abgleich: Kunden nicht anlegen, nur zuordnen (Close-Verknüpfung, sonst Name).
+  if (SYNC) {
+    for (const p of planned) {
+      if (!p.leadtableId) continue
+      const { data: client } = p.close
+        ? await db.from("clients").select("id").eq("close_lead_id", p.close.id).maybeSingle()
+        : await db.from("clients").select("id").eq("name", p.name).limit(1).maybeSingle()
+      if (client) clientIdByLeadtable.set(p.leadtableId, client.id)
+    }
+    console.log(`Kunden zugeordnet: ${clientIdByLeadtable.size} von ${planned.filter((p) => p.leadtableId).length}`)
+  }
+  const syncStats = { neu: 0, ergaenzt: 0, zuordnungen: 0 }
+  await pool(SKIP_CLIENTS ? [] : planned, 5, async (p) => {
     try {
       // 1. Kunde anlegen bzw. aus Close verknüpfen.
       let clientId: string
@@ -539,6 +576,20 @@ async function main() {
         await db.from("candidate_history").insert({ candidate_id: existing.id, type: "note", content: `Auch in Leadtable vorhanden: Kunde „${c.customer.name}“, Status „${c.ltStatus}“.` })
       }
       await addLeadtableTexts(existing.id, c, existing.notes)
+      if (SYNC) {
+        syncStats.ergaenzt++
+        await db.from("candidates").update({ bewerbung: `${c.occupation || "Bewerbung"} – ${c.customer.name}` }).eq("id", existing.id).is("bewerbung", null)
+        // Zuordnung nur, wenn es zu Kandidat und Kanzlei noch nie eine gab (entfernte bleiben entfernt).
+        for (const [ltCustomerId, status] of c.assignTo) {
+          const clientId = clientIdByLeadtable.get(ltCustomerId)
+          if (!clientId) continue
+          const { count } = await db.from("client_assignments").select("id", { count: "exact", head: true }).eq("candidate_id", existing.id).eq("client_id", clientId)
+          if (count) continue
+          const { error: assignError } = await db.from("client_assignments").insert({ candidate_id: existing.id, client_id: clientId, status })
+          if (assignError) console.error(`Zuordnung ${c.key}: ${assignError.message}`)
+          else syncStats.zuordnungen++
+        }
+      }
       if (++done % 100 === 0) console.log(`Kandidaten: ${done}/${candidates.length}`)
       return
     }
@@ -575,15 +626,18 @@ async function main() {
     const others = c.others.length ? ` Weitere Bewerbungen: ${c.others.map((o) => `${o.customer} (${o.status})`).join("; ")}.` : ""
     await db.from("candidate_history").insert({ candidate_id: inserted.id, type: "note", content: `Import aus Leadtable: ${origin}.${others}` })
     await addLeadtableTexts(inserted.id, c, leadDescription(c))
+    syncStats.neu++
     for (const [ltCustomerId, status] of c.assignTo) {
       const clientId = clientIdByLeadtable.get(ltCustomerId)
       if (!clientId) continue
       const { error: assignError } = await db.from("client_assignments").insert({ candidate_id: inserted.id, client_id: clientId, status })
       if (assignError) console.error(`Zuordnung ${c.key}: ${assignError.message}`)
+      else syncStats.zuordnungen++
     }
     if (++done % 100 === 0) console.log(`Kandidaten: ${done}/${candidates.length}`)
   })
   console.log(`Beschreibungen ergänzt: ${textStats.beschreibungen}, Notizen: ${textStats.notizen}${ONLY_TEXTS ? `, Kandidat nicht gefunden: ${textStats.nichtGefunden}` : ""}`)
+  if (SYNC) console.log(`Abgleich: ${syncStats.neu} neu angelegt, ${syncStats.ergaenzt} ergänzt, ${syncStats.zuordnungen} Zuordnungen.`)
   console.log("Fertig.")
 }
 

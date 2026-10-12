@@ -114,24 +114,40 @@ interface MetaPaging {
 
 // Seiten, auf die der im Access Token hinterlegte User/System-User Zugriff hat (Business
 // Manager -> "Seiten" bzw. für einen System-User die ihm zugewiesenen Assets).
+// Alle Seiten mit Pagination (Paket 59) - vorher nur die ersten 100.
 export async function fetchMetaPages(): Promise<MetaPage[]> {
-  const resp = await metaGraphFetch<{ data: MetaPage[]; paging?: MetaPaging }>("/me/accounts", {
-    fields: "id,name,access_token",
-    limit: 100,
-  })
-  return resp.data
+  const pages: MetaPage[] = []
+  let after: string | undefined
+  do {
+    const resp = await metaGraphFetch<{ data: MetaPage[]; paging?: MetaPaging }>("/me/accounts", {
+      fields: "id,name,access_token",
+      limit: 100,
+      ...(after ? { after } : {}),
+    })
+    pages.push(...resp.data)
+    after = resp.paging?.cursors?.after && resp.paging?.next ? resp.paging.cursors.after : undefined
+  } while (after)
+  return pages
 }
 
 // Lead-Formulare einer Seite (nur die Basisdaten - Fragen/Feldnamen liest die KI-
 // Extraktion aus den tatsächlichen Leads mit, siehe meta-leads-sync.ts, statt hier
 // zusätzlich das Formular-Schema abzufragen).
+// Mit Pagination (Paket 59): Die Seite Kanzleistelle24.de hat mehr als 100 Formulare - ältere
+// fehlten, deren Kampagnen galten als "Seite nicht freigegeben" und Leads kamen nicht an.
 export async function fetchMetaLeadForms(pageId: string, pageAccessToken?: string): Promise<MetaLeadForm[]> {
-  const resp = await metaGraphFetch<{ data: MetaLeadForm[]; paging?: MetaPaging }>(
-    `/${pageId}/leadgen_forms`,
-    { fields: "id,name,status", limit: 100 },
-    pageAccessToken
-  )
-  return resp.data
+  const forms: MetaLeadForm[] = []
+  let after: string | undefined
+  do {
+    const resp = await metaGraphFetch<{ data: MetaLeadForm[]; paging?: MetaPaging }>(
+      `/${pageId}/leadgen_forms`,
+      { fields: "id,name,status", limit: 100, ...(after ? { after } : {}) },
+      pageAccessToken
+    )
+    forms.push(...resp.data)
+    after = resp.paging?.cursors?.after && resp.paging?.next ? resp.paging.cursors.after : undefined
+  } while (after)
+  return forms
 }
 
 // Alle Leads eines Formulars, mit Pagination (per `after`-Cursor, wie leadtableFetch es
