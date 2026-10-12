@@ -444,25 +444,31 @@ async function main() {
     console.log(`Abgleich: ${fresh.length} neue Kandidaten, ${candidates.length - fresh.length} schon vorhanden (werden ergänzt).`)
     for (const c of fresh.slice(0, 15)) console.log(`  neu: ${c.lead.createdAt?.slice(0, 10) ?? "?"} · ${c.customer.name} · ${c.ltStatus}`)
   }
+  // Abgleich: Kunden nicht anlegen, nur zuordnen (Close-Verknüpfung, sonst Name).
+  const clientIdByLeadtable = new Map<string, string>()
+  if (SYNC) {
+    const unmatched: string[] = []
+    for (const p of planned) {
+      if (!p.leadtableId) continue
+      const { data: byClose } = p.close
+        ? await db.from("clients").select("id").eq("close_lead_id", p.close.id).maybeSingle()
+        : { data: null }
+      const { data: client } = byClose
+        ? { data: byClose }
+        : await db.from("clients").select("id").eq("name", p.name).limit(1).maybeSingle()
+      if (client) clientIdByLeadtable.set(p.leadtableId, client.id)
+      else unmatched.push(`${p.name}${p.close ? ` (Close: ${p.close.id})` : ""}`)
+    }
+    console.log(`Kunden zugeordnet: ${clientIdByLeadtable.size} von ${planned.filter((p) => p.leadtableId).length}`)
+    for (const name of unmatched) console.log(`  ohne Kunde: ${name}`)
+  }
   if (!EXECUTE) return
 
   // ── Ausführen ──────────────────────────────────────────────────────────────────────
   const { data: agency } = await db.from("agencies").select("id").limit(1).single()
-  const clientIdByLeadtable = new Map<string, string>()
   const [leadLabels, activityLabels] = await Promise.all([leadFieldLabels(), customActivityLabels()])
   const profileStats = { befuellt: 0, fehler: 0 }
   let done = 0
-  // Abgleich: Kunden nicht anlegen, nur zuordnen (Close-Verknüpfung, sonst Name).
-  if (SYNC) {
-    for (const p of planned) {
-      if (!p.leadtableId) continue
-      const { data: client } = p.close
-        ? await db.from("clients").select("id").eq("close_lead_id", p.close.id).maybeSingle()
-        : await db.from("clients").select("id").eq("name", p.name).limit(1).maybeSingle()
-      if (client) clientIdByLeadtable.set(p.leadtableId, client.id)
-    }
-    console.log(`Kunden zugeordnet: ${clientIdByLeadtable.size} von ${planned.filter((p) => p.leadtableId).length}`)
-  }
   const syncStats = { neu: 0, ergaenzt: 0, zuordnungen: 0 }
   await pool(SKIP_CLIENTS ? [] : planned, 5, async (p) => {
     try {
