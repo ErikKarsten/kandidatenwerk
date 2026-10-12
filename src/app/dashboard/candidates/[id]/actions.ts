@@ -338,12 +338,15 @@ export async function removeClientAssignmentAction(
     .from("client_assignments")
     .update({ removed_at: new Date().toISOString() })
     .eq("id", assignmentId)
-    .select("candidate_id")
+    .select("candidate_id, client_id, clients(name)")
     .single()
 
   if (error) return { error: error.message }
 
+  const clientName = (Array.isArray(data.clients) ? data.clients[0] : data.clients)?.name ?? "Kanzlei"
+  await supabase.from("candidate_history").insert({ candidate_id: data.candidate_id, type: "note", content: `Zuordnung zu „${clientName}“ entfernt`, created_by: user.id })
   revalidatePath(`/dashboard/candidates/${data.candidate_id}`)
+  revalidatePath(`/dashboard/clients/${data.client_id}`)
   return null
 }
 
