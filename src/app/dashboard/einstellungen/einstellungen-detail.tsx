@@ -1,7 +1,7 @@
 "use client"
 
 import { TEAM_OPTIONS, teamLabel } from "@/lib/teams"
-import { useState, useTransition } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { MetaCampaignsTab } from "./meta-campaigns-tab"
 import { setCustomFieldSectionAction, type FieldTemplate, type LeadFormOverview } from "./field-actions"
 import { FieldTemplatesTab } from "./field-templates-tab"
@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ChevronDown, Clock, RefreshCw as SyncIcon, Send, Plus, Pencil } from "lucide-react"
 import {
-  updateOwnNameAction,
+  updateOwnProfileAction,
   updateOwnPasswordAction,
   inviteTeamMemberAction,
   removeTeamMemberAction,
@@ -92,7 +92,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
         <div className={tab === "konto" ? "mt-4 max-w-lg" : tab === "team" ? "mt-4 max-w-3xl" : "mt-4 max-w-4xl"}>
           {tab === "konto" && (
             <div className="flex flex-col gap-4">
-              <KontoTab ownProfile={ownProfile} />
+              <KontoTab ownProfile={ownProfile} ownMember={team.find((m) => m.id === ownProfile.id) ?? null} />
               <AgenturTab agencyName={agencyName} />
               <AgencyLogoCard logoUrl={agencySettings.logoUrl} isAdmin={isAdmin} />
             </div>
@@ -203,13 +203,21 @@ function Card({ children }: { children: React.ReactNode }) {
 const inputClass = "w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
 const inputStyle = { borderColor: "#dde3ea" }
 
-function KontoTab({ ownProfile }: { ownProfile: OwnProfile }) {
+function KontoTab({ ownProfile, ownMember }: { ownProfile: OwnProfile; ownMember: TeamMember | null }) {
   const router = useRouter()
 
+  // Eigenes Profil (Paket 52): Name, Telefon, Foto.
   const [name, setName] = useState(ownProfile.full_name ?? "")
+  const [phone, setPhone] = useState(ownMember?.phone ?? "")
+  const [avatar, setAvatar] = useState<File | null>(null)
+  const [removeAvatar, setRemoveAvatar] = useState(false)
+  const [fileKey, setFileKey] = useState(0)
   const [namePending, startNameTransition] = useTransition()
   const [nameError, setNameError] = useState<string | null>(null)
   const [nameSaved, setNameSaved] = useState(false)
+  // Vorschau des gewählten Fotos, bevor es gespeichert ist.
+  const localPreview = useMemo(() => (avatar ? URL.createObjectURL(avatar) : null), [avatar])
+  const preview = localPreview ?? (removeAvatar ? null : ownMember?.avatarUrl ?? null)
 
   const [password, setPassword] = useState("")
   const [passwordRepeat, setPasswordRepeat] = useState("")
@@ -220,10 +228,18 @@ function KontoTab({ ownProfile }: { ownProfile: OwnProfile }) {
   function handleSaveName() {
     setNameError(null)
     setNameSaved(false)
+    const fd = new FormData()
+    fd.set("full_name", name)
+    fd.set("phone", phone)
+    if (avatar) fd.set("avatar", avatar)
+    if (removeAvatar) fd.set("remove_avatar", "1")
     startNameTransition(async () => {
-      const result = await updateOwnNameAction(name)
+      const result = await updateOwnProfileAction(fd)
       if (result?.error) { setNameError(result.error); return }
       setNameSaved(true)
+      setAvatar(null)
+      setRemoveAvatar(false)
+      setFileKey((k) => k + 1)
       router.refresh()
     })
   }
@@ -252,9 +268,45 @@ function KontoTab({ ownProfile }: { ownProfile: OwnProfile }) {
     <div className="flex flex-col gap-4">
       <Card>
         <h2 className="text-sm font-semibold text-gray-900">Profil</h2>
+        <div className="flex items-center gap-4">
+          <TeamAvatar member={{ full_name: name || ownProfile.full_name, avatarUrl: preview }} size={64} />
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-600">Profilbild (JPG, PNG oder WebP, max. 5 MB)</label>
+            <input
+              key={fileKey}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => {
+                setAvatar(e.target.files?.[0] ?? null)
+                setRemoveAvatar(false)
+                setNameSaved(false)
+              }}
+              className="block w-full text-xs text-gray-600 file:mr-2 file:rounded-md file:border-0 file:px-2.5 file:py-1.5 file:text-xs file:font-medium"
+            />
+            {(ownMember?.avatarUrl || avatar) && !removeAvatar && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAvatar(null)
+                  setRemoveAvatar(true)
+                  setFileKey((k) => k + 1)
+                  setNameSaved(false)
+                }}
+                className="w-fit text-xs text-gray-500 hover:text-red-600 hover:underline"
+              >
+                Profilbild entfernen
+              </button>
+            )}
+          </div>
+        </div>
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-gray-600">Name</label>
           <input className={inputClass} style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-gray-600">Telefon</label>
+          <input type="tel" className={inputClass} style={inputStyle} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0221 123456" />
+          <span className="text-xs text-gray-400">Als Key Account Manager erscheinen Foto und Telefon im Kundenportal.</span>
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-gray-600">E-Mail</label>
