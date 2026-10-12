@@ -3,7 +3,8 @@
 import { headers } from "next/headers"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { checkLoginRateLimit } from "@/lib/ratelimit"
-import { createPasswordResetLink, sendPasswordResetMail } from "@/lib/password-reset"
+import { sendPasswordResetMail } from "@/lib/password-reset"
+import { createPasswordLink } from "@/lib/password-link"
 
 export type ResetState = { ok: boolean; message: string } | null
 
@@ -22,7 +23,8 @@ export async function requestPasswordResetAction(_prev: ResetState, formData: Fo
     const admin = createSupabaseAdminClient()
     const { data: profile } = await admin.from("profiles").select("id").ilike("email", email).maybeSingle()
     if (profile) {
-      const link = await createPasswordResetLink(email)
+      // Eigener Link (Paket 55): ohne Ablaufzeit, Mail-Prüfprogramme verbrauchen ihn nicht.
+      const link = await createPasswordLink(profile.id, null)
       await sendPasswordResetMail(email, link)
     }
   } catch (err) {

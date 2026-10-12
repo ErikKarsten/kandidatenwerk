@@ -3,7 +3,8 @@
 // erst per Knopf raus. Zugänge entstehen über die Admin-API ohne Passwort - festgelegt wird
 // es über den Link auf /set-password.
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { createPasswordResetLink, sendPortalAccessMail } from "@/lib/password-reset"
+import { sendPortalAccessMail } from "@/lib/password-reset"
+import { createPasswordLink } from "@/lib/password-link"
 
 export type EnsureResult = { profileId: string; created: boolean } | { error: string }
 
@@ -33,7 +34,8 @@ export async function sendPortalInvite(profileId: string, email: string): Promis
   const admin = createSupabaseAdminClient()
   const { data } = await admin.auth.admin.getUserById(profileId)
   const kind = data.user?.last_sign_in_at ? "passwort" : "einladung"
-  await sendPortalAccessMail(email, await createPasswordResetLink(email), kind)
+  // Eigener Link (Paket 55): ohne Ablaufzeit, Mail-Prüfprogramme verbrauchen ihn nicht.
+  await sendPortalAccessMail(email, await createPasswordLink(profileId, null), kind)
   if (kind === "einladung") await admin.from("profiles").update({ portal_invited_at: new Date().toISOString() }).eq("id", profileId)
   return kind
 }

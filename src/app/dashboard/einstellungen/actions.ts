@@ -1,7 +1,7 @@
 "use server"
 
 import { isTeam, type Team } from "@/lib/teams"
-import { createPasswordResetLink } from "@/lib/password-reset"
+import { createPasswordLink } from "@/lib/password-link"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
@@ -244,22 +244,21 @@ export async function updateTeamMemberAction(profileId: string, formData: FormDa
   return null
 }
 
-// Passwort-Link für ein Team-Mitglied (Paket 54): nur Admins, nur eigene Agentur. Der Link
-// wird nicht verschickt, sondern angezeigt - der Admin schickt ihn selbst raus. Er führt
-// auf /set-password; das alte Passwort gilt, bis ein neues gesetzt ist.
+// Passwort-Link für ein Team-Mitglied (Paket 54/55): nur Admins, nur eigene Agentur. Der
+// Link wird nicht verschickt, sondern angezeigt - der Admin schickt ihn selbst raus. Eigener
+// Link ohne Ablaufzeit (/passwort-setzen/…), verbraucht erst beim Speichern; das alte
+// Passwort gilt, bis ein neues gesetzt ist.
 export async function teamPasswordLinkAction(profileId: string): Promise<{ error: string } | { link: string }> {
   const supabase = await createSupabaseServerClient()
   const guard = await getAgencyAdminContext(supabase)
   if ("error" in guard) return guard
   const admin = createSupabaseAdminClient()
-  const { data: target } = await admin.from("profiles").select("role, agency_id, email").eq("id", profileId).maybeSingle()
+  const { data: target } = await admin.from("profiles").select("role, agency_id").eq("id", profileId).maybeSingle()
   if (!target || !["agency_admin", "agency_member"].includes(target.role) || !guard.staff.agencyId || target.agency_id !== guard.staff.agencyId) {
     return { error: "Team-Mitglied nicht gefunden." }
   }
-  const email = target.email ?? (await admin.auth.admin.getUserById(profileId)).data.user?.email ?? null
-  if (!email) return { error: "Für dieses Team-Mitglied ist keine E-Mail-Adresse bekannt." }
   try {
-    return { link: await createPasswordResetLink(email) }
+    return { link: await createPasswordLink(profileId, guard.staff.userId) }
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }
