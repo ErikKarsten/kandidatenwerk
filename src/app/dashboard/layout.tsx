@@ -7,6 +7,8 @@ import { OPEN_BUG_REPORT_STATUSES } from "@/lib/bug-reports/shared"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { BerufsbildProvider } from "@/components/berufsbild-context"
+import { NavigationTracker } from "@/components/navigation-tracker"
+import { Suspense } from "react"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient()
@@ -76,7 +78,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
         />
       }
     >
-      <BerufsbildProvider options={berufsbilder}>{children}</BerufsbildProvider>
+      <BerufsbildProvider options={berufsbilder}>
+        {/* Eigener Zurück-Verlauf (Paket 53). */}
+        <Suspense fallback={null}>
+          <NavigationTracker />
+        </Suspense>
+        {children}
+      </BerufsbildProvider>
     </ResponsiveShell>
   )
 }

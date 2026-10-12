@@ -1,7 +1,7 @@
 "use client"
 
 import { useActionState, useTransition } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import Link from "next/link"
@@ -29,6 +29,8 @@ type FormValues = z.infer<typeof schema>
 interface Campaign {
   id: string
   title: string
+  kind: string
+  berufsbild: string | null
   clients: { name: string } | null
 }
 
@@ -46,17 +48,26 @@ export function CandidateForm({
   )
   const [pending, startTransition] = useTransition()
 
+  // Aus einer Kanzlei-Kampagne (Paket 53): Kandidat wird ihr zugeordnet - Kanzleien sehen nur
+  // vorqualifizierte, daher Status vorbelegt; Berufsbild aus der Kampagne.
+  const defaultCampaign = campaigns.find((c) => c.id === defaultCampaignId)
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      status: "neu",
+      status: defaultCampaign?.kind === "kanzlei" ? "vorqualifiziert" : "neu",
       campaign_id: defaultCampaignId ?? "",
+      berufsbild: defaultCampaign?.berufsbild ?? "",
     },
   })
+  const [campaignId, status] = useWatch({ control, name: ["campaign_id", "status"] })
+  const selectedCampaign = campaigns.find((c) => c.id === campaignId)
+  const isKanzlei = selectedCampaign?.kind === "kanzlei"
+  const statusIsAssignable = status === "vorqualifiziert"
 
   const cancelHref = defaultCampaignId
     ? `/dashboard/campaigns/${defaultCampaignId}`
@@ -107,6 +118,13 @@ export function CandidateForm({
             </option>
           ))}
         </select>
+        {isKanzlei && (
+          <span className="text-xs" style={{ color: statusIsAssignable ? "#6b7280" : "#b45309" }}>
+            {statusIsAssignable
+              ? `Der Kandidat wird der Kampagne zugeordnet und erscheint bei ${selectedCampaign?.clients?.name ?? "der Kanzlei"}.`
+              : "Kanzleien sehen nur vorqualifizierte Kandidaten – bitte den Status „Vorqualifiziert“ wählen."}
+          </span>
+        )}
       </Field>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -138,7 +156,6 @@ export function CandidateForm({
             {...register("berufsbild")}
             className="flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             style={{ borderColor: "#dde3ea", backgroundColor: "white" }}
-            defaultValue=""
           >
             <option value="">Kein Berufsbild</option>
             {bb.choices().map((o) => (
@@ -157,12 +174,12 @@ export function CandidateForm({
         </Field>
       </div>
 
-      <Field label="Notizen" error={errors.notes?.message}>
+      <Field label="Beschreibung" error={errors.notes?.message}>
         <textarea
           id="notes"
           {...register("notes")}
           rows={3}
-          placeholder="Interne Notizen zum Kandidaten…"
+          placeholder="Kurzprofil, Gesprächsnotizen …"
           className="flex w-full rounded-md border px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
           style={{ borderColor: "#dde3ea" }}
         />

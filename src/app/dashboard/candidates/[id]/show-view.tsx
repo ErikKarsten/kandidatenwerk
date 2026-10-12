@@ -1,6 +1,6 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import { useGoBack } from "@/components/navigation-tracker"
 import { buildCv } from "@/lib/cv"
 import { maskContactData, anonymousName } from "@/lib/show-mode"
 import { visibleTags } from "@/lib/candidate-tags"
@@ -34,7 +34,7 @@ export function CandidateShowView({
   onShowModeChange: (on: boolean) => void
 }) {
   const bb = useBerufsbilder()
-  const router = useRouter()
+  const goBack = useGoBack("/dashboard/candidates")
   const cv = buildCv({ ...candidate, email: null, phone: null }, customFieldDefinitions, true)
   const facts = cv.facts
   const tags = visibleTags(candidate.tags, true)
@@ -42,7 +42,7 @@ export function CandidateShowView({
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
-        <button type="button" onClick={() => router.back()} className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+        <button type="button" onClick={goBack} className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
           ← Zurück zur Übersicht
         </button>
         <div className="flex flex-wrap items-center justify-between gap-3">

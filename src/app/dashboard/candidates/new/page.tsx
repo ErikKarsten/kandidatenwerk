@@ -14,7 +14,7 @@ export default async function NewCandidatePage({
 
   const { data: campaigns } = await supabase
     .from("campaigns")
-    .select("id, title, clients(name)")
+    .select("id, title, kind, berufsbild, clients(name)")
     .order("title", { ascending: true })
 
   return (
@@ -42,6 +42,8 @@ export default async function NewCandidatePage({
           campaigns={(campaigns ?? []).map((c) => ({
             id: c.id,
             title: c.title,
+            kind: c.kind,
+            berufsbild: c.berufsbild,
             clients: Array.isArray(c.clients) ? c.clients[0] ?? null : c.clients as { name: string } | null,
           }))}
           defaultCampaignId={campaign_id}

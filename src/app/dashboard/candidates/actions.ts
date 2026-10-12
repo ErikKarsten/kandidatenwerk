@@ -8,6 +8,7 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
+import { ASSIGNABLE_STATUS, ensureCampaignAssignment } from "@/lib/client-assignment"
 import { createSampleCandidates } from "@/lib/sample-candidates"
 import { canCreateSamples } from "@/lib/teams"
 
@@ -42,6 +43,16 @@ export async function createCandidateAction(
 
   const coords = plz ? geocodePlz(plz) : null
 
+  // Kanzlei-Kampagne (Paket 53): nicht als Herkunft speichern, sondern zuordnen - sonst
+  // erscheint der Kandidat nicht in der Kampagne. Kanzleien sehen nur vorqualifizierte.
+  const { data: targetCampaign } = campaign_id
+    ? await supabase.from("campaigns").select("id, kind, title").eq("id", campaign_id).maybeSingle()
+    : { data: null }
+  const kanzleiCampaign = targetCampaign?.kind === "kanzlei" ? targetCampaign : null
+  if (kanzleiCampaign && status !== ASSIGNABLE_STATUS) {
+    return { error: "Kanzleien sehen nur vorqualifizierte Kandidaten – bitte den Status „Vorqualifiziert“ wählen oder ohne Kampagne anlegen." }
+  }
+
   const { data: candidate, error } = await supabase
     .from("candidates")
     .insert({
@@ -52,7 +63,7 @@ export async function createCandidateAction(
       status,
       source,
       notes: notes || null,
-      campaign_id: campaign_id,
+      campaign_id: kanzleiCampaign ? null : campaign_id || null,
       berufsbild: berufsbild || null,
       plz: plz || null,
       lat: coords?.lat ?? null,
@@ -62,6 +73,20 @@ export async function createCandidateAction(
     .single()
 
   if (error) return { error: error.message }
+
+  if (kanzleiCampaign) {
+    try {
+      await ensureCampaignAssignment(supabase, candidate.id, kanzleiCampaign.id, user.id)
+      await supabase.from("candidate_history").insert({
+        candidate_id: candidate.id,
+        type: "note",
+        content: `Angelegt und zugeordnet zu Kampagne „${kanzleiCampaign.title}“`,
+        created_by: user.id,
+      })
+    } catch (assignError) {
+      return { error: `Kandidat angelegt, Zuordnung fehlgeschlagen: ${assignError instanceof Error ? assignError.message : assignError}` }
+    }
+  }
 
   try {
     await matchCandidateToCampaigns(supabase, candidate.id)
@@ -77,7 +102,7 @@ export async function createCandidateAction(
     console.error("Lead-Benachrichtigung fehlgeschlagen für Kandidat", candidate.id, notifyError)
   }
 
-  triggerAutomationsNow([campaign_id])
+  if (campaign_id) triggerAutomationsNow([campaign_id])
   redirect(redirect_to)
 }
 

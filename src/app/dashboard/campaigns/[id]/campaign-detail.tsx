@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
+import { useGoBack } from "@/components/navigation-tracker"
 import Link from "next/link"
 import { ChevronLeft, Plus, Pencil, LayoutGrid, List, Search, Globe } from "lucide-react"
 import {
@@ -164,6 +165,8 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
   const [movePending, startMoveTransition] = useTransition()
   const statusColors = CAMPAIGN_STATUS_COLORS[campaign.status] ?? CAMPAIGN_STATUS_COLORS.completed
   const router = useRouter()
+  // Zurück zum Kunden bzw. zu den Lead-Kampagnen, wenn es keinen Verlauf gibt (Paket 53).
+  const goBack = useGoBack(campaign.client ? `/dashboard/clients/${campaign.client.id}` : "/dashboard/leads")
 
   const [view, handleViewChange] = useLocalStorageValue<"table" | "grid">(
     VIEW_STORAGE_KEY,
@@ -579,7 +582,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
       <div>
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={goBack}
           className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
         >
           <ChevronLeft size={16} />
