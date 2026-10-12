@@ -193,7 +193,7 @@ function PasswordResetButtons({ clientId, profileId, active }: { clientId: strin
         setLink(result.link)
         try {
           await navigator.clipboard.writeText(result.link)
-          setMessage({ ok: true, text: "Link kopiert – zeitlich begrenzt gültig." })
+          setMessage({ ok: true, text: "Link kopiert – gültig, bis das Passwort gesetzt ist." })
         } catch {
           setMessage({ ok: true, text: "Link erzeugt – bitte unten kopieren." })
         }

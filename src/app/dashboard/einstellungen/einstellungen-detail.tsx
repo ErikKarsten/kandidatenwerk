@@ -399,7 +399,7 @@ function PasswordLinkBox({ profileId, name }: { profileId: string; name: string 
       setLink(result.link)
       try {
         await navigator.clipboard.writeText(result.link)
-        setMessage({ ok: true, text: "Link kopiert – zeitlich begrenzt gültig. Bitte selbst an die Person schicken." })
+        setMessage({ ok: true, text: "Link kopiert – gültig, bis das Passwort gesetzt ist. Bitte selbst an die Person schicken." })
       } catch {
         setMessage({ ok: true, text: "Link erzeugt – bitte unten kopieren und selbst verschicken." })
       }
@@ -410,7 +410,7 @@ function PasswordLinkBox({ profileId, name }: { profileId: string; name: string 
     <div className="flex flex-col gap-1.5 border-t pt-2" style={{ borderColor: "#eef2f6" }}>
       <div className="flex items-center justify-between gap-3">
         <p className="min-w-0 flex-1 text-xs text-gray-500">
-          Passwort zurücksetzen: Link für {name} erzeugen. Das bisherige Passwort gilt, bis ein neues festgelegt ist.
+          Passwort zurücksetzen: Link für {name} erzeugen. Er hat kein Ablaufdatum und gilt einmal; ein neuer Link ersetzt den alten. Das bisherige Passwort gilt, bis ein neues festgelegt ist.
         </p>
         <button
           type="button"

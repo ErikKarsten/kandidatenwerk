@@ -6,7 +6,7 @@ import { requireStaffUser } from "@/lib/auth-guards"
 import { publishClientProfileToKanzleistelle } from "@/lib/kanzleistelle-profile-sync"
 import { scheduleKanzleistelleSync } from "@/lib/kanzleistelle-auto-sync"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { createPasswordResetLink } from "@/lib/password-reset"
+import { createPasswordLink } from "@/lib/password-link"
 import { ensurePortalAccess, sendPortalInvite } from "@/lib/portal-access"
 
 // Server Actions verlassen sich nach dem Security-Review vom 09.09.2026 nicht mehr
@@ -428,7 +428,8 @@ export async function portalPasswordResetAction(
   if (!email) return { error: "Für diesen Zugang ist keine E-Mail-Adresse bekannt." }
 
   try {
-    if (mode === "kopieren") return { link: await createPasswordResetLink(email) }
+    // Eigener Link ohne Ablaufzeit (Paket 55) - Link-Vorschauen verbrauchen ihn nicht.
+    if (mode === "kopieren") return { link: await createPasswordLink(profileId, (await supabase.auth.getUser()).data.user?.id ?? null) }
     // Noch nie angemeldet -> Einladung, sonst Passwort-Link (Paket 23).
     const kind = await sendPortalInvite(profileId, email)
     return { sentTo: email, kind }
