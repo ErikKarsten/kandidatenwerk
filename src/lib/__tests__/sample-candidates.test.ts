@@ -39,3 +39,21 @@ describe("sampleEmail", () => {
     expect(sampleEmail("Jürgen", "Müller-Weiß")).toBe("juergen.mueller-weiss@example.com")
   })
 })
+
+describe("buildSamplePrompt mit Schwerpunkten", () => {
+  it("nimmt gewählte Schwerpunkte auf, sonst nicht", async () => {
+    const { buildSamplePrompt } = await import("@/lib/sample-candidates")
+    const people = [{ plz: "53111", geschlecht: "weiblich" as const }]
+    expect(buildSamplePrompt("Steuerfachangestellte", people, ["Lohnbuchhaltung", "Jahresabschlüsse"])).toContain("Fachliche Schwerpunkte: Lohnbuchhaltung, Jahresabschlüsse")
+    expect(buildSamplePrompt("Steuerfachangestellte", people)).not.toContain("Fachliche Schwerpunkte")
+  })
+})
+
+describe("cleanFocus", () => {
+  it("lässt nur bekannte Schwerpunkte zu", async () => {
+    const { cleanFocus } = await import("@/lib/sample-focus")
+    expect(cleanFocus(["Lohnbuchhaltung", "Hacking", "Steuererklärungen"])).toEqual(["Lohnbuchhaltung", "Steuererklärungen"])
+    expect(cleanFocus("x")).toEqual([])
+  })
+})
+
