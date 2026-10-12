@@ -6,6 +6,7 @@ import { Sparkles } from "lucide-react"
 import { useShowMode } from "@/lib/show-mode"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { createSampleCandidatesAction } from "./actions"
+import { SAMPLE_FOCUS_OPTIONS } from "@/lib/sample-focus"
 
 const inputClass = "w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
 const inputStyle = { borderColor: "#dde3ea" }
@@ -20,6 +21,8 @@ export function SampleCandidatesButton() {
   const sampleBerufsbilder = bb.choices().filter((o) => o.value !== "sonstige")
   const [berufsbild, setBerufsbild] = useState<string>(sampleBerufsbilder[0]?.value ?? "")
   const [plz, setPlz] = useState("")
+  // Schwerpunkte (Paket 57), Mehrfachauswahl.
+  const [focus, setFocus] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<number | null>(null)
   const [pending, startTransition] = useTransition()
@@ -38,7 +41,7 @@ export function SampleCandidatesButton() {
     setError(null)
     setDone(null)
     startTransition(async () => {
-      const res = await createSampleCandidatesAction(berufsbild, plz)
+      const res = await createSampleCandidatesAction(berufsbild, plz, focus)
       if ("error" in res) {
         setError(res.error)
         return
@@ -91,6 +94,28 @@ export function SampleCandidatesButton() {
                   disabled={pending}
                 />
               </label>
+              <fieldset className="flex flex-col gap-1.5" disabled={pending}>
+                <legend className="mb-1 text-xs font-medium text-gray-500">Schwerpunkte (optional, mehrere möglich)</legend>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {SAMPLE_FOCUS_OPTIONS.map((o) => {
+                    const checked = focus.includes(o)
+                    return (
+                      <label
+                        key={o}
+                        className="flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm"
+                        style={checked ? { borderColor: "#1e56a0", backgroundColor: "#1e56a010", color: "#1e56a0" } : { borderColor: "#dde3ea", color: "#374151" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setFocus(checked ? focus.filter((f) => f !== o) : [...focus, o])}
+                        />
+                        {o}
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
               {error && <p className="text-xs text-red-600">{error}</p>}
               {done !== null && <p className="text-xs text-green-700">{done} Musterdatensätze angelegt.</p>}
               <div className="mt-2 flex justify-end gap-2">

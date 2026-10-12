@@ -57,7 +57,7 @@ export function pickSamplePeople(plz: string, random: () => number = Math.random
   }))
 }
 
-export function buildSamplePrompt(berufsbildLabel: string, people: SamplePerson[]): string {
+export function buildSamplePrompt(berufsbildLabel: string, people: SamplePerson[], focus: string[] = []): string {
   return [
     `Erstelle ${people.length} fiktive, realistische Bewerberprofile für die Stelle "${berufsbildLabel} (m/w/d)" in einer deutschen Steuerkanzlei.`,
     "Personen:",
@@ -66,6 +66,12 @@ export function buildSamplePrompt(berufsbildLabel: string, people: SamplePerson[
     "Regeln:",
     "- Erfundene, gängige deutsche Vor- und Nachnamen passend zum Geschlecht, keine bekannten Personen.",
     `- Werdegang und Erfahrung passen zum Berufsbild ${berufsbildLabel}; die drei Profile unterscheiden sich deutlich (Alter, Erfahrung, Schwerpunkt, Wechselgrund).`,
+    // Gewählte Schwerpunkte (Paket 57): prägen bevorzugten Bereich, Beschreibung und Erfahrung.
+    ...(focus.length
+      ? [
+          `- Fachliche Schwerpunkte: ${focus.join(", ")}. Jedes Profil hat seinen Schwerpunkt in ${focus.length > 1 ? "diesen Bereichen (unterschiedlich gewichtet, zusammen alle abgedeckt)" : "diesem Bereich"} - sichtbar in bevorzugter_bereich, beschreibung und Erfahrung.`,
+        ]
+      : []),
     "- beschreibung: 2-3 Sätze Kurzprofil aus Sicht des Recruiters, sachlich.",
     '- offene_fragen: 2-3 Fragen des Kandidaten an den neuen Arbeitgeber, je Zeile mit "- ".',
     "- felder: ausbildung (mit Jahr), alter (Zahl), verfuegbar_ab, wechselgrund, erwartungen_neuer_ag, bevorzugter_bereich, betreute_branchen, datev_erfahrung, anzahl_ag_5_jahre (Zahl), aktuelle_steuerkanzlei (Ja/Nein), kanzleigroesse, gehaltsvorstellung (Jahresbrutto in €), erreichbarkeit.",
@@ -105,7 +111,7 @@ export function sampleEmail(first: string, last: string): string {
 
 export async function createSampleCandidates(
   db: SupabaseClient<Database>,
-  input: { berufsbild: string; plz: string },
+  input: { berufsbild: string; plz: string; focus?: string[] },
   createdBy: string | null
 ): Promise<string[]> {
   // Alle aktiven Berufsbilder außer "Sonstige" (pflegbar, Paket 45).
@@ -115,7 +121,7 @@ export async function createSampleCandidates(
   const answer = await generateText({
     tier: "smart",
     system: "Du erstellst fiktive Beispieldaten für eine Recruiting-Software für Steuerkanzleien. Alle Personen sind frei erfunden.",
-    prompt: buildSamplePrompt(option.label, people),
+    prompt: buildSamplePrompt(option.label, people, input.focus ?? []),
     maxTokens: 4000,
     timeoutMs: 120_000,
   })
