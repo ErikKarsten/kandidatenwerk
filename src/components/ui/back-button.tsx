@@ -1,22 +1,23 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import { useGoBack } from "@/components/navigation-tracker"
 
-// Kleiner Client-Baustein für Server Components, die einen "Zurück"-Link brauchen, der
-// echte Browser-Historie nutzt (router.back()) statt fest auf eine Übersichtsseite zu
-// verlinken - die aufrufende Seite reicht Icon/Text/Styling per children/className
-// durch, damit die Optik unverändert bleibt und nur das Navigations-Verhalten wechselt.
+// "Zurück" für Server Components (Paket 53): zur zuletzt besuchten anderen Seite ohne
+// Formulare (eigener Verlauf statt router.back(), das nach dem Anlegen im Kreis lief),
+// sonst zu `fallback`. Icon/Text/Styling kommen per children/className.
 export function BackButton({
   className,
   children,
+  fallback = "/dashboard",
 }: {
   className?: string
   children: React.ReactNode
+  fallback?: string
 }) {
-  const router = useRouter()
+  const goBack = useGoBack(fallback)
 
   return (
-    <button type="button" onClick={() => router.back()} className={className}>
+    <button type="button" onClick={goBack} className={className}>
       {children}
     </button>
   )

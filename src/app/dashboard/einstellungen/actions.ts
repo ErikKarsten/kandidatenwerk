@@ -16,19 +16,43 @@ const MIN_PASSWORD_LENGTH = 8
 // - INSERT/UPDATE/DELETE nur fuer service_role) - die id kommt aber aus der echten,
 // server-seitig verifizierten Session (nicht vom Client uebergeben), es wird also nie
 // ein fremdes Profil angefasst.
-export async function updateOwnNameAction(fullName: string): Promise<{ error: string } | null> {
-  const trimmed = fullName.trim()
-  if (!trimmed) return { error: "Name darf nicht leer sein." }
+// Eigenes Profil (Paket 52): Name, Telefon und Foto pflegt jedes Team-Mitglied selbst -
+// Rolle, Team und E-Mail (Login) bleiben bei den Admins (Team-Verwaltung).
+export async function updateOwnProfileAction(formData: FormData): Promise<{ error: string } | null> {
+  const name = String(formData.get("full_name") ?? "").trim()
+  const phone = String(formData.get("phone") ?? "").trim()
+  const avatar = formData.get("avatar") as File | null
+  const dropAvatar = formData.get("remove_avatar") === "1"
+  if (!name) return { error: "Name darf nicht leer sein." }
+  const newAvatar = avatar && avatar.size > 0 ? avatar : null
+  if (newAvatar) {
+    const avatarError = validateAvatar(newAvatar)
+    if (avatarError) return { error: avatarError }
+  }
 
   const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
 
   const admin = createSupabaseAdminClient()
-  const { error } = await admin.from("profiles").update({ full_name: trimmed }).eq("id", user.id)
-  if (error) return { error: error.message }
+  const { data: me } = await admin.from("profiles").select("avatar_path").eq("id", user.id).single()
+  let avatarPath = me?.avatar_path ?? null
+  try {
+    if (newAvatar) avatarPath = await uploadAvatar(admin, user.id, newAvatar, avatarPath)
+    else if (dropAvatar && avatarPath) {
+      await removeAvatar(admin, avatarPath)
+      avatarPath = null
+    }
+  } catch (err) {
+    return { error: `Foto konnte nicht gespeichert werden: ${err instanceof Error ? err.message : err}` }
+  }
 
+  const { error } = await admin.from("profiles").update({ full_name: name, phone: phone || null, avatar_path: avatarPath }).eq("id", user.id)
+  if (error) return { error: error.message }
   revalidatePath("/dashboard/einstellungen")
+  revalidatePath("/dashboard", "layout")
   return null
 }
 

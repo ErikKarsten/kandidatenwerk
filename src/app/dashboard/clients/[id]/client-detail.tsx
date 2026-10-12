@@ -3,6 +3,7 @@
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { useState, useTransition, useEffect } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { useGoBack } from "@/components/navigation-tracker"
 import Link from "next/link"
 import { Send, ClipboardCheck, Search, UserCheck } from "lucide-react"
 import { useMeetingMode } from "@/lib/meeting-mode"
@@ -165,6 +166,7 @@ export function ClientDetail({
   initialTab,
 }: ClientDetailProps) {
   const router = useRouter()
+  const goBack = useGoBack("/dashboard/clients")
   const [tab, setTab] = useState<"kampagnen" | "kandidaten" | "stammdaten" | "projekt" | "aufgaben">(initialTab ?? "kampagnen")
   const [editMode, setEditMode] = useState(false)
   // Terminmodus (Paket 46/49): ohne interne Kommentarspalte und ohne Löschen/Archivieren;
@@ -366,7 +368,7 @@ export function ClientDetail({
       <div>
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={goBack}
           className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
         >
           ← Zurück zur Übersicht

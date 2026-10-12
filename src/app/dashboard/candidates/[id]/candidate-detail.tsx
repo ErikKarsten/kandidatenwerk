@@ -1,6 +1,7 @@
 "use client"
 
 import { useLayoutEffect, useRef, useState, useTransition } from "react"
+import { useGoBack } from "@/components/navigation-tracker"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ListTodo } from "lucide-react"
@@ -94,6 +95,7 @@ type ModalStep = null | "choice"
 
 export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, kanzleien, communication, knownTags, tasks, currentUserId, initialTab }: CandidateDetailProps) {
   const router = useRouter()
+  const goBack = useGoBack("/dashboard/candidates")
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung" | "kommunikation" | "aufgaben">(initialTab ?? "profil")
   const [modalStep, setModalStep] = useState<ModalStep>(null)
@@ -135,8 +137,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
     startDeleteTransition(async () => {
       const result = await deleteDemoCandidateAction(candidate.id)
       if (result?.error) { setModalError(result.error); return }
-      router.back()
-      router.refresh()
+      goBack()
     })
   }
 
@@ -234,7 +235,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
           <div className="min-w-0">
             <button
               type="button"
-              onClick={() => router.back()}
+              onClick={goBack}
               className="mb-2 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
             >
               ← Zurück zur Übersicht
