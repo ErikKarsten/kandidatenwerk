@@ -9,6 +9,7 @@ import type { PageSize } from "@/components/ui/pagination-bar"
 import { CandidatesList, type CandidateListItem, type CandidatesSortOption } from "./candidates-list"
 import { SampleCandidatesButton } from "./sample-candidates-button"
 import { canCreateSamples } from "@/lib/teams"
+import { SAMPLE_TAG } from "@/lib/candidate-tags"
 
 const ARCHIVED_STATUS = "Archiviert"
 // Interner Status oder - mit Präfix "kunde:" - Status beim Kunden (Paket 31).
@@ -34,6 +35,7 @@ export default async function CandidatesPage({
 }: {
   searchParams: Promise<{
     show_archived?: string
+    muster?: string
     q?: string
     status?: string
     berufsbild?: string
@@ -47,6 +49,8 @@ export default async function CandidatesPage({
 }) {
   const sp = await searchParams
   const showArchived = sp.show_archived === "1"
+  // Musterdatensätze (Paket 62) nur über den Schalter bzw. den Tag-Filter.
+  const showSamples = sp.muster === "1"
   const search = (sp.q ?? "").trim()
   const statusFilter = sp.status && VALID_STATUSES.has(sp.status) ? sp.status : "alle"
   const berufsbildFilter = sp.berufsbild && BERUFSBILD_KEY.test(sp.berufsbild) ? sp.berufsbild : "alle"
@@ -79,6 +83,8 @@ export default async function CandidatesPage({
   if (berufsbildFilter !== "alle") query = query.eq("berufsbild", berufsbildFilter)
   if (sourceFilter !== "alle") query = query.eq("source", sourceFilter)
   if (tagFilter !== "alle") query = query.contains("tags", [tagFilter])
+  if (showSamples) query = query.contains("tags", [SAMPLE_TAG])
+  else if (tagFilter !== SAMPLE_TAG) query = query.not("tags", "cs", `{${SAMPLE_TAG}}`)
   if (campaignFilter) query = query.eq("campaign_id", campaignFilter)
   if (search) {
     // Gleiches Suchverhalten wie vorher: Treffer bei Name (Vor- UND Nachname
@@ -148,7 +154,8 @@ export default async function CandidatesPage({
     sourceFilter === "alle" &&
     tagFilter === "alle" &&
     !campaignFilter &&
-    !showArchived
+    !showArchived &&
+    !showSamples
 
   return (
     <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
@@ -158,7 +165,7 @@ export default async function CandidatesPage({
           <p className="mt-1 text-sm text-gray-500">{totalCount} Einträge</p>
 
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Link
             href={showArchived ? "/dashboard/candidates" : "/dashboard/candidates?show_archived=1"}
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-gray-50"
@@ -170,6 +177,18 @@ export default async function CandidatesPage({
           >
             <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: showArchived ? "#1e56a0" : "#d1d5db" }} />
             Archivierte anzeigen
+          </Link>
+          <Link
+            href={showSamples ? "/dashboard/candidates" : "/dashboard/candidates?muster=1"}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-gray-50"
+            style={{
+              borderColor: showSamples ? "#1e56a0" : "#dde3ea",
+              color: showSamples ? "#1e56a0" : "#6b7280",
+              backgroundColor: showSamples ? "#1e56a018" : undefined,
+            }}
+          >
+            <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: showSamples ? "#1e56a0" : "#d1d5db" }} />
+            Musterdatensätze anzeigen
           </Link>
           {canCreateSamples(me) && <SampleCandidatesButton />}
           <Button asChild style={{ backgroundColor: "#1e56a0" }}>

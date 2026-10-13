@@ -26,7 +26,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     logoUrl,
     berufsbilder,
   ] = await Promise.all([
-    supabase.from("candidates").select("id", { count: "exact", head: true }).eq("is_demo", false),
+    supabase.from("candidates").select("id", { count: "exact", head: true }).eq("is_demo", false).not("tags", "cs", "{Musterdatensatz}"),
     supabase.from("clients").select("id", { count: "exact", head: true }),
     supabase.auth.getUser(),
     getAgencyLogoUrl(),

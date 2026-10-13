@@ -52,6 +52,7 @@ interface Origin {
 export function AssignmentTab({
   candidateId,
   candidateStatus,
+  isSample = false,
   candidateName,
   berufsbild,
   selfLat,
@@ -64,6 +65,8 @@ export function AssignmentTab({
 }: {
   candidateId: string
   candidateStatus: string
+  // Musterdatensätze (Paket 62) lassen sich keiner Kanzlei zuordnen.
+  isSample?: boolean
   candidateName: string
   berufsbild: string | null
   selfLat: number | null
@@ -82,7 +85,7 @@ export function AssignmentTab({
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM)
   const [assigningId, setAssigningId] = useState<string | null>(null)
   const [assignError, setAssignError] = useState<string | null>(null)
-  const assignable = candidateStatus === ASSIGNABLE_STATUS
+  const assignable = !isSample && candidateStatus === ASSIGNABLE_STATUS
 
   // Zuordnen: über die passende Kanzlei-Kampagne, sonst an die Kanzlei allgemein (Paket 46).
   async function assign(clientId: string, campaignId: string | null) {
@@ -211,7 +214,9 @@ export function AssignmentTab({
 
             {!assignable && (
               <p className="mt-3 rounded-md px-3 py-2 text-xs" style={{ backgroundColor: "#fef3c7", color: "#92400e" }}>
-                Zuordnen ist nur bei vorqualifizierten Kandidaten möglich – bitte zuerst den Status auf „Vorqualifiziert“ setzen.
+                {isSample
+                  ? "Musterdatensätze dienen nur zum Vorführen und lassen sich keiner Kanzlei zuordnen."
+                  : "Zuordnen ist nur bei vorqualifizierten Kandidaten möglich – bitte zuerst den Status auf „Vorqualifiziert“ setzen."}
               </p>
             )}
             {assignError && <p className="mt-3 text-xs text-red-600">{assignError}</p>}

@@ -10,7 +10,7 @@ import { notifyLeadRecipients } from "@/lib/lead-notifications"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { ASSIGNABLE_STATUS, ensureCampaignAssignment } from "@/lib/client-assignment"
 import { createSampleCandidates } from "@/lib/sample-candidates"
-import { cleanFocus } from "@/lib/sample-focus"
+import { cleanExtra, cleanFocus, cleanSoftware } from "@/lib/sample-focus"
 import { canCreateSamples } from "@/lib/teams"
 
 export type CreateCandidateState = { error: string } | null
@@ -157,8 +157,17 @@ export async function updateCandidateStatusAction(
   return null
 }
 
-// Drei Musterdatensätze per KI (Paket 41) - Berufsbild und PLZ des Kunden.
-export async function createSampleCandidatesAction(berufsbild: string, plz: string, focus: string[] = []): Promise<{ error: string } | { count: number }> {
+// Drei Musterdatensätze per KI (Paket 41) - Berufsbild und PLZ des Kunden, dazu
+// Schwerpunkte, Allrounder, Kanzleisoftware und Zusatzinfos (Paket 62).
+export async function createSampleCandidatesAction(input: {
+  berufsbild: string
+  plz: string
+  focus?: string[]
+  allrounder?: boolean
+  software?: string
+  extra?: string
+}): Promise<{ error: string } | { count: number }> {
+  const { berufsbild, plz } = input
   const supabase = await createSupabaseServerClient()
   const staffError = await requireStaffUser(supabase)
   if (staffError) return staffError
@@ -168,7 +177,18 @@ export async function createSampleCandidatesAction(berufsbild: string, plz: stri
   const cleanPlz = plz.trim()
   if (!/^\d{5}$/.test(cleanPlz) || !geocodePlz(cleanPlz)) return { error: "Bitte eine gültige PLZ eingeben." }
   try {
-    const ids = await createSampleCandidates(supabase, { berufsbild, plz: cleanPlz, focus: cleanFocus(focus) }, user?.id ?? null)
+    const ids = await createSampleCandidates(
+      supabase,
+      {
+        berufsbild,
+        plz: cleanPlz,
+        focus: cleanFocus(input.focus),
+        allrounder: input.allrounder === true,
+        software: cleanSoftware(input.software),
+        extra: cleanExtra(input.extra),
+      },
+      user?.id ?? null
+    )
     revalidatePath("/dashboard/candidates")
     return { count: ids.length }
   } catch (err) {

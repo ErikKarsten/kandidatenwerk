@@ -3,6 +3,24 @@ import { MapOverview, type MapClientPoint, type MapCandidatePoint } from "./map-
 import { getActiveAdAreas } from "@/lib/meta-campaigns-queries"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+type MapCandidateRow = { id: string; first_name: string; last_name: string; lat: number | null; lng: number | null; campaign_id: string | null; berufsbild: string | null }
+
+async function fetchAllCandidates(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>): Promise<{ data: MapCandidateRow[] }> {
+  const rows: MapCandidateRow[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from("candidates")
+      .select("id, first_name, last_name, lat, lng, campaign_id, berufsbild")
+      .eq("is_demo", false)
+      .order("id")
+      .range(from, from + 999)
+    if (error) throw new Error(error.message)
+    rows.push(...(data ?? []))
+    if (!data || data.length < 1000) break
+  }
+  return { data: rows }
+}
+
 export default async function MapPage() {
   const supabase = await createSupabaseServerClient()
 
@@ -19,7 +37,9 @@ export default async function MapPage() {
       .select("id, name, lat, lng")
       .not("lat", "is", null)
       .not("lng", "is", null),
-    supabase.from("candidates").select("id, first_name, last_name, lat, lng, campaign_id, berufsbild").eq("is_demo", false),
+    // Seitenweise: mit den Musterdatensätzen (Paket 62) sind es mehr als die 1.000 Zeilen,
+    // die eine einzelne Abfrage liefert.
+    fetchAllCandidates(supabase),
     supabase.from("campaigns").select("id, client_id"),
     // Werbegebiete laufender Meta-Kampagnen (Atlas T-38) für die Ebene "Werbegebiete".
     getActiveAdAreas(supabase as unknown as SupabaseClient),
