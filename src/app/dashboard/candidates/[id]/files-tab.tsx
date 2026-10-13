@@ -63,9 +63,13 @@ export function FilesTab({ candidateId, files }: FilesTabProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <span className="text-sm font-semibold uppercase tracking-wide text-gray-400">
-        Dateien
-      </span>
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+          Dateien
+        </span>
+        {/* Paket 65: Dateien gehen mit ins Kundenportal. */}
+        <span className="text-xs text-gray-500">Zugeordnete Kanzleien sehen diese Dateien in ihrem Portal und können sie öffnen.</span>
+      </div>
 
       <FileDropZone
         onUpload={handleUpload}
