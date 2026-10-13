@@ -21,6 +21,7 @@ import { useIsMobile } from "@/lib/use-is-mobile"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { BugReportButton } from "@/components/bug-report-button"
+import { ShowModeSidebarToggle } from "@/components/layout/show-mode-sidebar-toggle"
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar_collapsed"
 
@@ -207,6 +208,7 @@ export function Sidebar({
       <div className="mx-3 mb-3 h-px" style={{ backgroundColor: "rgba(255,255,255,0.08)" }} />
 
       <div className="flex flex-col gap-1 px-3 pb-3">
+        <ShowModeSidebarToggle collapsed={collapsed} />
         <BugReportButton collapsed={collapsed} />
         {isAdmin && (
           <NavItem

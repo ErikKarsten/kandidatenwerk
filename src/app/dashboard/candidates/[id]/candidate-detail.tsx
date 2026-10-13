@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState, useTransition } from "react"
 import { useGoBack } from "@/components/navigation-tracker"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ListTodo } from "lucide-react"
+import { ChevronDown, ListTodo, MoreHorizontal, Trash2 } from "lucide-react"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import {
   saveDescriptionAction,
@@ -30,7 +30,6 @@ import { CommunicationTab, type CandidateMessage, type MessageTemplate } from ".
 import type { TemplateVars } from "@/lib/automation-engine"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
 import { TagEditor } from "@/components/dashboard/tag-editor"
-import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { useShowMode } from "@/lib/show-mode"
 import { CandidateShowView } from "./show-view"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
@@ -230,9 +229,9 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             </button>
           </div>
         )}
-        {/* Kopf im Raster der Spalten darunter (Paket 47/48): links Zurück, Name und Herkunft;
-            rechts - bündig mit Beschreibung und Verlauf - Aktionen, Status und Tags. */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[60%_minmax(0,1fr)] lg:gap-6">
+        {/* Kopf (Paket 64): links wer (Name, Status, Tags, Herkunft), rechts eine schmale
+            Aktionsleiste - Löschen steckt im Menü "Weitere Aktionen". */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0">
             <button
               type="button"
@@ -244,9 +243,34 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             <h1 className="text-2xl font-bold text-gray-900 [overflow-wrap:anywhere]">
               {candidate.first_name} {candidate.last_name}
             </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label
+                className="relative inline-flex cursor-pointer items-center rounded-full"
+                style={{ backgroundColor: colors.bg, color: colors.text }}
+                title="Status ändern"
+              >
+                <span className="pointer-events-none absolute left-2.5 h-2 w-2 rounded-full" style={{ backgroundColor: colors.dot }} />
+                <select
+                  defaultValue={candidate.status}
+                  onChange={handleStatusChange}
+                  disabled={statusPending}
+                  aria-label="Status"
+                  className="cursor-pointer appearance-none rounded-full bg-transparent py-1 pl-6 pr-7 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50"
+                  style={{ color: colors.text }}
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5" />
+              </label>
+              <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} compact />
+            </div>
             {/* Worauf und worüber beworben (Paket 46). */}
             {(candidate.bewerbung || candidate.campaigns?.title) && (
-              <p className="mt-1 text-sm leading-snug text-gray-500 [overflow-wrap:anywhere]">
+              <p className="mt-2 text-sm leading-snug text-gray-500 [overflow-wrap:anywhere]">
                 {candidate.bewerbung && (
                   <span className="block">
                     Bewerbung: <span className="text-gray-700">{candidate.bewerbung}</span>
@@ -264,46 +288,17 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             )}
           </div>
 
-          <div className="flex min-w-0 flex-col gap-2 lg:pt-1">
-            {/* Gleich breite Buttons über die ganze Spalte - bündig mit den Kacheln darunter. */}
-            <div className="grid grid-cols-2 gap-2">
-              <ShowModeToggle on={false} onChange={setShowMode} className="w-full justify-center" />
-              <CvExportMenu candidateId={candidate.id} block />
-              <button
-                type="button"
-                onClick={() => setTaskModalOpen(true)}
-                className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-                style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-              >
-                <ListTodo size={15} /> Aufgabe erstellen
-              </button>
-              <button
-                onClick={() => { setModalStep("choice"); setModalError(null) }}
-                className="inline-flex w-full items-center justify-center rounded-md border bg-white px-3 py-1.5 text-sm font-medium hover:bg-red-50"
-                style={{ borderColor: "#fca5a5", color: "#dc2626" }}
-              >
-                Löschen
-              </button>
-            </div>
-            <div className="grid grid-cols-2 items-start gap-2">
-              <select
-                defaultValue={candidate.status}
-                onChange={handleStatusChange}
-                disabled={statusPending}
-                aria-label="Status"
-                className="w-full cursor-pointer rounded-md border-0 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-1 disabled:opacity-50"
-                style={{ backgroundColor: colors.bg, color: colors.text }}
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <div className="min-w-0 rounded-md border bg-white px-2 py-1.5" style={{ borderColor: "#dde3ea" }}>
-                <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} />
-              </div>
-            </div>
+          <div className="flex shrink-0 items-center gap-2 sm:pt-7">
+            <CvExportMenu candidateId={candidate.id} />
+            <button
+              type="button"
+              onClick={() => setTaskModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+              style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+            >
+              <ListTodo size={15} /> Aufgabe
+            </button>
+            <MoreActionsMenu onDelete={() => { setModalStep("choice"); setModalError(null) }} />
           </div>
         </div>
       </div>
@@ -543,6 +538,45 @@ function DescriptionSection({
       >
         {pending ? "Wird gespeichert…" : "Speichern"}
       </button>
+    </div>
+  )
+}
+
+// "Weitere Aktionen" (Paket 64): seltene und gefährliche Aktionen aus der Kopfzeile -
+// Löschen fragt danach wie bisher im Dialog nach.
+function MoreActionsMenu({ onDelete }: { onDelete: () => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-label="Weitere Aktionen"
+        aria-expanded={open}
+        title="Weitere Aktionen"
+        className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-md border bg-white text-gray-600 hover:bg-gray-50"
+        style={{ borderColor: "#dde3ea" }}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[1299]" onClick={() => setOpen(false)} aria-hidden />
+          <div className="absolute right-0 z-[1300] mt-1 w-52 overflow-hidden rounded-lg border bg-white py-1 shadow-lg" style={{ borderColor: "#dde3ea" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                onDelete()
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-red-50"
+              style={{ color: "#dc2626" }}
+            >
+              <Trash2 size={14} /> Kandidat löschen
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

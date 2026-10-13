@@ -32,6 +32,7 @@ export function CvExportMenu({ candidateId, openUp = false, anonymOnly = false, 
       >
         <FileText size={14} /> Lebenslauf <ChevronDown size={13} />
       </button>
+      {open && <div className="fixed inset-0 z-[1299]" onClick={() => setOpen(false)} aria-hidden />}
       {open && (
         <div
           className={`absolute z-[1300] w-56 overflow-hidden rounded-lg border bg-white shadow-lg ${openUp ? "bottom-full left-0 mb-1" : "right-0 mt-1"}`}

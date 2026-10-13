@@ -20,17 +20,20 @@ export function TagChip({ tag, onRemove }: { tag: string; onRemove?: () => void 
 }
 
 // Tags eines Kandidaten bearbeiten (Paket 28, T-115): Chips mit x, neues Tag per Enter;
-// bekannte Tags werden vorgeschlagen.
+// bekannte Tags werden vorgeschlagen. compact (Paket 64): statt dauerhaftem Eingabefeld ein
+// dezenter "+ Tag"-Knopf, das Feld erscheint erst beim Klick.
 export function TagEditor({
   candidateId,
   tags,
   knownTags = [],
   onChanged,
+  compact = false,
 }: {
   candidateId: string
   tags: string[]
   knownTags?: string[]
   onChanged?: () => void
+  compact?: boolean
 }) {
   const router = useRouter()
   const listId = useId()
@@ -38,6 +41,7 @@ export function TagEditor({
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const [adding, setAdding] = useState(false)
 
   function save(next: string[]) {
     const normalized = normalizeTags(next)
@@ -68,8 +72,20 @@ export function TagEditor({
         {current.map((t) => (
           <TagChip key={t} tag={t} onRemove={pending ? undefined : () => save(current.filter((x) => x !== t))} />
         ))}
+        {compact && !adding ? (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            disabled={pending}
+            className="inline-flex items-center gap-1 rounded-full border border-dashed px-2.5 py-0.5 text-xs font-medium text-gray-500 hover:border-gray-400 hover:text-gray-700 disabled:opacity-50"
+            style={{ borderColor: "#cbd5e1" }}
+          >
+            <Plus size={12} /> Tag
+          </button>
+        ) : (
         <div className="inline-flex items-center gap-1">
           <input
+            autoFocus={compact}
             value={input}
             list={listId}
             onChange={(e) => setInput(e.target.value)}
@@ -78,6 +94,13 @@ export function TagEditor({
                 e.preventDefault()
                 add()
               }
+              if (e.key === "Escape" && compact) {
+                setInput("")
+                setAdding(false)
+              }
+            }}
+            onBlur={() => {
+              if (compact && !input.trim()) setAdding(false)
             }}
             placeholder="Tag hinzufügen"
             disabled={pending}
@@ -93,6 +116,7 @@ export function TagEditor({
             <Plus size={14} />
           </button>
         </div>
+        )}
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
