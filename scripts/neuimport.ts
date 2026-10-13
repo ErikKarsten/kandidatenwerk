@@ -46,6 +46,7 @@ import { fetchWebsiteText, htmlToText } from "../src/lib/website-text"
 import { processCloseWebhook } from "../src/lib/close-webhook"
 import { closeLeadSources, extractProfileFromSources, payloadFromLead, type ProfileSource } from "../src/lib/close-onboarding"
 import { generateText } from "../src/lib/llm"
+import { buildFormToPageAccessTokenMap, extractMetaContactFields, fetchMetaLead } from "../src/lib/meta-ads-client"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true })
@@ -62,6 +63,7 @@ const SYNC = process.argv.includes("--abgleich")
 const SKIP_CLIENTS = ONLY_TEXTS || SYNC
 const OUT = path.resolve(__dirname, "../neuimport")
 const CACHE = path.join(OUT, "leadtable-cache.json")
+const META_CONTACTS = path.join(OUT, "meta-kontakte.json")
 const POOL = /kanzleistelle24/i
 // Die Agentur selbst ist kein Kunde.
 const OWN_AGENCY = /endlich\s*mitarbeiter/i
@@ -109,6 +111,9 @@ interface LtLead extends LeadtableLead {
   funnelData?: { profile?: Record<string, { title?: string; value?: unknown }> }
   // Verlauf: "description" = Beschreibungsfeld des Leads, "note" = Notizen.
   history?: { itemType?: string; createdAt?: string; updatedAt?: string; deleted?: { state?: boolean }; payload?: { note?: string } }[]
+  source?: string
+  foreignID?: string
+  sourceInformation?: { formID?: string }
 }
 interface LtCustomer {
   id: string
@@ -136,6 +141,42 @@ async function loadLeadtable(): Promise<LtCustomer[]> {
   fs.writeFileSync(CACHE, JSON.stringify(out))
   console.log("")
   return out
+}
+
+// Meta-Leads, bei denen Leadtable keine E-Mail und kein Telefon hat: Kontaktdaten direkt
+// bei Meta nachladen (foreignID = Meta-Lead-ID). Ergebnis wird zwischengespeichert.
+async function fillContactsFromMeta(customers: LtCustomer[]) {
+  const cached: Record<string, { name: string | null; email: string | null; phone: string | null } | null> = fs.existsSync(META_CONTACTS)
+    ? JSON.parse(fs.readFileSync(META_CONTACTS, "utf8"))
+    : {}
+  const leads = customers.flatMap((c) => c.campaigns.flatMap((camp) => camp.leads)).filter((l) => {
+    const deleted = typeof l.deleted === "object" ? !!l.deleted?.state : !!l.deleted
+    return !l.email && !l.phone && !deleted && !SKIP_STATUS.has(l.status ?? "") && l.source === "metaLeadAds" && l.foreignID && l.sourceInformation?.formID
+  })
+  const missing = leads.filter((l) => !(l.foreignID! in cached))
+  if (missing.length) {
+    const tokens = await buildFormToPageAccessTokenMap()
+    for (const l of missing) {
+      const token = tokens.get(l.sourceInformation!.formID!)
+      try {
+        cached[l.foreignID!] = token ? extractMetaContactFields((await fetchMetaLead(l.foreignID!, token)).field_data) : null
+      } catch (err) {
+        console.error(`Meta-Lead ${l.foreignID}: ${err instanceof Error ? err.message : err}`)
+        cached[l.foreignID!] = null
+      }
+    }
+    fs.writeFileSync(META_CONTACTS, JSON.stringify(cached))
+  }
+  let filled = 0
+  for (const l of leads) {
+    const contact = cached[l.foreignID!]
+    if (!contact || (!contact.email && !contact.phone)) continue
+    l.email = contact.email
+    l.phone = contact.phone
+    if (!l.name?.trim() && contact.name) l.name = contact.name
+    filled++
+  }
+  console.log(`Kontaktdaten aus Meta nachgeladen: ${filled} von ${leads.length} Meta-Leads ohne E-Mail und Telefon`)
 }
 
 // ── ClickUp ──────────────────────────────────────────────────────────────────────────
@@ -292,6 +333,7 @@ async function main() {
   }
 
   const customers = await loadLeadtable()
+  await fillContactsFromMeta(customers)
   // Nur Texte nachtragen: Kunden werden nicht angefasst, Close und ClickUp nicht gebraucht.
   const won = ONLY_TEXTS ? [] : await closeList<{ id: string; display_name: string }>(`/lead/?query=${encodeURIComponent('lead_status:"Gewonnen"')}&_fields=id,display_name`, 2000)
   const clickupTasks = SKIP_CLIENTS ? null : await loadClickup()
