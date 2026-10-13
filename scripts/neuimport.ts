@@ -47,6 +47,7 @@ import { processCloseWebhook } from "../src/lib/close-webhook"
 import { closeLeadSources, extractProfileFromSources, payloadFromLead, type ProfileSource } from "../src/lib/close-onboarding"
 import { generateText } from "../src/lib/llm"
 import { buildFormToPageAccessTokenMap, extractMetaContactFields, fetchMetaLead } from "../src/lib/meta-ads-client"
+import { matchCandidateToCampaigns } from "../src/lib/matching"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true })
@@ -141,6 +142,40 @@ async function loadLeadtable(): Promise<LtCustomer[]> {
   fs.writeFileSync(CACHE, JSON.stringify(out))
   console.log("")
   return out
+}
+
+// Zusatzfelder und PLZ aus dem Leadtable-Profil (Formularantworten und Qualifizierung des
+// Teams). Antworten ohne passendes Zusatzfeld landen in "Weitere Antworten".
+function leadtableAnswers(lead: LtLead): { fields: Record<string, string>; plz: string | null } {
+  const answers = mapLeadFormAnswers(lead.funnelData?.profile)
+  const fields: Record<string, string> = { ...answers.fields }
+  if (answers.extras.length) fields[WEITERE_ANTWORTEN_KEY] = answers.extras.map((x) => `${x.question}: ${x.answer}`).join("\n")
+  return { fields, plz: answers.plz ?? null }
+}
+
+// Abgleich: Leadtable ist führend - fehlende Zusatzfelder kommen dazu, abweichende werden
+// überschrieben (der alte Wert steht im Verlauf).
+function customFieldDiff(current: Record<string, unknown> | null, fromLeadtable: Record<string, string>) {
+  const next: Record<string, unknown> = { ...(current ?? {}) }
+  const added: string[] = []
+  const changed: { key: string; old: string }[] = []
+  for (const [key, raw] of Object.entries(fromLeadtable)) {
+    const value = String(raw ?? "").trim()
+    if (!value) continue
+    const old = String(current?.[key] ?? "").trim()
+    if (old === value) continue
+    next[key] = value
+    if (old) changed.push({ key, old })
+    else added.push(key)
+  }
+  return { next, added, changed }
+}
+
+// PLZ aus Leadtable nur übernehmen, wenn sie in Kandidatenwerk fehlt oder nur aus dem
+// Werbegebiet der Meta-Kampagne geschätzt war.
+function plzUpdate(currentPlz: string | null, estimated: boolean, leadtablePlz: string | null): string | null {
+  if (!leadtablePlz || leadtablePlz === currentPlz) return null
+  return !currentPlz || estimated ? leadtablePlz : null
 }
 
 // Meta-Leads, bei denen Leadtable keine E-Mail und kein Telefon hat: Kontaktdaten direkt
@@ -471,20 +506,44 @@ async function main() {
   console.log(report)
 
   // Abgleich: welche Leads gibt es schon in Kandidatenwerk (Lead-ID oder E-Mail)?
-  const knownLeadIds = new Set<string>()
-  const knownEmails = new Set<string>()
+  type KnownCandidate = { id: string; custom_fields: Record<string, unknown> | null; plz: string | null }
+  const knownByLeadId = new Map<string, KnownCandidate>()
+  const knownByEmail = new Map<string, KnownCandidate>()
+  // Kandidaten, deren PLZ der Meta-Sync nur aus dem Werbegebiet geschätzt hat.
+  const estimatedPlz = new Set<string>()
   if (SYNC) {
     for (let from = 0; ; from += 1000) {
-      const { data } = await db.from("candidates").select("leadtable_lead_id, email").range(from, from + 999)
+      const { data } = await db.from("candidates").select("id, leadtable_lead_id, email, custom_fields, plz").order("id").range(from, from + 999)
       for (const r of data ?? []) {
-        if (r.leadtable_lead_id) knownLeadIds.add(r.leadtable_lead_id)
-        if (r.email) knownEmails.add(r.email.toLowerCase())
+        if (r.leadtable_lead_id) knownByLeadId.set(r.leadtable_lead_id, r)
+        if (r.email) knownByEmail.set(r.email.toLowerCase(), r)
       }
       if (!data || data.length < 1000) break
     }
-    const fresh = candidates.filter((c) => !c.leadIds.some((id) => knownLeadIds.has(id)) && !(c.email && knownEmails.has(c.email)))
+    for (let from = 0; ; from += 1000) {
+      const { data } = await db.from("candidate_history").select("candidate_id").like("content", "%PLZ geschätzt%").order("id").range(from, from + 999)
+      for (const r of data ?? []) estimatedPlz.add(r.candidate_id)
+      if (!data || data.length < 1000) break
+    }
+    const knownOf = (c: PlannedCandidate) => c.leadIds.map((id) => knownByLeadId.get(id)).find(Boolean) ?? (c.email ? knownByEmail.get(c.email) : undefined)
+    const fresh = candidates.filter((c) => !knownOf(c))
     console.log(`Abgleich: ${fresh.length} neue Kandidaten, ${candidates.length - fresh.length} schon vorhanden (werden ergänzt).`)
     for (const c of fresh.slice(0, 15)) console.log(`  neu: ${c.lead.createdAt?.slice(0, 10) ?? "?"} · ${c.customer.name} · ${c.ltStatus}`)
+    const preview = { kandidaten: 0, neu: 0, geaendert: 0, plz: 0 }
+    const changedKeys: Record<string, number> = {}
+    for (const c of candidates) {
+      const known = knownOf(c)
+      if (!known) continue
+      const lt = leadtableAnswers(c.lead)
+      const diff = customFieldDiff(known.custom_fields, lt.fields)
+      if (diff.added.length || diff.changed.length) preview.kandidaten++
+      preview.neu += diff.added.length
+      preview.geaendert += diff.changed.length
+      for (const ch of diff.changed) changedKeys[ch.key] = (changedKeys[ch.key] ?? 0) + 1
+      if (plzUpdate(known.plz, estimatedPlz.has(known.id), lt.plz)) preview.plz++
+    }
+    console.log(`Zusatzfelder: ${preview.kandidaten} Kandidaten, ${preview.neu} Felder neu, ${preview.geaendert} geändert; PLZ übernommen: ${preview.plz}`)
+    console.log(`  geändert je Feld: ${JSON.stringify(changedKeys)}`)
   }
   // Abgleich: Kunden nicht anlegen, nur zuordnen (Close-Verknüpfung, sonst Name).
   const clientIdByLeadtable = new Map<string, string>()
@@ -508,10 +567,13 @@ async function main() {
 
   // ── Ausführen ──────────────────────────────────────────────────────────────────────
   const { data: agency } = await db.from("agencies").select("id").limit(1).single()
+  const { data: fieldDefs } = await db.from("custom_field_definitions").select("key, label")
+  const fieldLabel = new Map<string, string>((fieldDefs ?? []).map((d) => [d.key, d.label]))
+  fieldLabel.set(WEITERE_ANTWORTEN_KEY, "Weitere Antworten")
   const [leadLabels, activityLabels] = await Promise.all([leadFieldLabels(), customActivityLabels()])
   const profileStats = { befuellt: 0, fehler: 0 }
   let done = 0
-  const syncStats = { neu: 0, ergaenzt: 0, zuordnungen: 0 }
+  const syncStats = { neu: 0, ergaenzt: 0, zuordnungen: 0, zusatzfelder: 0, plz: 0 }
   await pool(SKIP_CLIENTS ? [] : planned, 5, async (p) => {
     try {
       // 1. Kunde anlegen bzw. aus Close verknüpfen.
@@ -609,10 +671,7 @@ async function main() {
     const { firstName, lastName } = extractCleanName(c.lead.name ?? "")
     // Formularantworten über die Fragetitel (Zusatzfelder, PLZ); Rest ins Zusatzfeld
     // "Weitere Antworten". Die Beschreibung kommt aus dem Beschreibungsfeld in Leadtable.
-    const answers = mapLeadFormAnswers(c.lead.funnelData?.profile)
-    const customFields: Record<string, string> = { ...answers.fields }
-    if (answers.extras.length) customFields[WEITERE_ANTWORTEN_KEY] = answers.extras.map((x) => `${x.question}: ${x.answer}`).join("\n")
-    const plz = answers.plz
+    const { fields: customFields, plz } = leadtableAnswers(c.lead)
     const coords = plz ? geocodePlz(plz) : null
     // Gibt es die Person schon (früherer Lauf oder neue Bewerbung seit dem Leeren)? Dann
     // nicht doppelt anlegen, nur Beschreibung und Notizen ergänzen.
@@ -627,6 +686,34 @@ async function main() {
       if (SYNC) {
         syncStats.ergaenzt++
         await db.from("candidates").update({ bewerbung: `${c.occupation || "Bewerbung"} – ${c.customer.name}` }).eq("id", existing.id).is("bewerbung", null)
+        // Zusatzfelder und PLZ aus Leadtable (Formular + Qualifizierung des Teams).
+        const known = knownByLeadId.get(existing.leadtable_lead_id ?? "") ?? c.leadIds.map((id) => knownByLeadId.get(id)).find(Boolean) ?? (c.email ? knownByEmail.get(c.email) : undefined)
+        if (known) {
+          const diff = customFieldDiff(known.custom_fields, customFields)
+          const newPlz = plzUpdate(known.plz, estimatedPlz.has(known.id), plz)
+          const newCoords = newPlz ? geocodePlz(newPlz) : null
+          if (diff.added.length || diff.changed.length || newPlz) {
+            const { error: updateError } = await db
+              .from("candidates")
+              .update({ custom_fields: diff.next, ...(newPlz ? { plz: newPlz, lat: newCoords?.lat ?? null, lng: newCoords?.lng ?? null } : {}) })
+              .eq("id", known.id)
+            if (updateError) console.error(`Zusatzfelder ${c.key}: ${updateError.message}`)
+            else {
+              const label = (k: string) => fieldLabel.get(k) ?? k
+              const parts = [
+                diff.added.length ? `neu: ${diff.added.map(label).join(", ")}` : "",
+                diff.changed.length ? `geändert: ${diff.changed.map((ch) => `${label(ch.key)} (vorher „${ch.old}“)`).join(", ")}` : "",
+                newPlz ? `PLZ ${newPlz}${known.plz ? ` (vorher ${known.plz}, geschätzt)` : ""}` : "",
+              ].filter(Boolean)
+              await db.from("candidate_history").insert({ candidate_id: known.id, type: "note", content: `Aus Leadtable übernommen – ${parts.join("; ")}.` })
+              if (diff.added.length || diff.changed.length) syncStats.zusatzfelder++
+              if (newPlz) {
+                syncStats.plz++
+                await matchCandidateToCampaigns(db as never, known.id).catch((e) => console.error(`Matching ${c.key}:`, e))
+              }
+            }
+          }
+        }
         // Zuordnung nur, wenn es zu Kandidat und Kanzlei noch nie eine gab (entfernte bleiben entfernt).
         for (const [ltCustomerId, status] of c.assignTo) {
           const clientId = clientIdByLeadtable.get(ltCustomerId)
@@ -685,7 +772,7 @@ async function main() {
     if (++done % 100 === 0) console.log(`Kandidaten: ${done}/${candidates.length}`)
   })
   console.log(`Beschreibungen ergänzt: ${textStats.beschreibungen}, Notizen: ${textStats.notizen}${ONLY_TEXTS ? `, Kandidat nicht gefunden: ${textStats.nichtGefunden}` : ""}`)
-  if (SYNC) console.log(`Abgleich: ${syncStats.neu} neu angelegt, ${syncStats.ergaenzt} ergänzt, ${syncStats.zuordnungen} Zuordnungen.`)
+  if (SYNC) console.log(`Abgleich: ${syncStats.neu} neu angelegt, ${syncStats.ergaenzt} ergänzt, ${syncStats.zuordnungen} Zuordnungen, Zusatzfelder bei ${syncStats.zusatzfelder}, PLZ bei ${syncStats.plz}.`)
   console.log("Fertig.")
 }
 
