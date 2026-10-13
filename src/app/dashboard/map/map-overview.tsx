@@ -376,6 +376,7 @@ export function MapOverview({
         circles={circles}
         height="clamp(420px, calc(100vh - 260px), 1400px)"
         scrollWheelZoom
+        canvas
         searchPin={searchPin}
         onMarkerClick={(lat, lng) => focusOn({ lat, lng, label: "Umkreis" })}
       />

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table"
 import { CandidateStatusSelect } from "./candidate-status-select"
 import { AssignmentStatusSelect } from "@/components/dashboard/assignment-status-select"
+import { RemoveAssignmentButton } from "@/components/dashboard/remove-assignment-button"
 import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
@@ -197,6 +198,8 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
     filteredCandidates,
     "campaigns_candidates_page_size"
   )
+  // Spalte "Zuordnung entfernen" nur, wenn es in der Kampagne Zuordnungen gibt (Paket 62).
+  const hasAssignments = candidates.some((c) => c.assignmentId)
 
   function handleSearchChange(value: string) {
     setSearchQuery(value)
@@ -802,6 +805,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                         <TableHead className="text-gray-600">E-Mail</TableHead>
                         <TableHead className="text-gray-600">Telefon</TableHead>
                         <TableHead className="text-gray-600">Erstellt am</TableHead>
+                        {hasAssignments && <TableHead />}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -830,6 +834,11 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                           <TableCell className="text-gray-500 text-sm">
                             {new Date(c.created_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
                           </TableCell>
+                          {hasAssignments && (
+                            <TableCell className="text-right">
+                              {c.assignmentId && <RemoveAssignmentButton assignmentId={c.assignmentId} name={`${c.first_name} ${c.last_name}`.trim()} />}
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -887,9 +896,12 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                             <span className="text-gray-300">Kein Telefon</span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-400">
-                          {new Date(c.created_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                        </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-gray-400">
+                            {new Date(c.created_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                          </p>
+                          {c.assignmentId && <RemoveAssignmentButton assignmentId={c.assignmentId} name={`${c.first_name} ${c.last_name}`.trim()} />}
+                        </div>
                       </div>
                     )
                   })}

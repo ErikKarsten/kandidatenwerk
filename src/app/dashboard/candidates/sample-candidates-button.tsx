@@ -6,13 +6,14 @@ import { Sparkles } from "lucide-react"
 import { useShowMode } from "@/lib/show-mode"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { createSampleCandidatesAction } from "./actions"
-import { SAMPLE_FOCUS_OPTIONS } from "@/lib/sample-focus"
+import { SAMPLE_EXTRA_MAX, SAMPLE_FOCUS_OPTIONS, SAMPLE_SOFTWARE_OPTIONS, type SampleSoftware } from "@/lib/sample-focus"
 
 const inputClass = "w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
 const inputStyle = { borderColor: "#dde3ea" }
 
 // "Musterdatensätze hinzufügen" (Paket 41): Berufsbild und PLZ des Kunden eingeben, die KI
 // erstellt drei fiktive Kandidaten im Umkreis. Im anonymisierten Modus ausgeblendet.
+// Paket 62: Allrounder, Kanzleisoftware und Zusatzinfos für den KI-Auftrag.
 export function SampleCandidatesButton() {
   const router = useRouter()
   const [showMode] = useShowMode()
@@ -23,6 +24,9 @@ export function SampleCandidatesButton() {
   const [plz, setPlz] = useState("")
   // Schwerpunkte (Paket 57), Mehrfachauswahl.
   const [focus, setFocus] = useState<string[]>([])
+  const [allrounder, setAllrounder] = useState(false)
+  const [software, setSoftware] = useState<SampleSoftware>("DATEV")
+  const [extra, setExtra] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<number | null>(null)
   const [pending, startTransition] = useTransition()
@@ -41,7 +45,7 @@ export function SampleCandidatesButton() {
     setError(null)
     setDone(null)
     startTransition(async () => {
-      const res = await createSampleCandidatesAction(berufsbild, plz, focus)
+      const res = await createSampleCandidatesAction({ berufsbild, plz, focus, allrounder, software, extra })
       if ("error" in res) {
         setError(res.error)
         return
@@ -64,12 +68,12 @@ export function SampleCandidatesButton() {
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={close}>
-          <div className="w-full max-w-md rounded-xl border bg-white shadow-xl" style={{ borderColor: "#dde3ea" }} onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border bg-white shadow-xl" style={{ borderColor: "#dde3ea" }} onClick={(e) => e.stopPropagation()}>
             <form onSubmit={submit} className="flex flex-col gap-3 p-6">
               <h2 className="text-base font-semibold text-gray-900">Musterdatensätze hinzufügen</h2>
               <p className="text-xs text-gray-500">
-                Die KI erstellt drei fiktive, vorqualifizierte Kandidaten (weiblich oder männlich) mit Wohnort im Umkreis von 15 km.
-                Sie bekommen den Tag „Musterdatensatz“. Das dauert etwa eine Minute.
+                Die KI erstellt drei fiktive, vorqualifizierte Kandidaten mit Kanzlei-Erfahrung und Wohnort im Umkreis von 15 km.
+                Sie bekommen den Tag „Musterdatensatz“ und lassen sich keiner Kanzlei zuordnen. Das dauert etwa eine Minute.
               </p>
               <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
                 Berufsbild
@@ -94,11 +98,30 @@ export function SampleCandidatesButton() {
                   disabled={pending}
                 />
               </label>
-              <fieldset className="flex flex-col gap-1.5" disabled={pending}>
-                <legend className="mb-1 text-xs font-medium text-gray-500">Schwerpunkte (optional, mehrere möglich)</legend>
+              <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
+                Software
+                <select value={software} onChange={(e) => setSoftware(e.target.value as SampleSoftware)} className={inputClass} style={{ ...inputStyle, backgroundColor: "white" }} disabled={pending}>
+                  {SAMPLE_SOFTWARE_OPTIONS.map((o) => (
+                    <option key={o} value={o}>
+                      {o === "DATEV" ? "DATEV (inkl. DATEV Unternehmen online)" : o}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label
+                className="flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm"
+                style={allrounder ? { borderColor: "#1e56a0", backgroundColor: "#1e56a010", color: "#1e56a0" } : { borderColor: "#dde3ea", color: "#374151" }}
+              >
+                <input type="checkbox" checked={allrounder} onChange={(e) => setAllrounder(e.target.checked)} disabled={pending} />
+                Allrounder – Erfahrung in allen Bereichen
+              </label>
+              <fieldset className="flex flex-col gap-1.5" disabled={pending || allrounder}>
+                <legend className="mb-1 text-xs font-medium text-gray-500">
+                  {allrounder ? "Schwerpunkte (beim Allrounder alle)" : "Schwerpunkte (optional, mehrere möglich)"}
+                </legend>
                 <div className="grid grid-cols-2 gap-1.5">
                   {SAMPLE_FOCUS_OPTIONS.map((o) => {
-                    const checked = focus.includes(o)
+                    const checked = allrounder || focus.includes(o)
                     return (
                       <label
                         key={o}
@@ -116,6 +139,18 @@ export function SampleCandidatesButton() {
                   })}
                 </div>
               </fieldset>
+              <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
+                Zusatzinfos (optional)
+                <textarea
+                  value={extra}
+                  onChange={(e) => setExtra(e.target.value.slice(0, SAMPLE_EXTRA_MAX))}
+                  placeholder="z. B. Schwerpunkt Ärzte und Heilberufe, eher Berufseinsteiger, Teilzeit gewünscht"
+                  rows={3}
+                  className={inputClass}
+                  style={inputStyle}
+                  disabled={pending}
+                />
+              </label>
               {error && <p className="text-xs text-red-600">{error}</p>}
               {done !== null && <p className="text-xs text-green-700">{done} Musterdatensätze angelegt.</p>}
               <div className="mt-2 flex justify-end gap-2">

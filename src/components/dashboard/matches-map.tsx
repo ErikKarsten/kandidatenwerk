@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react"
 import Link from "next/link"
-import { MapContainer, TileLayer, Marker, Popup, Circle } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 
@@ -198,7 +198,10 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
   searchPin?: SearchPin | null
   // Klick auf einen Punkt (bzw. eine Punktgruppe), z. B. um einen Umkreis zu zeigen.
   onMarkerClick?: (lat: number, lng: number) => void
-}>(function MatchesMap({ points, circles = [], height = "280px", scrollWheelZoom = false, fitCircles = false, searchPin = null, onMarkerClick }, ref) {
+  // Viele Punkte (Kartenübersicht, Paket 62): Einzelpunkte auf einer Canvas-Ebene statt als
+  // je ein HTML-Element - bleibt auch bei mehreren Tausend Punkten flüssig.
+  canvas?: boolean
+}>(function MatchesMap({ points, circles = [], height = "280px", scrollWheelZoom = false, fitCircles = false, searchPin = null, onMarkerClick, canvas = false }, ref) {
   const validPoints = useMemo(() => points.filter(hasCoords), [points])
   const groups = useMemo(() => groupByLocation(validPoints), [validPoints])
   // Referenziell stabil, solange sich die Punktmenge nicht ändert - sonst würde JEDER
@@ -274,6 +277,7 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
         boundsOptions={{ padding: [30, 30] }}
         style={{ height, width: "100%" }}
         scrollWheelZoom={scrollWheelZoom}
+        preferCanvas={canvas}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
@@ -320,6 +324,21 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
           // Einzelner Punkt an diesem Standort: Verhalten exakt wie vor der Gruppierung.
           if (group.points.length === 1) {
             const p = group.points[0]
+            if (canvas) {
+              return (
+                <CircleMarker
+                  key={group.key}
+                  center={[group.lat, group.lng]}
+                  radius={6}
+                  pathOptions={{ color: p.approximate ? "#374151" : "white", weight: 2, fillColor: effectiveColor(p), fillOpacity: 1, dashArray: p.approximate ? "3 3" : undefined }}
+                  eventHandlers={onMarkerClick ? { click: () => onMarkerClick(group.lat, group.lng) } : undefined}
+                >
+                  <Popup>
+                    <PointDetails point={p} />
+                  </Popup>
+                </CircleMarker>
+              )
+            }
             const icon = createDotIcon(effectiveColor(p), p.approximate ?? false)
             return (
               <Marker key={group.key} position={[group.lat, group.lng]} icon={icon} eventHandlers={onMarkerClick ? { click: () => onMarkerClick(group.lat, group.lng) } : undefined}>

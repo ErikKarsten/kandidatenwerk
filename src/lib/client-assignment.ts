@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
+import { SAMPLE_TAG } from "@/lib/candidate-tags"
 
 type Supabase = SupabaseClient<Database>
 
@@ -7,10 +8,19 @@ type Supabase = SupabaseClient<Database>
 // Status "vorqualifiziert" (Beispiel-Leads ausgenommen).
 export const ASSIGNABLE_STATUS = "vorqualifiziert"
 export const NOT_ASSIGNABLE_MESSAGE = "Nur vorqualifizierte Kandidaten können einer Kanzlei zugeordnet werden."
+// Musterdatensätze (Paket 62) sind nur zum Vorführen da und nie einer Kanzlei zuordenbar.
+export const SAMPLE_NOT_ASSIGNABLE_MESSAGE = "Musterdatensätze können keiner Kanzlei zugeordnet werden."
 
-async function isAssignable(supabase: Supabase, candidateId: string): Promise<boolean> {
-  const { data } = await supabase.from("candidates").select("status, is_demo").eq("id", candidateId).maybeSingle()
-  return !!data && (data.is_demo || data.status === ASSIGNABLE_STATUS)
+export function isSampleCandidate(tags: string[] | null | undefined): boolean {
+  return (tags ?? []).includes(SAMPLE_TAG)
+}
+
+// null = zuordenbar, sonst die Fehlermeldung.
+async function assignabilityError(supabase: Supabase, candidateId: string): Promise<string | null> {
+  const { data } = await supabase.from("candidates").select("status, is_demo, tags").eq("id", candidateId).maybeSingle()
+  if (!data) return NOT_ASSIGNABLE_MESSAGE
+  if (isSampleCandidate(data.tags)) return SAMPLE_NOT_ASSIGNABLE_MESSAGE
+  return data.is_demo || data.status === ASSIGNABLE_STATUS ? null : NOT_ASSIGNABLE_MESSAGE
 }
 
 // Verknüpft einen Kandidaten mit einem Kunden im Portal (client_assignments), idempotent:
@@ -26,7 +36,8 @@ export async function ensureClientAssignment(
   candidateId: string,
   clientId: string
 ): Promise<void> {
-  if (!(await isAssignable(supabase, candidateId))) throw new Error(NOT_ASSIGNABLE_MESSAGE)
+  const notAssignable = await assignabilityError(supabase, candidateId)
+  if (notAssignable) throw new Error(notAssignable)
   const { data: existing, error: lookupError } = await supabase
     .from("client_assignments")
     .select("id")
@@ -64,7 +75,8 @@ export async function ensureCampaignAssignment(
   if (campaign.kind !== "kanzlei" || !campaign.client_id) {
     throw new Error("Kandidaten können nur Kanzlei-Kampagnen zugeordnet werden.")
   }
-  if (!(await isAssignable(supabase, candidateId))) throw new Error(NOT_ASSIGNABLE_MESSAGE)
+  const notAssignable = await assignabilityError(supabase, candidateId)
+  if (notAssignable) throw new Error(notAssignable)
 
   // Eine aktive Zuordnung je Kandidat und Kanzlei (Paket 31, Unique-Index): über dieselbe
   // Kampagne idempotent, über eine andere Kampagne derselben Kanzlei ein klarer Hinweis.

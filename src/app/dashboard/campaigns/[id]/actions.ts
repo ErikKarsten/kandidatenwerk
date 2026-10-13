@@ -22,6 +22,7 @@ import { ensureClientAssignment } from "@/lib/client-assignment"
 import type { TablesUpdate } from "@/types/database"
 import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
+import { SAMPLE_TAG } from "@/lib/candidate-tags"
 
 
 // requireStaffUser() aus src/lib/auth-guards.ts (Security-Review 08./09.09.2026) -
@@ -617,6 +618,8 @@ export async function searchAvailableCandidatesAction(
     // Kanzleien bekommen nur vorqualifizierte Kandidaten (Paket 19, T-86).
     .eq("status", ASSIGNABLE_STATUS)
     .eq("is_demo", false)
+    // Musterdatensätze sind keiner Kanzlei zuordenbar (Paket 62).
+    .not("tags", "cs", `{${SAMPLE_TAG}}`)
     .eq("berufsbild", campaign.berufsbild)
     .order("created_at", { ascending: false })
     .limit(MAX_CANDIDATE_ROWS)

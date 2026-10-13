@@ -33,6 +33,7 @@ import { TagEditor } from "@/components/dashboard/tag-editor"
 import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { useShowMode } from "@/lib/show-mode"
 import { CandidateShowView } from "./show-view"
+import { SAMPLE_TAG } from "@/lib/candidate-tags"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -360,6 +361,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
               <AssignmentTab
                 candidateId={candidate.id}
                 candidateStatus={candidate.status}
+                isSample={candidate.tags.includes(SAMPLE_TAG)}
                 candidateName={`${candidate.first_name} ${candidate.last_name}`.trim()}
                 berufsbild={candidate.berufsbild}
                 selfLat={candidate.lat}
