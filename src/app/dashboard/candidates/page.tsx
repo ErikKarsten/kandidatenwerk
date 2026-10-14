@@ -26,6 +26,7 @@ const DEFAULT_PAGE_SIZE: PageSize = 10
 const SORT_COLUMNS: Record<CandidatesSortOption, { column: string; ascending: boolean }> = {
   newest: { column: "created_at", ascending: false },
   oldest: { column: "created_at", ascending: true },
+  updated: { column: "updated_at", ascending: false },
   "name-asc": { column: "full_name", ascending: true },
   "name-desc": { column: "full_name", ascending: false },
 }
@@ -73,7 +74,7 @@ export default async function CandidatesPage({
   let query = supabase
     .from("candidate_list_rows")
     .select(
-      "id, first_name, last_name, email, status, berufsbild, source, created_at, custom_fields, campaign_id, campaign_title, client_id, client_name, tags, assignment_status, assignments",
+      "id, first_name, last_name, email, status, berufsbild, source, created_at, updated_at, custom_fields, campaign_id, campaign_title, client_id, client_name, tags, assignment_status, assignments",
       { count: "exact" }
     )
 
@@ -131,6 +132,7 @@ export default async function CandidatesPage({
     berufsbild: c.berufsbild,
     source: c.source ?? "",
     created_at: c.created_at ?? "",
+    updated_at: c.updated_at ?? c.created_at ?? "",
     custom_fields: (c.custom_fields as Record<string, string> | null) ?? null,
     tags: c.tags ?? [],
     assignments: Array.isArray(c.assignments) ? (c.assignments as { client_id: string; client_name: string; status: string }[]) : [],

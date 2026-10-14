@@ -5,8 +5,9 @@
 // eigene Kopien zu pflegen. Muss mit der candidates_status_check-Constraint in
 // supabase/migrations/20260803000000_extend_candidate_status_options.sql synchron bleiben.
 export const CANDIDATE_STATUS_OPTIONS = [
-  { value: "neu", label: "Neu", bg: "#4ba3c318", dot: "#4ba3c3", text: "#0e7490" },
-  { value: "vorqualifiziert", label: "Vorqualifiziert", bg: "#0ea5e918", dot: "#0ea5e9", text: "#0369a1" },
+  // Neu = Blau, Vorqualifiziert = Grün (Paket 66) - vorher zwei Blautöne, kaum zu unterscheiden.
+  { value: "neu", label: "Neu", bg: "#2563eb18", dot: "#2563eb", text: "#1d4ed8" },
+  { value: "vorqualifiziert", label: "Vorqualifiziert", bg: "#16a34a1f", dot: "#16a34a", text: "#15803d" },
   { value: "in_pruefung", label: "In Prüfung", bg: "#f59e0b18", dot: "#f59e0b", text: "#b45309" },
   { value: "nicht_erreicht", label: "Nicht erreicht", bg: "#f9731618", dot: "#f97316", text: "#c2410c" },
   { value: "nicht_erreicht_mail", label: "2x nicht erreicht + Mail", bg: "#ef444418", dot: "#ef4444", text: "#b91c1c" },

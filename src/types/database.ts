@@ -910,6 +910,7 @@ export type Database = {
           meta_lead_id: string | null
           is_demo: boolean
           tags: string[]
+          updated_at: string
           offene_fragen: string | null
           cv_werdegang: string | null
           bewerbung: string | null
@@ -937,6 +938,7 @@ export type Database = {
           meta_lead_id?: string | null
           is_demo?: boolean
           tags?: string[]
+          updated_at?: string
           offene_fragen?: string | null
           cv_werdegang?: string | null
           bewerbung?: string | null
@@ -964,6 +966,7 @@ export type Database = {
           meta_lead_id?: string | null
           is_demo?: boolean
           tags?: string[]
+          updated_at?: string
           offene_fragen?: string | null
           cv_werdegang?: string | null
           bewerbung?: string | null
@@ -1685,6 +1688,7 @@ export type Database = {
           tags: string[] | null
           assignment_status: string | null
           assignments: Json | null
+          updated_at: string | null
         }
         Insert: {
           id?: string | null

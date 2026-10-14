@@ -33,6 +33,7 @@ import { TagEditor } from "@/components/dashboard/tag-editor"
 import { useShowMode } from "@/lib/show-mode"
 import { CandidateShowView } from "./show-view"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
+import { CopyButton } from "@/components/ui/copy-button"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -519,7 +520,10 @@ function DescriptionSection({
 
   return (
     <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
-      <label className="mb-2 block text-sm font-semibold text-gray-700">{label}</label>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <label className="block text-sm font-semibold text-gray-700">{label}</label>
+        <CopyButton value={value} className="-my-1" />
+      </div>
       <textarea
         ref={textarea}
         rows={4}
