@@ -78,7 +78,10 @@ export default async function PortalCandidateDetailPage({
     ? templateKeys.map((k) => zusatzFieldDefinitions.find((f) => f.key === k)).filter((f): f is (typeof zusatzFieldDefinitions)[number] => !!f)
     : zusatzFieldDefinitions
 
-  const { data: fileRows } = await supabase
+  // Dateien des Kandidaten (Paket 65): alles, was das Team am Kandidaten speichert, sieht
+  // die zugeordnete Kanzlei. Gelesen per Service-Role - die Zuordnung ist oben bereits über
+  // die RLS-Session des Kunden geprüft (sonst notFound), wie bei den Zusatzfeldern.
+  const { data: fileRows } = await admin
     .from("candidate_files")
     .select("id, file_name, file_path, file_size, mime_type, created_at")
     .eq("candidate_id", id)
@@ -86,7 +89,7 @@ export default async function PortalCandidateDetailPage({
 
   const files: PortalFile[] = await Promise.all(
     (fileRows ?? []).map(async (f) => {
-      const { data: urlData } = await supabase.storage
+      const { data: urlData } = await admin.storage
         .from("candidate-files")
         .createSignedUrl(f.file_path, 3600)
       return {

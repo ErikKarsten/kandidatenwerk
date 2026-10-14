@@ -25,7 +25,7 @@ export function isOnboardingStatus(label: string | null | undefined): boolean {
   return l === "gewonnen" || l.startsWith("folgebesprechung zum sc") || l.startsWith("folgebescprechung zum sc")
 }
 
-// triggeredAt: Zeitpunkt des Statuswechsels - ab "Gewonnen" entstehen Kommentare.
+// triggeredAt: Zeitpunkt des Statuswechsels - ab dann entstehen Kommentare (Paket 65).
 export async function queueOnboarding(db: SupabaseClient, leadId: string, statusLabel: string, triggeredAt?: string | null): Promise<void> {
   const now = new Date().toISOString()
   const { error } = await db
@@ -225,8 +225,9 @@ async function step(db: SupabaseClient, row: OnboardingRow): Promise<string> {
 
   if (row.status === "offen") {
     const result = await processCloseWebhook(db, payloadFromLead(lead, row.trigger_status))
-    // Kommentare erst ab "Gewonnen"; bei "Folgebesprechung" nur Grundlage fürs Profil.
-    const commentsFrom = /gewonnen/i.test(row.trigger_status ?? "") ? row.triggered_at : null
+    // Kommentare ab der Übernahme, egal ob "Folgebesprechung" oder "Gewonnen" (Paket 65);
+    // der Verlauf davor ist nur Grundlage fürs Profil.
+    const commentsFrom = row.triggered_at
     const found = await importLeadHistory(db, lead.id, result.clientId, commentsFrom)
     await db.from("close_onboarding").update({ client_id: result.clientId, status: "aktivitaeten", updated_at: new Date().toISOString() }).eq("lead_id", row.lead_id)
     return `Kunde ${result.outcome}, ${found} Aktivitäten vorgemerkt`

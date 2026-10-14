@@ -12,6 +12,7 @@
 //   npx tsx scripts/muster-deutschland.ts                  Probelauf (Plan und Zahlen)
 //   npx tsx scripts/muster-deutschland.ts --ausfuehren     legt an
 //   npx tsx scripts/muster-deutschland.ts --ausfuehren --limit=10   nur die ersten 10
+//   npx tsx scripts/muster-deutschland.ts --ausfuehren --stichprobe=50   50 über ganz Deutschland verteilt
 //
 // Einwohnerzahlen: scripts/data/gemeinden.json aus dem Gemeindeverzeichnis (GV-ISys) des
 // Statistischen Bundesamts, Stand 31.12.2024 - © Statistisches Bundesamt (Destatis), 2026,
@@ -34,6 +35,8 @@ dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true })
 
 const EXECUTE = process.argv.includes("--ausfuehren")
 const LIMIT = Number(process.argv.find((a) => a.startsWith("--limit="))?.split("=")[1] ?? Infinity)
+// Stichprobe zum Ansehen: gleichmäßig über den Plan verteilt (Metropolen bis Land).
+const SAMPLE_SIZE = Number(process.argv.find((a) => a.startsWith("--stichprobe="))?.split("=")[1] ?? 0)
 const BATCH = 5
 const PARALLEL = 4
 
@@ -255,7 +258,9 @@ async function main() {
   const labels = new Map((await fetchBerufsbilder(db)).map((o) => [o.value, o.label]))
   const usedNames = new Set(existing.map((e) => `${e.first_name} ${e.last_name}`.toLowerCase()))
   const recentNames: string[] = existing.slice(-40).map((e) => `${e.first_name} ${e.last_name}`)
-  const todo = slots.slice(0, LIMIT)
+  const step = SAMPLE_SIZE > 0 ? Math.max(1, Math.floor(slots.length / SAMPLE_SIZE)) : 1
+  const todo = (SAMPLE_SIZE > 0 ? slots.filter((_, i) => i % step === 0).slice(0, SAMPLE_SIZE) : slots).slice(0, LIMIT)
+  if (SAMPLE_SIZE > 0) console.log(`Stichprobe: ${todo.length} Orte, z. B. ${[...new Set(todo.map((s) => s.ort.split(",")[0]))].slice(0, 12).join(", ")}`)
   // Stapel je Berufsbild, damit ein KI-Aufruf ein Berufsbild bedient.
   const batches: Slot[][] = []
   for (const [bb] of SHARES) {

@@ -83,11 +83,28 @@ describe("Close-Aktivitäten", () => {
   })
 })
 
-describe("Kommentare erst ab Gewonnen", () => {
-  it("Folgebesprechung bekommt noch keine Kommentare", async () => {
-    const { closeStatusAllowsComments } = await import("./close-sync")
-    expect(closeStatusAllowsComments("Gewonnen")).toBe(true)
-    expect(closeStatusAllowsComments(null)).toBe(true)
-    expect(closeStatusAllowsComments("Folgebesprechung zum SC vereinbart")).toBe(false)
+describe("Kommentare ab der Übernahme, unabhängig vom Close-Status (Paket 65)", () => {
+  function fakeDb() {
+    const rows: Record<string, unknown>[] = []
+    const db = { from: () => ({ upsert: async (row: Record<string, unknown>) => (rows.push(row), { error: null }) }) }
+    return { db: db as never, rows }
+  }
+  const meeting = { id: "acti_1", lead_id: "lead_1", _type: "Meeting", date_created: "2026-10-13T14:30:00Z", starts_at: "2026-10-13T14:30:00Z", title: "Willkommensmeeting", summary: { text: "- Angebot besprochen" } }
+
+  it("laufende Besprechungen werden immer zum Kommentar", async () => {
+    const { recordActivity } = await import("./close-sync")
+    const { db, rows } = fakeDb()
+    expect(await recordActivity(db, meeting as never, { clientId: "client_1" })).toBe("vorgemerkt")
+    expect(rows[0].create_comment).toBe(true)
+  })
+
+  it("im Verlauf nur ab dem Zeitpunkt der Übernahme", async () => {
+    const { recordActivity } = await import("./close-sync")
+    const before = fakeDb()
+    await recordActivity(before.db, meeting as never, { clientId: "client_1", includeHistory: true, commentsFrom: "2026-10-14T00:00:00Z" })
+    expect(before.rows[0].create_comment).toBe(false)
+    const after = fakeDb()
+    await recordActivity(after.db, meeting as never, { clientId: "client_1", includeHistory: true, commentsFrom: "2026-10-12T15:00:00Z" })
+    expect(after.rows[0].create_comment).toBe(true)
   })
 })

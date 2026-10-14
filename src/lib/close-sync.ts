@@ -9,10 +9,11 @@
 //    Besprechungen fasst die KI zusammen, Telefonate werden erst transkribiert (Workers AI)
 //    und dann zusammengefasst, Notizen/eigene Aktivitäten/Statuswechsel werden lesbar
 //    übernommen. Ergebnis: ein Kommentar im Projekt, datiert auf den Zeitpunkt in Close.
-// Kommentare gibt es nur für Telefonate und Besprechungen ab dem Status "Gewonnen" - davor
-// schaut das Team ohnehin in Close (Entscheidung 07.10.2026). Bei der Übernahme eines Kunden
-// (close-onboarding.ts) wird der Verlauf trotzdem gelesen und Telefonate transkribiert, aber
-// ohne Kommentar: nur als Grundlage für das KI-Kanzleiprofil (create_comment = false).
+// Kommentare gibt es für Telefonate und Besprechungen, sobald der Kunde in Kandidatenwerk
+// angelegt ist - unabhängig vom Close-Status (Entscheidung 14.10.2026, Paket 65; vorher erst
+// ab "Gewonnen"). Der Verlauf vor der Übernahme (close-onboarding.ts) wird gelesen und
+// Telefonate transkribiert, aber ohne Kommentar: nur als Grundlage für das KI-Kanzleiprofil
+// (create_comment = false).
 import { createHmac, timingSafeEqual } from "node:crypto"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { summarizeCall } from "@/lib/call-summary"
@@ -89,19 +90,12 @@ export function customActivityText(a: CloseActivity, fieldNames: Map<string, str
 // Arten, die als Kommentar im Projekt landen.
 const COMMENT_TYPES = new Set<ActivityType>(["call", "meeting"])
 
-// Kunde in Close noch nicht gewonnen (nur Folgebesprechung) -> noch keine Kommentare.
-export function closeStatusAllowsComments(closeStatus: string | null | undefined): boolean {
-  return !/^folgebe/i.test((closeStatus ?? "").trim())
-}
-
 interface RecordOptions {
   // Verlauf bei der Übernahme eines neuen Kunden: alle Arten (außer Statuswechsel), auch vor
   // CLOSE_MEETINGS_SINCE; Kommentar nur für Telefonate/Besprechungen ab commentsFrom.
   includeHistory?: boolean
   commentsFrom?: string | null
   clientId?: string
-  // Laufend: darf der Kunde schon Kommentare bekommen (Status "Gewonnen")?
-  clientWon?: boolean
   labels?: { types: Map<string, string>; fields: Map<string, string> }
 }
 
@@ -139,16 +133,14 @@ export async function recordActivity(db: SupabaseClient, a: CloseActivity, opts:
   }
 
   let clientId = opts.clientId ?? null
-  let clientWon = opts.clientWon ?? true
   if (!clientId) {
-    const { data: client } = await db.from("clients").select("id, close_status").eq("close_lead_id", a.lead_id).maybeSingle()
+    const { data: client } = await db.from("clients").select("id").eq("close_lead_id", a.lead_id).maybeSingle()
     if (!client) return "Lead gehört zu keinem Kunden"
     clientId = client.id as string
-    clientWon = closeStatusAllowsComments(client.close_status as string | null)
   }
   const createComment = opts.includeHistory
     ? COMMENT_TYPES.has(type) && !!opts.commentsFrom && !!at && at >= opts.commentsFrom
-    : clientWon
+    : true
 
   const attendees = (a.attendees ?? []).map((x) => x.name || x.email).filter(Boolean).join(", ")
   const { error } = await db.from("close_meeting_summaries").upsert(
@@ -185,7 +177,7 @@ export async function recordActivityFromWebhook(db: SupabaseClient, payload: Clo
 }
 
 // Kompletter Verlauf eines Leads (Übernahme eines neuen Kunden). Kommentare nur für
-// Telefonate/Besprechungen ab commentsFrom (Zeitpunkt "Gewonnen"). Liefert die Anzahl.
+// Telefonate/Besprechungen ab commentsFrom (Zeitpunkt der Übernahme). Liefert die Anzahl.
 export async function importLeadHistory(db: SupabaseClient, leadId: string, clientId: string, commentsFrom: string | null): Promise<number> {
   const [activities, labels] = await Promise.all([closeList<CloseActivity>(`/activity/?lead_id=${encodeURIComponent(leadId)}`, 1000), customActivityLabels()])
   let found = 0
@@ -206,9 +198,8 @@ const POLL: { path: string; filter: string; hours: number }[] = [
 
 export async function pollRecentActivities(db: SupabaseClient): Promise<number> {
   if (!closeConfigured()) return 0
-  const { data: clients } = await db.from("clients").select("id, close_lead_id, close_status").not("close_lead_id", "is", null)
+  const { data: clients } = await db.from("clients").select("id, close_lead_id").not("close_lead_id", "is", null)
   const clientByLead = new Map((clients ?? []).map((c) => [c.close_lead_id as string, c.id as string]))
-  const wonByLead = new Map((clients ?? []).map((c) => [c.close_lead_id as string, closeStatusAllowsComments(c.close_status as string | null)]))
   if (clientByLead.size === 0) return 0
   const lists = await Promise.all(
     POLL.map((p) => {
@@ -226,7 +217,7 @@ export async function pollRecentActivities(db: SupabaseClient): Promise<number> 
   const fresh = relevant.filter((a) => !knownIds.has(a.id))
   let found = 0
   for (const a of fresh) {
-    if ((await recordActivity(db, a, { clientId: clientByLead.get(a.lead_id!), clientWon: wonByLead.get(a.lead_id!) })) === "vorgemerkt") found++
+    if ((await recordActivity(db, a, { clientId: clientByLead.get(a.lead_id!) })) === "vorgemerkt") found++
   }
   return found
 }
