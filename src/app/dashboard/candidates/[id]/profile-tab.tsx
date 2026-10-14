@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Check, Copy } from "lucide-react"
+import { CopyButton } from "@/components/ui/copy-button"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { updateCandidateProfileAction, updateCandidateCustomFieldAction } from "./actions"
@@ -172,45 +172,74 @@ export function ProfileTab({
           <dl className="mt-1 flex flex-col gap-3">
             <FieldRow label="Vorname" editMode={editMode}>
               {editMode ? (
-                <input className={inputClass} style={inputStyle} value={localFirst} onChange={(e) => setLocalFirst(e.target.value)} />
-              ) : (firstName || "—")}
+                <div className="flex items-center gap-2">
+                  <input className={inputClass} style={inputStyle} value={localFirst} onChange={(e) => setLocalFirst(e.target.value)} />
+                  <CopyButton value={localFirst} />
+                </div>
+              ) : (
+                <ValueWithCopy value={firstName} />
+              )}
             </FieldRow>
             <FieldRow label="Nachname" editMode={editMode}>
               {editMode ? (
-                <input className={inputClass} style={inputStyle} value={localLast} onChange={(e) => setLocalLast(e.target.value)} />
-              ) : (lastName || "—")}
+                <div className="flex items-center gap-2">
+                  <input className={inputClass} style={inputStyle} value={localLast} onChange={(e) => setLocalLast(e.target.value)} />
+                  <CopyButton value={localLast} />
+                </div>
+              ) : (
+                <ValueWithCopy value={lastName} />
+              )}
             </FieldRow>
             <FieldRow label="E-Mail" editMode={editMode}>
               {editMode ? (
-                <input className={inputClass} style={inputStyle} type="email" value={localEmail} onChange={(e) => setLocalEmail(e.target.value)} />
-              ) : (email || "—")}
+                <div className="flex items-center gap-2">
+                  <input className={inputClass} style={inputStyle} type="email" value={localEmail} onChange={(e) => setLocalEmail(e.target.value)} />
+                  <CopyButton value={localEmail} />
+                </div>
+              ) : (
+                <ValueWithCopy value={email} />
+              )}
             </FieldRow>
             <FieldRow label="Telefon" editMode={editMode}>
               {editMode ? (
-                <input className={inputClass} style={inputStyle} type="tel" value={localPhone} onChange={(e) => setLocalPhone(e.target.value)} />
-              ) : (phone || "—")}
+                <div className="flex items-center gap-2">
+                  <input className={inputClass} style={inputStyle} type="tel" value={localPhone} onChange={(e) => setLocalPhone(e.target.value)} />
+                  <CopyButton value={localPhone} />
+                </div>
+              ) : (
+                <ValueWithCopy value={phone} />
+              )}
             </FieldRow>
             {/* Anzeige direkt aus den Props: eine Änderung im Berufsbild-Dropdown oben im
                 Kopf steht so sofort auch hier. */}
             <FieldRow label="Berufsbild" editMode={editMode}>
               {editMode ? (
-                <select
-                  className={inputClass}
-                  style={inputStyle}
-                  value={localBerufsbild}
-                  onChange={(e) => setLocalBerufsbild(e.target.value)}
-                >
-                  <option value="">Kein Berufsbild</option>
-                  {bb.choices(localBerufsbild).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <select
+                    className={inputClass}
+                    style={inputStyle}
+                    value={localBerufsbild}
+                    onChange={(e) => setLocalBerufsbild(e.target.value)}
+                  >
+                    <option value="">Kein Berufsbild</option>
+                    {bb.choices(localBerufsbild).map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  {/* Platzhalter, damit das Feld so breit ist wie die mit Kopieren-Button. */}
+                  <CopyButton value="" />
+                </div>
               ) : (bb.label(berufsbild) || "—")}
             </FieldRow>
             <FieldRow label="PLZ" editMode={editMode}>
               {editMode ? (
-                <input className={inputClass} style={inputStyle} value={localPlz} onChange={(e) => setLocalPlz(e.target.value)} maxLength={5} inputMode="numeric" />
-              ) : (plz || "—")}
+                <div className="flex items-center gap-2">
+                  <input className={inputClass} style={inputStyle} value={localPlz} onChange={(e) => setLocalPlz(e.target.value)} maxLength={5} inputMode="numeric" />
+                  <CopyButton value={localPlz} />
+                </div>
+              ) : (
+                <ValueWithCopy value={plz} />
+              )}
             </FieldRow>
             {stammdatenFields.map(({ key, label }) => (
               <CustomFieldRow key={key} candidateId={candidateId} fieldKey={key} label={label} value={localCustom[key] ?? ""} onSaved={handleCustomFieldSaved} />
@@ -259,13 +288,18 @@ export function ProfileTab({
             {extraKeys.map((key) => (
               <FieldRow key={key} label={formatLabel(key)} editMode={editMode} stacked>
                 {editMode ? (
-                  <input
-                    className={inputClass}
-                    style={inputStyle}
-                    value={localCustom[key] ?? ""}
-                    onChange={(e) => setLocalCustom((prev) => ({ ...prev, [key]: e.target.value }))}
-                  />
-                ) : (localCustom[key] || "—")}
+                  <div className="flex items-center gap-2">
+                    <input
+                      className={inputClass}
+                      style={inputStyle}
+                      value={localCustom[key] ?? ""}
+                      onChange={(e) => setLocalCustom((prev) => ({ ...prev, [key]: e.target.value }))}
+                    />
+                    <CopyButton value={localCustom[key] ?? ""} />
+                  </div>
+                ) : (
+                  <ValueWithCopy value={localCustom[key]} />
+                )}
               </FieldRow>
             ))}
 
@@ -340,15 +374,7 @@ function CustomFieldRow({
   const router = useRouter()
   const [localValue, setLocalValue] = useState(value)
   const [pending, startTransition] = useTransition()
-  const [copied, setCopied] = useState(false)
   const savedValueRef = useRef(value)
-
-  function handleCopy() {
-    navigator.clipboard.writeText(localValue).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
-  }
 
   function handleBlur() {
     const trimmed = localValue.trim()
@@ -384,16 +410,7 @@ function CustomFieldRow({
           onKeyDown={handleKeyDown}
           disabled={pending}
         />
-        {localValue !== "" && (
-          <button
-            type="button"
-            onClick={handleCopy}
-            title={copied ? "Kopiert" : "In Zwischenablage kopieren"}
-            className="shrink-0 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          >
-            {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
-          </button>
-        )}
+        <CopyButton value={localValue} />
       </div>
     </FieldRow>
   )
@@ -421,5 +438,16 @@ function FieldRow({
       </dt>
       <dd className={`text-sm text-gray-900 ${useStack ? "w-full" : ""}`}>{children}</dd>
     </div>
+  )
+}
+
+// Wert in der Ansicht mit Kopieren-Button daneben (Paket 66).
+function ValueWithCopy({ value }: { value: string | null | undefined }) {
+  if (!value?.trim()) return <>—</>
+  return (
+    <span className="inline-flex max-w-full items-center gap-1">
+      <span className="min-w-0 [overflow-wrap:anywhere]">{value}</span>
+      <CopyButton value={value} className="-my-1" />
+    </span>
   )
 }

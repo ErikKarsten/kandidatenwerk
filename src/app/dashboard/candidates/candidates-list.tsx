@@ -24,10 +24,12 @@ import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 const STATUS_LABEL = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o.label]))
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
 
-export type CandidatesSortOption = "newest" | "oldest" | "name-asc" | "name-desc"
+export type CandidatesSortOption = "newest" | "oldest" | "updated" | "name-asc" | "name-desc"
 
 const SORT_OPTIONS: { value: CandidatesSortOption; label: string }[] = [
   { value: "newest", label: "Neueste zuerst" },
+  // Paket 66: jede Änderung am Kandidaten und jeder Verlaufseintrag zählt.
+  { value: "updated", label: "Zuletzt geändert" },
   { value: "oldest", label: "Älteste zuerst" },
   { value: "name-asc", label: "Name (A-Z)" },
   { value: "name-desc", label: "Name (Z-A)" },
@@ -44,6 +46,7 @@ export interface CandidateListItem {
   berufsbild: string | null
   source: string
   created_at: string
+  updated_at: string
   custom_fields: Record<string, string> | null
   tags: string[]
   // Aktive Zuordnungen mit Status beim Kunden (Paket 34: eigene Spalte neben dem internen Status).
@@ -294,7 +297,7 @@ export function CandidatesList({
                   <TableHead className="text-gray-600">Name</TableHead>
                   <TableHead className="text-gray-600">Status</TableHead>
                   {!showMode && <TableHead className="text-gray-600">E-Mail</TableHead>}
-                  <TableHead className="text-gray-600">Erstellt am</TableHead>
+                  <TableHead className="text-gray-600">{sort === "updated" ? "Zuletzt geändert" : "Erstellt am"}</TableHead>
                   <TableHead className="text-gray-600">Ausbildung</TableHead>
                 </TableRow>
               </TableHeader>
@@ -336,9 +339,13 @@ export function CandidatesList({
                         </TableCell>
                       )}
                       <TableCell className="text-gray-500 text-sm">
-                        {new Date(c.created_at).toLocaleDateString("de-DE", {
-                          day: "2-digit", month: "2-digit", year: "numeric",
-                        })}
+                        {sort === "updated"
+                          ? new Date(c.updated_at || c.created_at).toLocaleString("de-DE", {
+                              day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin",
+                            })
+                          : new Date(c.created_at).toLocaleDateString("de-DE", {
+                              day: "2-digit", month: "2-digit", year: "numeric",
+                            })}
                       </TableCell>
                       <TableCell className="text-gray-600">
                         {c.custom_fields?.ausbildung ?? "—"}

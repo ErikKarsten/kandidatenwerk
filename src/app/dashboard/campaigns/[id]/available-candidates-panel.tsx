@@ -137,7 +137,7 @@ export function AvailableCandidatesPanel({
           />
         </div>
         {/* Nur vorqualifizierte Kandidaten sind zuordenbar (Paket 19, T-86). */}
-        <span className="self-center rounded-full px-2.5 py-1 text-xs font-medium" style={{ backgroundColor: "#0ea5e918", color: "#0369a1" }}>
+        <span className="self-center rounded-full px-2.5 py-1 text-xs font-medium" style={{ backgroundColor: "#16a34a1f", color: "#15803d" }}>
           Nur vorqualifizierte Kandidaten
         </span>
         <select value={radius} onChange={(e) => changeFilter(() => setRadius(e.target.value))} className={selectClass} style={borderStyle}>
