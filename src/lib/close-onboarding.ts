@@ -26,8 +26,12 @@ export function isOnboardingStatus(label: string | null | undefined): boolean {
 }
 
 // triggeredAt: Zeitpunkt des Statuswechsels - ab dann entstehen Kommentare (Paket 65).
-export async function queueOnboarding(db: SupabaseClient, leadId: string, statusLabel: string, triggeredAt?: string | null): Promise<void> {
+// Nur ein neuerer Statuswechsel startet die Übernahme erneut; dasselbe Ereignis noch einmal
+// (Close stellt bei Fehlern erneut zu) wird ignoriert (Paket 68). Liefert, ob eingeplant.
+export async function queueOnboarding(db: SupabaseClient, leadId: string, statusLabel: string, triggeredAt?: string | null): Promise<boolean> {
   const now = new Date().toISOString()
+  const { data: existing } = await db.from("close_onboarding").select("triggered_at").eq("lead_id", leadId).maybeSingle()
+  if (existing?.triggered_at && triggeredAt && Date.parse(triggeredAt) <= Date.parse(existing.triggered_at as string)) return false
   const { error } = await db
     .from("close_onboarding")
     .upsert(
@@ -35,6 +39,7 @@ export async function queueOnboarding(db: SupabaseClient, leadId: string, status
       { onConflict: "lead_id" }
     )
   if (error) throw new Error(error.message)
+  return true
 }
 
 const text = (v: unknown): string | undefined => {
@@ -61,7 +66,9 @@ export function payloadFromLead(lead: CloseLead, statusLabel: string | null): Cl
   const phone = text(contact?.phones?.[0]?.phone) ?? text(contacts.find((c) => c.phones?.length)?.phones?.[0]?.phone)
   return {
     close_lead_id: lead.id,
-    close_status: statusLabel ?? lead.status_label ?? undefined,
+    // Aktueller Status des Leads zählt - das auslösende Ereignis kann in Close schon wieder
+    // zurückgenommen sein (Paket 68).
+    close_status: lead.status_label ?? statusLabel ?? undefined,
     close_url: closeLeadUrl(lead.id),
     firma: text(lead.display_name),
     website: text(lead.url),
