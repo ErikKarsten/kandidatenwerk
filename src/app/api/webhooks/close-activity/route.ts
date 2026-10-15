@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { recordActivityFromWebhook, verifyCloseSignature, type CloseWebhookEvent } from "@/lib/close-sync"
+import { ACTIVITY_DELETED, recordActivityFromWebhook, verifyCloseSignature, type CloseWebhookEvent } from "@/lib/close-sync"
 import { isOnboardingStatus, queueOnboarding } from "@/lib/close-onboarding"
 
 // Close-Webhook für Aktivitäten (Paket 17, T-54; Paket 30, T-127) - direkt von Close, ohne
@@ -29,16 +29,17 @@ export async function POST(request: NextRequest) {
   try {
     const db = createSupabaseAdminClient() as unknown as SupabaseClient
     const ev = payload.event
+    // Erst die Aktivität (frisch aus Close): ist sie dort schon wieder gelöscht, z. B. ein
+    // versehentlich gesetzter und zurückgenommener Status, startet keine Übernahme (Paket 68).
+    const outcome = await recordActivityFromWebhook(db, payload)
     let onboarding = false
-    if (ev?.object_type === "activity.lead_status_change" && ev.action === "created") {
+    if (outcome !== ACTIVITY_DELETED && ev?.object_type === "activity.lead_status_change" && ev.action === "created") {
       const leadId = ev.data?.lead_id ?? ev.lead_id
       const label = ev.data?.new_status_label
       if (leadId && label && isOnboardingStatus(label)) {
-        await queueOnboarding(db, leadId, label, ev.data?.date_created ?? null)
-        onboarding = true
+        onboarding = await queueOnboarding(db, leadId, label, ev.data?.date_created ?? null)
       }
     }
-    const outcome = await recordActivityFromWebhook(db, payload)
     return NextResponse.json({ ok: true, outcome, onboarding })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
