@@ -172,9 +172,19 @@ export async function recordActivityFromWebhook(db: SupabaseClient, payload: Clo
   if (!type) return "Art wird nicht übernommen"
   const id = ev?.data?.id
   if (!id) return "ohne ID"
-  const fresh = await closeGet<CloseActivity>(`/activity/${API_PATH[type]}/${id}/`)
+  let fresh: CloseActivity | null
+  try {
+    fresh = await closeGet<CloseActivity>(`/activity/${API_PATH[type]}/${id}/`)
+  } catch (err) {
+    // In Close inzwischen gelöscht (z. B. Status versehentlich gesetzt und zurückgenommen):
+    // kein Fehler - sonst stellt Close das Ereignis endlos neu zu (Paket 68).
+    if (err instanceof Error && /Close-API 404/.test(err.message)) return ACTIVITY_DELETED
+    throw err
+  }
   return recordActivity(db, fresh ?? ev?.data ?? ({} as CloseActivity))
 }
+
+export const ACTIVITY_DELETED = "in Close gelöscht"
 
 // Kompletter Verlauf eines Leads (Übernahme eines neuen Kunden). Kommentare nur für
 // Telefonate/Besprechungen ab commentsFrom (Zeitpunkt der Übernahme). Liefert die Anzahl.
