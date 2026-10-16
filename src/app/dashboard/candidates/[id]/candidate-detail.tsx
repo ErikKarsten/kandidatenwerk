@@ -104,7 +104,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
   const [archivePending, startArchiveTransition] = useTransition()
   const [deletePending, startDeleteTransition] = useTransition()
   const [taskModalOpen, setTaskModalOpen] = useState(false)
-  const [showMode, setShowMode] = useShowMode()
+  const [showMode] = useShowMode()
 
 
   // Status sofort zeigen, dann speichern (Paket 69: eigenes Menü statt Auswahlfeld).
@@ -145,7 +145,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
 
   // Anonymisierter Modus (Paket 29): eigene Vorführansicht ohne personenbezogene Daten.
   if (showMode) {
-    return <CandidateShowView candidate={candidate} customFieldDefinitions={customFieldDefinitions} onShowModeChange={setShowMode} />
+    return <CandidateShowView candidate={candidate} customFieldDefinitions={customFieldDefinitions} />
   }
 
   return (

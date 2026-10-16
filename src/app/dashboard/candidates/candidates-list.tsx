@@ -15,7 +15,6 @@ import {
 import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
-import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { TagChip } from "@/components/dashboard/tag-editor"
 import { anonymousName, useShowMode } from "@/lib/show-mode"
 import { visibleTags } from "@/lib/candidate-tags"
@@ -94,7 +93,8 @@ export function CandidatesList({
   sort,
 }: CandidatesListProps) {
   const bb = useBerufsbilder()
-  const [showMode, setShowMode] = useShowMode()
+  // Anonymisierter Modus: Schalter in der Seitenleiste (Paket 70).
+  const [showMode] = useShowMode()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -274,13 +274,10 @@ export function CandidatesList({
         <span className="text-sm text-gray-500">
           {totalCount} Kandidat{totalCount !== 1 ? "en" : ""}
         </span>
-        <div className="ml-auto">
-          <ShowModeToggle on={showMode} onChange={setShowMode} />
-        </div>
       </div>
       {showMode && (
         <p className="rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#7c3aed14", color: "#5b21b6" }}>
-          Anonymisierter Modus: Namen, Kontaktdaten und interne Tags sind ausgeblendet.
+          Anonymisierter Modus: Namen, Kontaktdaten und interne Tags sind ausgeblendet. Beenden über den Schalter in der Seitenleiste.
         </p>
       )}
 
