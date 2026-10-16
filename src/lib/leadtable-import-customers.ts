@@ -8,6 +8,15 @@ import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 // Kunden, die außerhalb einer eingeloggten Nutzer-Session (z.B. per Skript) angelegt werden.
 const DEFAULT_AGENCY_ID = "00000000-0000-0000-0000-000000000001"
 
+// Eigene Stellen der Agentur (Opener, Assistenz der GF usw.) laufen in Leadtable über den
+// Kunden "Endlichmitarbeiter". Die Agentur ist kein Kunde, und diese Bewerber gehören nicht
+// in den Kandidatenstamm: Jeder Import überspringt den Kunden samt Leads (16.10.2026, vorher
+// waren 148 solcher Bewerber als Kandidaten übernommen worden).
+const OWN_AGENCY_NAME = /endlich\s*mitarbeiter/i
+export function isOwnAgency(name: string): boolean {
+  return OWN_AGENCY_NAME.test(name)
+}
+
 interface LeadtablePagination {
   totalItems: number
   totalPages: number
