@@ -6,7 +6,6 @@ import { maskContactData, anonymousName } from "@/lib/show-mode"
 import { visibleTags } from "@/lib/candidate-tags"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
-import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { TagChip } from "@/components/dashboard/tag-editor"
 import type { CustomFieldDefinition } from "./profile-tab"
 
@@ -17,7 +16,6 @@ import type { CustomFieldDefinition } from "./profile-tab"
 export function CandidateShowView({
   candidate,
   customFieldDefinitions,
-  onShowModeChange,
 }: {
   candidate: {
     id: string
@@ -31,7 +29,6 @@ export function CandidateShowView({
     custom_fields: Record<string, string> | null
   }
   customFieldDefinitions: CustomFieldDefinition[]
-  onShowModeChange: (on: boolean) => void
 }) {
   const bb = useBerufsbilder()
   const goBack = useGoBack("/dashboard/candidates")
@@ -59,7 +56,6 @@ export function CandidateShowView({
           </div>
           <div className="flex items-center gap-2">
             <CvExportMenu candidateId={candidate.id} anonymOnly />
-            <ShowModeToggle on onChange={onShowModeChange} />
           </div>
         </div>
       </div>
@@ -106,7 +102,7 @@ export function CandidateShowView({
             </div>
           )}
           <p className="rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#7c3aed14", color: "#5b21b6" }}>
-            Anonymisierter Modus: Name, Kontaktdaten und interne Angaben sind ausgeblendet.
+            Anonymisierter Modus: Name, Kontaktdaten und interne Angaben sind ausgeblendet. Beenden über den Schalter in der Seitenleiste.
           </p>
         </div>
       </div>

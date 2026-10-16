@@ -8,7 +8,6 @@ import { CandidatePanel } from "@/components/dashboard/candidate-panel/candidate
 import type { AdArea } from "@/lib/meta-campaigns-queries"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { searchLocationAction } from "./actions"
-import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { anonymousName, useShowMode } from "@/lib/show-mode"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { RadiusControl } from "@/components/ui/radius-control"
@@ -112,7 +111,8 @@ export function MapOverview({
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
   // Anonymisierter Modus (Paket 29): Kandidaten nur mit Kennung und Berufsbild, Kanzleien ohne Namen,
   // Seitenfenster anonymisiert - zum Vorführen beim Kunden.
-  const [showMode, setShowMode] = useShowMode()
+  // Anonymisierter Modus: Schalter in der Seitenleiste (Paket 70).
+  const [showMode] = useShowMode()
 
   const mapRef = useRef<MatchesMapHandle>(null)
   const [locationQuery, setLocationQuery] = useState("")
@@ -318,9 +318,6 @@ export function MapOverview({
               }}
             />
           )}
-          <div className="ml-auto">
-            <ShowModeToggle on={showMode} onChange={setShowMode} />
-          </div>
         </div>
         {searchError && <p className="text-xs text-red-500">{searchError}</p>}
       </div>
