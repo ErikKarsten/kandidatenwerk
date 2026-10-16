@@ -7,6 +7,7 @@ import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { updateCampaignSettingsAction, listMetaPagesAction, listMetaLeadFormsAction, requestMetaTestLeadAction } from "./actions"
 import type { MetaPage, MetaLeadForm } from "@/lib/meta-ads-client"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import { RadiusControl } from "@/components/ui/radius-control"
 
 interface SettingsTabProps {
   campaignId: string
@@ -199,15 +200,8 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-500">Umkreis (km)</label>
-              <input
-                type="number"
-                value={localRadiusKm}
-                onChange={(e) => setLocalRadiusKm(e.target.value)}
-                placeholder="25"
-                className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
-                style={{ borderColor: "#dde3ea" }}
-              />
+              <label className="text-xs font-medium text-gray-500">Umkreis</label>
+              <RadiusControl value={Number(localRadiusKm) || 25} onChange={(km) => setLocalRadiusKm(String(km))} label={null} />
             </div>
           </div>
           {isKanzlei && (

@@ -1,7 +1,7 @@
 "use client"
 
 import { useActionState, useTransition } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import Link from "next/link"
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { createCampaignAction, type CreateCampaignState } from "../actions"
+import { RadiusControl } from "@/components/ui/radius-control"
 
 const schema = z.object({
   title: z.string().min(1, "Pflichtfeld"),
@@ -37,11 +38,14 @@ export function CampaignForm({ clientId, clientName }: { clientId: string; clien
   const {
     register,
     handleSubmit,
+    setValue,
+    control,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { status: "active", radius_km: "25" },
   })
+  const radiusKm = useWatch({ control, name: "radius_km" })
 
   function onSubmit(values: FormValues) {
     const fd = new FormData()
@@ -124,13 +128,8 @@ export function CampaignForm({ clientId, clientName }: { clientId: string; clien
             inputMode="numeric"
           />
         </Field>
-        <Field label="Umkreis (km)" error={errors.radius_km?.message}>
-          <Input
-            id="radius_km"
-            type="number"
-            {...register("radius_km")}
-            placeholder="25"
-          />
+        <Field label="Umkreis" error={errors.radius_km?.message}>
+          <RadiusControl value={Number(radiusKm) || 25} onChange={(km) => setValue("radius_km", String(km), { shouldDirty: true })} label={null} />
         </Field>
       </div>
 

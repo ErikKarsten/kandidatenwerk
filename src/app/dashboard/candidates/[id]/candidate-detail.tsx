@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState, useTransition } from "react"
 import { useGoBack } from "@/components/navigation-tracker"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Check, ChevronDown, ListTodo, MoreHorizontal, Trash2 } from "lucide-react"
+import { Briefcase, Check, ChevronDown, ListTodo, Mail, MapPin, Megaphone, MoreHorizontal, Phone, Trash2, type LucideIcon } from "lucide-react"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import {
   saveDescriptionAction,
@@ -106,10 +106,11 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
   const [taskModalOpen, setTaskModalOpen] = useState(false)
   const [showMode, setShowMode] = useShowMode()
 
-  const colors = STATUS_COLORS[candidate.status] ?? CANDIDATE_STATUS_FALLBACK_COLORS
 
-  function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const newStatus = e.target.value
+  // Status sofort zeigen, dann speichern (Paket 69: eigenes Menü statt Auswahlfeld).
+  const [status, setStatus] = useState(candidate.status)
+  function changeStatus(newStatus: string) {
+    setStatus(newStatus)
     startStatusTransition(async () => {
       await updateCandidateStatusAction(candidate.id, newStatus, candidate.campaign_id ?? undefined)
       router.refresh()
@@ -230,77 +231,77 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             </button>
           </div>
         )}
-        {/* Kopf (Paket 64): links wer (Name, Status, Tags, Herkunft), rechts eine schmale
-            Aktionsleiste - Löschen steckt im Menü "Weitere Aktionen". */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-          <div className="min-w-0">
-            <button
-              type="button"
-              onClick={goBack}
-              className="mb-2 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-            >
-              ← Zurück zur Übersicht
-            </button>
-            <h1 className="text-2xl font-bold text-gray-900 [overflow-wrap:anywhere]">
-              {candidate.first_name} {candidate.last_name}
-            </h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <label
-                className="relative inline-flex cursor-pointer items-center rounded-full"
-                style={{ backgroundColor: colors.bg, color: colors.text }}
-                title="Status ändern"
+        {/* Kopf (Paket 69): eine Karte - oben wer (Initialen, Name, Status, Tags) und die
+            Aktionen, unten Kontakt und Herkunft in einer ruhigen Zeile. */}
+        <button
+          type="button"
+          onClick={goBack}
+          className="mb-3 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+        >
+          ← Zurück zur Übersicht
+        </button>
+        <div className="rounded-xl border bg-white" style={{ borderColor: "#dde3ea" }}>
+          <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
+            <div className="flex min-w-0 items-start gap-4">
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-semibold"
+                style={{ backgroundColor: "#1e56a014", color: "#1e56a0" }}
+                aria-hidden
               >
-                <span className="pointer-events-none absolute left-2.5 h-2 w-2 rounded-full" style={{ backgroundColor: colors.dot }} />
-                <select
-                  defaultValue={candidate.status}
-                  onChange={handleStatusChange}
-                  disabled={statusPending}
-                  aria-label="Status"
-                  className="cursor-pointer appearance-none rounded-full bg-transparent py-1 pl-6 pr-7 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50"
-                  style={{ color: colors.text }}
-                >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2.5" />
-              </label>
-              <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} compact />
+                {initialsOf(candidate.first_name, candidate.last_name)}
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold text-gray-900 sm:text-2xl [overflow-wrap:anywhere]">
+                  {candidate.first_name} {candidate.last_name}
+                </h1>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <StatusMenu value={status} pending={statusPending} onChange={changeStatus} />
+                  <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} compact />
+                </div>
+              </div>
             </div>
-            {/* Worauf und worüber beworben (Paket 46). */}
-            {(candidate.bewerbung || candidate.campaigns?.title) && (
-              <p className="mt-2 text-sm leading-snug text-gray-500 [overflow-wrap:anywhere]">
-                {candidate.bewerbung && (
-                  <span className="block">
-                    Bewerbung: <span className="text-gray-700">{candidate.bewerbung}</span>
-                  </span>
-                )}
-                {candidate.campaigns?.title && candidate.campaign_id && (
-                  <span className="block">
-                    über Kampagne{" "}
-                    <Link href={`/dashboard/campaigns/${candidate.campaign_id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
-                      „{candidate.campaigns.title}“
-                    </Link>
-                  </span>
-                )}
-              </p>
-            )}
+            <div className="flex shrink-0 items-center gap-2">
+              <CvExportMenu candidateId={candidate.id} />
+              <button
+                type="button"
+                onClick={() => setTaskModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+              >
+                <ListTodo size={15} /> Aufgabe
+              </button>
+              <MoreActionsMenu onDelete={() => { setModalStep("choice"); setModalError(null) }} />
+            </div>
           </div>
-
-          <div className="flex shrink-0 items-center gap-2 sm:pt-7">
-            <CvExportMenu candidateId={candidate.id} />
-            <button
-              type="button"
-              onClick={() => setTaskModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-              style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-            >
-              <ListTodo size={15} /> Aufgabe
-            </button>
-            <MoreActionsMenu onDelete={() => { setModalStep("choice"); setModalError(null) }} />
-          </div>
+          {(candidate.phone || candidate.email || candidate.plz || candidate.bewerbung || candidate.campaigns?.title) && (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t px-4 py-3 sm:px-5" style={{ borderColor: "#eef2f6" }}>
+              {candidate.phone && (
+                <MetaItem icon={Phone} title="Anrufen">
+                  <a href={`tel:${candidate.phone}`} className="hover:underline" style={{ color: "#1e56a0" }}>{candidate.phone}</a>
+                </MetaItem>
+              )}
+              {candidate.email && (
+                <MetaItem icon={Mail} title="E-Mail schreiben">
+                  <a href={`mailto:${candidate.email}`} className="hover:underline" style={{ color: "#1e56a0" }}>{candidate.email}</a>
+                </MetaItem>
+              )}
+              {candidate.plz && <MetaItem icon={MapPin} title="Wohnort (PLZ)">{candidate.plz}</MetaItem>}
+              {/* Worauf und worüber beworben (Paket 46) - lange Namen gekürzt, voll im Tooltip. */}
+              {candidate.bewerbung && (
+                <MetaItem icon={Briefcase} title={`Bewerbung: ${candidate.bewerbung}`}>
+                  <span className="text-gray-400">Bewerbung</span> {candidate.bewerbung}
+                </MetaItem>
+              )}
+              {candidate.campaigns?.title && candidate.campaign_id && (
+                <MetaItem icon={Megaphone} title={`Kampagne: ${candidate.campaigns.title}`}>
+                  <span className="text-gray-400">Kampagne</span>{" "}
+                  <Link href={`/dashboard/campaigns/${candidate.campaign_id}`} className="hover:underline" style={{ color: "#1e56a0" }}>
+                    {shortCampaignTitle(candidate.campaigns.title)}
+                  </Link>
+                </MetaItem>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -308,7 +309,8 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
         {/* Linke Spalte */}
         <div className="flex flex-col gap-4">
           {/* Tab-Bar */}
-          <div className="flex gap-0 overflow-x-auto border-b" style={{ borderColor: "#dde3ea" }}>
+          {/* Ohne sichtbare Scrollleiste (Paket 69); bei schmalem Fenster weiter wischbar. */}
+          <div className="flex gap-0 overflow-x-auto overflow-y-hidden border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: "#dde3ea" }}>
             <TabButton
               active={tab === "profil"}
               onClick={() => setTab("profil")}
@@ -391,7 +393,6 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
 
         {/* Rechte Spalte */}
         <div className="flex flex-col gap-4">
-          <ContactChips email={candidate.email} phone={candidate.phone} />
           <ClientNotesSection notes={clientNotes} />
           <DescriptionSection candidateId={candidate.id} notes={candidate.notes} />
           <DescriptionSection
@@ -441,41 +442,6 @@ function TabButton({
     >
       {children}
     </button>
-  )
-}
-
-function ContactChips({
-  email,
-  phone,
-}: {
-  email: string | null
-  phone: string | null
-}) {
-  if (!email && !phone) return null
-
-  return (
-    <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
-      <div className="flex flex-wrap gap-2">
-        {phone && (
-          <a
-            href={`tel:${phone}`}
-            className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors hover:bg-gray-50"
-            style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-          >
-            📞 {phone}
-          </a>
-        )}
-        {email && (
-          <a
-            href={`mailto:${email}`}
-            className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors hover:bg-gray-50"
-            style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
-          >
-            ✉ {email}
-          </a>
-        )}
-      </div>
-    </div>
   )
 }
 
@@ -627,6 +593,75 @@ function MoreActionsMenu({ onDelete }: { onDelete: () => void }) {
               <Trash2 size={14} /> Kandidat löschen
             </button>
           </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function initialsOf(first: string | null, last: string | null): string {
+  return `${(first ?? "").trim().charAt(0)}${(last ?? "").trim().charAt(0)}`.toUpperCase() || "?"
+}
+
+// "KS24 - Video Neele - Region …" -> "Video Neele - Region …" (wie in der Kandidatenliste).
+function shortCampaignTitle(title: string): string {
+  return title.replace(/^\s*ks[\s-]?24\s*[-–|:]\s*/i, "")
+}
+
+// Eintrag in der Kontakt-/Herkunftszeile des Kopfs (Paket 69).
+function MetaItem({ icon: Icon, title, children }: { icon: LucideIcon; title?: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-sm text-gray-600 sm:max-w-[26rem]" title={title}>
+      <Icon size={14} className="shrink-0 text-gray-400" />
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
+  )
+}
+
+// Status als Pille mit Menü (Paket 69) - so breit wie der Text, nicht wie die längste Option.
+function StatusMenu({ value, pending, onChange }: { value: string; pending: boolean; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const current = STATUS_COLORS[value] ?? CANDIDATE_STATUS_FALLBACK_COLORS
+  const label = STATUS_OPTIONS.find((o) => o.value === value)?.label ?? value
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        disabled={pending}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title="Status ändern"
+        className="inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-2 text-sm font-medium disabled:opacity-60"
+        style={{ backgroundColor: current.bg, color: current.text }}
+      >
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: current.dot }} />
+        {label}
+        <ChevronDown size={14} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[1299]" onClick={() => setOpen(false)} aria-hidden />
+          <ul role="listbox" className="absolute left-0 z-[1300] mt-1 w-60 rounded-lg border bg-white py-1 shadow-lg" style={{ borderColor: "#dde3ea" }}>
+            {STATUS_OPTIONS.map((o) => (
+              <li key={o.value}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={o.value === value}
+                  onClick={() => {
+                    setOpen(false)
+                    if (o.value !== value) onChange(o.value)
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-800 hover:bg-gray-50"
+                >
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: o.dot }} />
+                  <span className="flex-1">{o.label}</span>
+                  {o.value === value && <Check size={14} className="text-gray-500" />}
+                </button>
+              </li>
+            ))}
+          </ul>
         </>
       )}
     </div>

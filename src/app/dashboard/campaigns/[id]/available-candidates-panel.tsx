@@ -11,6 +11,8 @@ import type { AvailableCandidate, AvailableSort } from "@/lib/available-candidat
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 import { SOURCE_OPTIONS } from "@/lib/candidate-source"
+import { RadiusControl } from "@/components/ui/radius-control"
+import { isNationwide } from "@/lib/radius"
 
 // Leaflet greift beim Import auf Browser-Globals zu - nur clientseitig laden.
 const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").then((m) => m.MatchesMap), {
@@ -21,13 +23,6 @@ const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").th
     </div>
   ),
 })
-
-const RADIUS_OPTIONS = [
-  { value: "kampagne", label: "Umkreis der Kampagne" },
-  { value: "50", label: "50 km" },
-  { value: "100", label: "100 km" },
-  { value: "alle", label: "Ohne Umkreis" },
-]
 
 const selectClass = "rounded-md border bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1"
 const borderStyle = { borderColor: "#dde3ea" }
@@ -57,7 +52,8 @@ export function AvailableCandidatesPanel({
   const campaignId = campaign.id
   const [q, setQ] = useState("")
   const [debouncedQ, setDebouncedQ] = useState("")
-  const [radius, setRadius] = useState("kampagne")
+  // Startwert: Umkreis der Kampagne; frei einstellbar oder deutschlandweit (Paket 69).
+  const [radiusKm, setRadiusKm] = useState(campaign.radius_km ?? 25)
   const [sort, setSort] = useState<AvailableSort>("distance")
   const [page, setPage] = useState(1)
   const [result, setResult] = useState<SearchState | null>(null)
@@ -79,7 +75,7 @@ export function AvailableCandidatesPanel({
       const res = await searchAvailableCandidatesAction(campaignId, {
         q: debouncedQ,
         status: "vorqualifiziert",
-        radius: radius === "kampagne" || radius === "alle" ? radius : Number(radius),
+        radius: isNationwide(radiusKm) ? "alle" : radiusKm,
         sort,
         page,
       })
@@ -91,7 +87,7 @@ export function AvailableCandidatesPanel({
       setError(null)
       setResult(res)
     })
-  }, [campaignId, debouncedQ, radius, sort, page])
+  }, [campaignId, debouncedQ, radiusKm, sort, page])
 
   // Jede Filteränderung startet wieder auf Seite 1.
   function changeFilter(update: () => void) {
@@ -140,13 +136,7 @@ export function AvailableCandidatesPanel({
         <span className="self-center rounded-full px-2.5 py-1 text-xs font-medium" style={{ backgroundColor: "#16a34a1f", color: "#15803d" }}>
           Nur vorqualifizierte Kandidaten
         </span>
-        <select value={radius} onChange={(e) => changeFilter(() => setRadius(e.target.value))} className={selectClass} style={borderStyle}>
-          {RADIUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.value === "kampagne" && campaign.radius_km ? `Umkreis der Kampagne (${campaign.radius_km} km)` : o.label}
-            </option>
-          ))}
-        </select>
+        <RadiusControl value={radiusKm} onChange={(km) => changeFilter(() => setRadiusKm(km))} />
         <select value={sort} onChange={(e) => changeFilter(() => setSort(e.target.value as AvailableSort))} className={selectClass} style={borderStyle}>
           <option value="distance">Nächste zuerst</option>
           <option value="newest">Neueste zuerst</option>

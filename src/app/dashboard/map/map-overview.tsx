@@ -11,6 +11,7 @@ import { searchLocationAction } from "./actions"
 import { ShowModeToggle } from "@/components/dashboard/show-mode-toggle"
 import { anonymousName, useShowMode } from "@/lib/show-mode"
 import { useBerufsbilder } from "@/components/berufsbild-context"
+import { RadiusControl } from "@/components/ui/radius-control"
 
 // Leaflet greift beim Modul-Import auf Browser-Globals zu - muss deshalb clientseitig-only
 // geladen werden (ssr:false), sonst schlägt das Server-Rendering fehl (gleiches Muster
@@ -28,6 +29,7 @@ const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").th
 })
 
 // Umkreis um gesuchten Ort, gesuchte Kanzlei/Kandidat oder angeklickten Punkt.
+// Startwert; einstellbar über den Umkreis-Regler (Paket 69).
 const FOCUS_RADIUS_KM = 30
 const FOCUS_COLOR = "#dc2626"
 const MAX_SUGGESTIONS = 8
@@ -119,12 +121,13 @@ export function MapOverview({
   const [searchPin, setSearchPin] = useState<SearchPin | null>(null)
   // 30-km-Umkreis (Paket 41): nach jeder Suche und bei Klick auf einen Punkt.
   const [focus, setFocus] = useState<Focus | null>(null)
+  const [focusRadiusKm, setFocusRadiusKm] = useState(FOCUS_RADIUS_KM)
   const [suggestOpen, setSuggestOpen] = useState(false)
 
   function focusOn(target: Focus, opts: { pin?: boolean; fly?: boolean } = {}) {
     setFocus(target)
     setSearchPin(opts.pin ? { lat: target.lat, lng: target.lng, label: target.label, ringsKm: [] } : null)
-    if (opts.fly) mapRef.current?.flyToRadius(target.lat, target.lng, FOCUS_RADIUS_KM)
+    if (opts.fly) mapRef.current?.flyToRadius(target.lat, target.lng, focusRadiusKm)
   }
 
   function clearFocus() {
@@ -230,10 +233,10 @@ export function MapOverview({
     () => [
       ...(showAdAreas ? adCircles : []),
       ...(focus
-        ? [{ lat: focus.lat, lng: focus.lng, radiusKm: FOCUS_RADIUS_KM, label: `${FOCUS_RADIUS_KM} km`, color: FOCUS_COLOR, interactive: false, dashed: true }]
+        ? [{ lat: focus.lat, lng: focus.lng, radiusKm: focusRadiusKm, label: `${focusRadiusKm} km`, color: FOCUS_COLOR, interactive: false, dashed: true }]
         : []),
     ],
-    [showAdAreas, adCircles, focus]
+    [showAdAreas, adCircles, focus, focusRadiusKm]
   )
 
   return (
@@ -305,6 +308,16 @@ export function MapOverview({
               Umkreis entfernen
             </button>
           )}
+          {focus && (
+            <RadiusControl
+              value={focusRadiusKm}
+              allowNationwide={false}
+              onChange={(km) => {
+                setFocusRadiusKm(km)
+                mapRef.current?.flyToRadius(focus.lat, focus.lng, km)
+              }}
+            />
+          )}
           <div className="ml-auto">
             <ShowModeToggle on={showMode} onChange={setShowMode} />
           </div>
@@ -364,7 +377,7 @@ export function MapOverview({
           {focus && (
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full" style={{ border: `2px dashed ${FOCUS_COLOR}` }} />
-              Umkreis {FOCUS_RADIUS_KM} km
+              Umkreis {focusRadiusKm} km
             </span>
           )}
         </div>
