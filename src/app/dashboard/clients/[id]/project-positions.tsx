@@ -8,6 +8,8 @@ import { useBerufsbilder } from "@/components/berufsbild-context"
 import type { ClientLocation } from "@/lib/client-locations"
 import { appendPoint, countPoints, missingPositionItems } from "@/lib/position-profile"
 import { fieldValue, snippetsFor, type PositionSnippet, type ResolvedField } from "@/lib/profile-fields"
+import { RadiusControl } from "@/components/ui/radius-control"
+import { formatRadius } from "@/lib/radius"
 import {
   createCampaignFromPositionsAction,
   deletePositionAction,
@@ -126,7 +128,7 @@ export function ProjectPositions({
               <p className="text-xs text-gray-500">
                 {[
                   bb.label(p.berufsbild) ?? "Berufsbild offen",
-                  p.plz ? `${p.plz}${p.ort ? ` ${p.ort}` : ""}${p.radius_km ? `, ${p.radius_km} km` : ""}` : p.ort,
+                  p.plz ? `${p.plz}${p.ort ? ` ${p.ort}` : ""}${p.radius_km ? `, ${formatRadius(p.radius_km)}` : ""}` : p.ort,
                   p.arbeitszeit,
                   p.berufserfahrung,
                   p.software,
@@ -231,14 +233,11 @@ export function ProjectPositions({
                 className="min-w-[120px] flex-1 rounded-md border px-2 py-1 text-sm"
                 style={{ borderColor: "#dde3ea" }}
               />
-              <input
-                value={newLocation.radius}
-                onChange={(e) => setNewLocation({ ...newLocation, radius: e.target.value })}
-                placeholder="km"
-                type="number"
-                className="w-20 rounded-md border px-2 py-1 text-sm"
-                style={{ borderColor: "#dde3ea" }}
-                aria-label="Umkreis in km"
+              <RadiusControl
+                compact
+                label={null}
+                value={Number(newLocation.radius) || 25}
+                onChange={(km) => setNewLocation({ ...newLocation, radius: String(km) })}
               />
               <button
                 type="button"
@@ -420,14 +419,8 @@ function PositionForm({
           <Field label="Ort">
             <input className={input} style={{ borderColor: "#dde3ea" }} value={v.ort ?? ""} onChange={(e) => set("ort", e.target.value)} />
           </Field>
-          <Field label="Umkreis (km)">
-            <input
-              className={input}
-              style={{ borderColor: "#dde3ea" }}
-              type="number"
-              value={v.radius_km ?? ""}
-              onChange={(e) => setV({ ...v, radius_km: e.target.value ? Number(e.target.value) : null })}
-            />
+          <Field label="Umkreis">
+            <RadiusControl label={null} value={v.radius_km ?? 25} onChange={(km) => setV({ ...v, radius_km: km })} />
           </Field>
         </div>
         {fields

@@ -12,6 +12,8 @@ import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
 import { assignCandidateToCampaignAction } from "../../campaigns/[id]/actions"
 import { assignCandidateToClientAction } from "./actions"
 import { kanzleiDistanceKm, type KanzleiOption } from "@/lib/kanzlei-umkreis"
+import { RadiusControl } from "@/components/ui/radius-control"
+import { isNationwide } from "@/lib/radius"
 
 export interface KanzleiCampaignOption {
   id: string
@@ -25,7 +27,6 @@ export interface KanzleiCampaignOption {
 }
 
 // Umkreis, in dem Kanzleien im Kandidaten gezeigt werden - wählbar (Paket 43).
-const RADIUS_OPTIONS = [10, 25, 50, 100]
 const DEFAULT_RADIUS_KM = 25
 const MATCH_COLOR = "#1a9a6a"
 const OTHER_COLOR = "#9ca3af"
@@ -120,7 +121,8 @@ export function AssignmentTab({
 
   // Suchumkreis als Kreis, damit die Karte auch ohne Kanzlei in der Nähe sinnvoll zoomt.
   const circles: MapCircle[] = useMemo(
-    () => (selfLat !== null && selfLng !== null ? [{ lat: selfLat, lng: selfLng, radiusKm, label: `Umkreis ${radiusKm} km`, color: "#94a3b8" }] : []),
+    // Deutschlandweit ohne Kreis (Paket 69) - sonst zoomt die Karte auf 1.000 km.
+    () => (selfLat !== null && selfLng !== null && !isNationwide(radiusKm) ? [{ lat: selfLat, lng: selfLng, radiusKm, label: `Umkreis ${radiusKm} km`, color: "#94a3b8" }] : []),
     [selfLat, selfLng, radiusKm]
   )
   const points: MapPoint[] = useMemo(
@@ -194,21 +196,7 @@ export function AssignmentTab({
                 <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: MATCH_COLOR }} /> sucht {berufsbildLabel(berufsbild)}</span>
                 <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: OTHER_COLOR }} /> andere Stellen</span>
               </p>
-              <label className="flex items-center gap-2 text-xs text-gray-500">
-                Umkreis
-                <select
-                  value={radiusKm}
-                  onChange={(e) => setRadiusKm(Number(e.target.value))}
-                  className="rounded-md border bg-white px-2 py-1 text-sm text-gray-700"
-                  style={{ borderColor: "#dde3ea" }}
-                >
-                  {RADIUS_OPTIONS.map((km) => (
-                    <option key={km} value={km}>
-                      {km} km
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <RadiusControl value={radiusKm} onChange={setRadiusKm} />
             </div>
             <MatchesMap points={points} circles={circles} height="320px" fitCircles />
 
@@ -222,7 +210,7 @@ export function AssignmentTab({
             {assignError && <p className="mt-3 text-xs text-red-600">{assignError}</p>}
 
             {rows.length === 0 ? (
-              <p className="mt-3 text-sm text-gray-400">Keine Kanzlei im Umkreis von {radiusKm} km – Umkreis vergrößern.</p>
+              <p className="mt-3 text-sm text-gray-400">{isNationwide(radiusKm) ? "Keine passende Kanzlei gefunden." : `Keine Kanzlei im Umkreis von ${radiusKm} km – Umkreis vergrößern.`}</p>
             ) : (
               <ul className="mt-3 flex flex-col gap-2">
                 {rows.map(({ kanzlei: k, campaigns, distanceKm, fits, target }) => {
