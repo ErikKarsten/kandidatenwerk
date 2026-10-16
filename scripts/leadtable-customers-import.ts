@@ -1,5 +1,5 @@
-// Import aller relevanten Leadtable-Kunden (archived: false, plus "Kanzleistelle24.de")
-// nach Kandidatenwerk, inkl. ihrer nicht-archivierten Kampagnen.
+// Import aller relevanten Leadtable-Kunden (archived: false, plus "Kanzleistelle24.de", ohne
+// die eigene Agentur) nach Kandidatenwerk, inkl. ihrer nicht-archivierten Kampagnen.
 // Läuft bewusst als reines Node-Skript (nicht über den Cloudflare Worker),
 // um das Subrequest-Limit von Workers zu umgehen.
 //
@@ -10,7 +10,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import dotenv from "dotenv"
 import { leadtableFetch } from "../src/lib/leadtable-client"
-import { importLeadtableCustomer } from "../src/lib/leadtable-import-customers"
+import { importLeadtableCustomer, isOwnAgency } from "../src/lib/leadtable-import-customers"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -61,10 +61,10 @@ async function main() {
   console.log(`${allCustomers.length} Kunden geladen`)
 
   const relevantCustomers = allCustomers.filter(
-    (c) => c.archived === false || c.name === KEEP_EVEN_IF_ARCHIVED_NAME
+    (c) => (c.archived === false || c.name === KEEP_EVEN_IF_ARCHIVED_NAME) && !isOwnAgency(c.name)
   )
   console.log(
-    `${relevantCustomers.length} relevante Kunden (archived: false ODER "${KEEP_EVEN_IF_ARCHIVED_NAME}")`
+    `${relevantCustomers.length} relevante Kunden (archived: false ODER "${KEEP_EVEN_IF_ARCHIVED_NAME}", ohne eigene Agentur)`
   )
   console.log("")
 

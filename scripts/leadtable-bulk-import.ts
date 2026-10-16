@@ -1,4 +1,4 @@
-// Vollständiger Leadtable-Import über alle Kunden.
+// Vollständiger Leadtable-Import über alle Kunden (ohne die eigene Agentur).
 // Läuft bewusst als reines Node-Skript (nicht über den Cloudflare Worker),
 // um das Subrequest-Limit von Workers zu umgehen.
 //
@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url"
 import dotenv from "dotenv"
 import { leadtableFetch } from "../src/lib/leadtable-client"
 import { importLeadtableCampaign, type ImportLeadtableCampaignResult } from "../src/lib/leadtable-import"
+import { isOwnAgency } from "../src/lib/leadtable-import-customers"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
@@ -80,8 +81,8 @@ async function main() {
   const startedAt = Date.now()
 
   console.log("=== Alle Kunden laden ===")
-  const customers = await fetchAllCustomers()
-  console.log(`${customers.length} Kunden geladen`)
+  const customers = (await fetchAllCustomers()).filter((c) => !isOwnAgency(c.name))
+  console.log(`${customers.length} Kunden geladen (ohne eigene Agentur)`)
   console.log("")
 
   const totals: Omit<ImportLeadtableCampaignResult, "createdCandidateIds"> = {

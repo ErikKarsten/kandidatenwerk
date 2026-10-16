@@ -4,7 +4,8 @@
 //
 // Schritte:
 //   1. Neue Kandidaten importieren (nur Kunden mit archived: false ODER "Kanzleistelle24.de",
-//      nur neue Leads, Duplikat-Schutz per E-Mail wie in src/lib/leadtable-import.ts)
+//      ohne die eigene Agentur, nur neue Leads, Duplikat-Schutz per E-Mail wie in
+//      src/lib/leadtable-import.ts)
 //   2. Status-Sync für alle bestehenden Leadtable-Kandidaten (wie leadtable-status-sync.ts)
 //   3. Beschreibungs-Import für Kandidaten ohne description (wie leadtable-description-import.ts)
 //   4. Zusatzfelder-Backfill für Kandidaten ohne custom_fields (wie leadtable-backfill-fields.ts)
@@ -27,7 +28,7 @@ import dotenv from "dotenv"
 import { createClient } from "@supabase/supabase-js"
 import type { Database, Json } from "../src/types/database"
 import { leadtableFetch } from "../src/lib/leadtable-client"
-import { importLeadtableCustomer } from "../src/lib/leadtable-import-customers"
+import { importLeadtableCustomer, isOwnAgency } from "../src/lib/leadtable-import-customers"
 import { importLeadtableCampaign } from "../src/lib/leadtable-import"
 import {
   type LeadtableSyncLead,
@@ -123,11 +124,11 @@ async function importNewCandidates(
   console.log("Kunden von Leadtable laden ...")
   const allCustomers = await fetchAllCustomers()
   const relevantCustomers = allCustomers.filter(
-    (c) => c.archived === false || c.name === KEEP_EVEN_IF_ARCHIVED_NAME
+    (c) => (c.archived === false || c.name === KEEP_EVEN_IF_ARCHIVED_NAME) && !isOwnAgency(c.name)
   )
   const customers = customerLimit ? relevantCustomers.slice(0, customerLimit) : relevantCustomers
   console.log(
-    `${allCustomers.length} Kunden gesamt, ${relevantCustomers.length} relevant (archived: false ODER "${KEEP_EVEN_IF_ARCHIVED_NAME}")` +
+    `${allCustomers.length} Kunden gesamt, ${relevantCustomers.length} relevant (archived: false ODER "${KEEP_EVEN_IF_ARCHIVED_NAME}", ohne eigene Agentur)` +
       (customerLimit ? `, Test-Limit: ${customers.length}` : "")
   )
 

@@ -8,7 +8,8 @@
 //    Beispielkampagne). Phase "Live".
 // 2. ClickUp: je Kunde nur die Kommentare, per KI zum aktuellen Stand zusammengefasst, als
 //    Kommentar im Projekt. Zuordnung über Close-Lead-ID, sonst E-Mail, sonst Name.
-// 3. Kandidaten: Leads aller Leadtable-Kunden (auch archivierter) außer Absagen; ohne E-Mail
+// 3. Kandidaten: Leads aller Leadtable-Kunden (auch archivierter) außer Absagen und den
+//    eigenen Stellen der Agentur (Kunde "Endlichmitarbeiter", isOwnAgency); ohne E-Mail
 //    nur mit Telefon. Dubletten über E-Mail, sonst Telefon. Status per LEADTABLE_STATUS_MAP,
 //    Zusatzfelder aus den Formularantworten, Bewerbungsdatum aus Leadtable, Beschreibung aus
 //    dem Beschreibungsfeld, Notizen als Verlaufseinträge.
@@ -33,7 +34,7 @@ import { fileURLToPath } from "node:url"
 import dotenv from "dotenv"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import { leadtableFetch } from "../src/lib/leadtable-client"
-import { fetchAllCampaigns, fetchAllCustomers } from "../src/lib/leadtable-import-customers"
+import { fetchAllCampaigns, fetchAllCustomers, isOwnAgency } from "../src/lib/leadtable-import-customers"
 import { cleanLeadtableEmail, extractCleanName, isTestLead, type LeadtableLead } from "../src/lib/leadtable-import"
 import { LEADTABLE_STATUS_MAP } from "../src/lib/leadtable-sync-shared"
 import { mapLeadFormAnswers } from "../src/lib/leadtable-form-answers"
@@ -66,8 +67,6 @@ const OUT = path.resolve(__dirname, "../neuimport")
 const CACHE = path.join(OUT, "leadtable-cache.json")
 const META_CONTACTS = path.join(OUT, "meta-kontakte.json")
 const POOL = /kanzleistelle24/i
-// Die Agentur selbst ist kein Kunde.
-const OWN_AGENCY = /endlich\s*mitarbeiter/i
 const SKIP_STATUS = new Set(["Absage", "Absage mit Mitteilung"])
 const STATUS_MAP: Record<string, string> = { ...LEADTABLE_STATUS_MAP, "On Hold": "in_pruefung" }
 const ASSIGN_STATUS: Record<string, string> = { Vorqualifiziert: "inbox", "Vorstellungsgespräch": "vg", Eingestellt: "ja" }
@@ -367,7 +366,10 @@ async function main() {
     throw new Error(`Datenbank ist nicht leer (${clientCount} Kunden, ${candidateCount} Kandidaten) - erst scripts/live-bereinigen.ts.`)
   }
 
-  const customers = await loadLeadtable()
+  // Die Agentur selbst ist kein Kunde, ihre eigenen Stellen liefern keine Kandidaten.
+  const allCustomers = await loadLeadtable()
+  const ownAgencyLeads = allCustomers.filter((c) => isOwnAgency(c.name)).reduce((n, c) => n + c.campaigns.reduce((m, k) => m + k.leads.length, 0), 0)
+  const customers = allCustomers.filter((c) => !isOwnAgency(c.name))
   await fillContactsFromMeta(customers)
   // Nur Texte nachtragen: Kunden werden nicht angefasst, Close und ClickUp nicht gebraucht.
   const won = ONLY_TEXTS ? [] : await closeList<{ id: string; display_name: string }>(`/lead/?query=${encodeURIComponent('lead_status:"Gewonnen"')}&_fields=id,display_name`, 2000)
@@ -406,7 +408,7 @@ async function main() {
     return m.kind === "sicher" || m.kind === "wahrscheinlich" ? m.best : null
   }
 
-  for (const c of customers.filter((x) => !x.archived && !POOL.test(x.name) && !OWN_AGENCY.test(x.name))) {
+  for (const c of customers.filter((x) => !x.archived && !POOL.test(x.name))) {
     // Ein Close-Lead gehört zu genau einem Kunden: ähnliche Namen in Leadtable
     // (z. B. „ZRK …“ und „ZRK … Stahlecker“) sind eigene Kanzleien.
     const m = matchByName(c.name, won.filter((l) => !usedClose.has(l.id)), (l) => l.display_name)
@@ -422,7 +424,7 @@ async function main() {
     })
   }
   // Close-Kunden ohne Leadtable: nur wenn sie in ClickUp aktiv oder anstehend sind.
-  const closeOnly = won.filter((l) => !usedClose.has(l.id) && !OWN_AGENCY.test(l.display_name))
+  const closeOnly = won.filter((l) => !usedClose.has(l.id) && !isOwnAgency(l.display_name))
   const closeOnlyInClickup: typeof closeOnly = []
   const closeOnlyOld: string[] = []
   for (const l of closeOnly) {
@@ -488,7 +490,7 @@ async function main() {
     `- Close-Kunden ohne Leadtable, in ClickUp nur „alte Kunden“ (nicht angelegt): ${closeOnlyOld.length}`,
     `Kandidaten: ${candidates.length} (Status: ${Object.entries(statusCount).map(([k, v]) => `${k} ${v}`).join(", ")})`,
     `- Zuordnungen zu Kunden: ${assignmentCount}`,
-    `- übersprungen: Absagen ${skipped.absage}, ohne E-Mail und Telefon ${skipped.ohneKontakt}, Testleads ${skipped.test}, in Leadtable gelöscht ${skipped.geloescht}`,
+    `- übersprungen: eigene Stellen der Agentur ${ownAgencyLeads}, Absagen ${skipped.absage}, ohne E-Mail und Telefon ${skipped.ohneKontakt}, Testleads ${skipped.test}, in Leadtable gelöscht ${skipped.geloescht}`,
     `- zusammengeführte Mehrfach-Bewerbungen: ${candidates.filter((c) => c.others.length > 0).length}`,
   ].join("\n")
   if (!SKIP_CLIENTS) fs.writeFileSync(path.join(OUT, "bericht.md"), report + "\n")
