@@ -10,6 +10,7 @@ import { appendPoint, countPoints, missingPositionItems } from "@/lib/position-p
 import { fieldValue, snippetsFor, type PositionSnippet, type ResolvedField } from "@/lib/profile-fields"
 import { RadiusControl } from "@/components/ui/radius-control"
 import { formatRadius } from "@/lib/radius"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 import {
   createCampaignFromPositionsAction,
   deletePositionAction,
@@ -434,7 +435,7 @@ function PositionForm({
                 {f.multiline ? (
                   <textarea className={input} style={{ borderColor: "#dde3ea" }} rows={3} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
                 ) : (
-                  <input className={input} style={{ borderColor: "#dde3ea" }} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
+                  <AutoTextarea className={input} style={{ borderColor: "#dde3ea" }} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
                 )}
               </Field>
             )
