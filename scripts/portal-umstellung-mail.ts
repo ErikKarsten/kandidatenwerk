@@ -10,6 +10,7 @@
 //   npx tsx scripts/portal-umstellung-mail.ts               Probelauf: Empfängerliste
 //   npx tsx scripts/portal-umstellung-mail.ts --vorschau    Mail als HTML-Datei (neuimport/)
 //   npx tsx scripts/portal-umstellung-mail.ts --ausfuehren  verschickt (fortsetzbar)
+//   npx tsx scripts/portal-umstellung-mail.ts --test=name@firma.de   eine Testmail (Knopf führt zur Anmeldung)
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -26,6 +27,7 @@ dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true })
 
 const EXECUTE = process.argv.includes("--ausfuehren")
 const PREVIEW = process.argv.includes("--vorschau")
+const TEST_TO = process.argv.find((a) => a.startsWith("--test="))?.slice("--test=".length).trim() || null
 const SENT_LOG = path.resolve(__dirname, "../neuimport/umstellung-gesendet.json")
 const PREVIEW_FILE = path.resolve(__dirname, "../neuimport/umstellung-vorschau.html")
 const LOGIN_URL = "https://kandidatenwerk.kanzleistelle24.de/login"
@@ -129,6 +131,15 @@ async function loadRecipients(): Promise<{ recipients: Recipient[]; withoutEmail
 }
 
 async function main() {
+  // Testmail: kein persönlicher Link, kein Zugang wird angelegt oder verändert.
+  if (TEST_TO) {
+    await sendEmail([TEST_TO], `[Test] ${SUBJECT}`, mailHtml(LOGIN_URL, TEST_TO, "Noah Giesecke"), {
+      senderName: "Endlich Mitarbeiter",
+      replyTo: { email: CONTACT.email, name: CONTACT.name },
+    })
+    console.log(`Testmail an ${TEST_TO} verschickt.`)
+    return
+  }
   if (PREVIEW) {
     fs.writeFileSync(PREVIEW_FILE, mailHtml("https://kandidatenwerk.kanzleistelle24.de/passwort-setzen/BEISPIEL-LINK", "kanzlei@beispiel.de", "Max Mustermann"))
     console.log(`Vorschau: ${PREVIEW_FILE}\nBetreff: ${SUBJECT}`)
