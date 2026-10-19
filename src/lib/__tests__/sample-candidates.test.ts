@@ -60,7 +60,7 @@ describe("buildSamplePrompt", () => {
     expect(prompt).toContain("DATEV Unternehmen online")
     expect(prompt).toContain("ausschließlich in Steuerkanzleien")
     expect(prompt).toContain("Keine Branchen")
-    expect(prompt).toContain("zum Steuerfachwirt, nie zum Bilanzbuchhalter")
+    expect(prompt).toContain("Fortbildung zum Steuerfachwirt darf geplant sein, nie zum Bilanzbuchhalter")
     expect(prompt).not.toContain("betreute_branchen")
     expect(prompt).not.toContain("Allrounder haben")
   })
@@ -115,3 +115,30 @@ describe("cleanSoftware und cleanExtra", () => {
   })
 })
 
+
+describe("Qualifikation je Berufsbild (Paket 71)", () => {
+  const person = { plz: "53111", geschlecht: "weiblich" as const, herkunft: "deutsch", software: "DATEV" as const, allrounder: false }
+
+  it("Steuerberater sind heute bestellt, ohne geplante Prüfungen", async () => {
+    const { buildSamplePrompt } = await import("@/lib/sample-candidates")
+    const prompt = buildSamplePrompt("Steuerberater", [person], {}, 2026, "steuerberater")
+    expect(prompt).toContain("heute bereits bestellte Steuerberater:innen")
+    expect(prompt).toContain("Keine laufenden oder geplanten Prüfungen")
+    expect(prompt).not.toContain("darf geplant sein")
+    expect(prompt).toContain("lückenloser beruflicher Werdegang der letzten zehn Jahre (2016 bis heute")
+  })
+
+  it("übernimmt vorgegebene Namen", async () => {
+    const { buildSamplePrompt } = await import("@/lib/sample-candidates")
+    expect(buildSamplePrompt("Steuerberater", [{ ...person, name: "Wiebke Raddatz" }])).toContain("Name: Wiebke Raddatz (genau so übernehmen)")
+  })
+
+  it("erkennt unpassende Profile", async () => {
+    const { sampleProblems } = await import("@/lib/sample-candidates")
+    const werdegang = "03/2021 – heute · Steuerberaterin · Steuerkanzlei, ca. 20 Mitarbeitende\n- Beratung"
+    expect(sampleProblems({ werdegang, felder: { ausbildung: "Steuerfachangestellte 2010, Steuerfachwirtin 2015, Steuerberaterexamen 2020" } }, "steuerberater")).toEqual([])
+    expect(sampleProblems({ werdegang, felder: { ausbildung: "Steuerfachangestellte 2010; Steuerfachwirtin geplant" } }, "steuerberater")).toContain("Qualifikation fehlt in der Ausbildung")
+    expect(sampleProblems({ werdegang, felder: { ausbildung: "Steuerfachangestellte 2016; Steuerfachwirt-Lehrgang läuft" } }, "steuerfachwirt")).toContain("Qualifikation erst geplant")
+    expect(sampleProblems({ werdegang: "", felder: { ausbildung: "Steuerfachangestellte 2019" } }, "steuerfachangestellte")).toEqual(["ohne Werdegang"])
+  })
+})
