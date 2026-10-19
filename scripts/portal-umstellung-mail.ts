@@ -37,15 +37,15 @@ const SUBJECT = "Neu: Ihre Kandidat:innen ab sofort im Kandidatenwerk-Portal"
 
 const db = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, { auth: { persistSession: false } })
 
-function mailHtml(link: string, email: string, name: string | null = null): string {
+function mailHtml(link: string, email: string): string {
   const li = (text: string) => `<li style="margin:4px 0;">${text}</li>`
   return renderEmailLayout({
     subtitle: "Kunden-Portal",
     heading: "Ihre Kandidat:innen finden Sie ab sofort hier",
     contentHtml: [
-      // Persönlich nur mit Vor- und Nachnamen ("Guten Tag Neuberger," klingt falsch).
-      `<p style="margin:0;">Guten Tag${name && name.trim().split(/\s+/).length >= 2 ? ` ${escapeHtml(name.trim())}` : ""},</p>`,
-      `<p style="margin:12px 0 0;">wir haben unser System umgestellt: Statt über Leadtable stellen wir Ihnen Ihre Kandidat:innen ab sofort in unserem eigenen Kunden-Portal <strong>Kandidatenwerk</strong> bereit.</p>`,
+      // Immer "Guten Tag," ohne Namen (Wunsch 19.10.2026).
+      `<p style="margin:0;">Guten Tag,</p>`,
+      `<p style="margin:12px 0 0;">wir als Endlich Mitarbeiter ändern, wo Sie Ihre Kandidat:innen finden: Statt über Leadtable stellen wir sie Ihnen ab sofort in unserem eigenen Kunden-Portal <strong>Kandidatenwerk</strong> bereit.</p>`,
       `<p style="margin:12px 0 0;">Was das für Sie bedeutet:</p>`,
       `<ul style="margin:6px 0 0;padding-left:20px;">${[
         li("Alle Kandidat:innen, die wir für Sie gewinnen, finden Sie ab sofort in Ihrem Kunden-Portal – mit Profil und Unterlagen."),
@@ -62,10 +62,6 @@ function mailHtml(link: string, email: string, name: string | null = null): stri
     footerNote: `Diese E-Mail wurde an ${email} gesendet, weil Sie Kunde von Endlich Mitarbeiter sind.`,
     footerSender: "Gesendet von Endlich Mitarbeiter",
   })
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 }
 
 interface Recipient {
@@ -133,7 +129,7 @@ async function loadRecipients(): Promise<{ recipients: Recipient[]; withoutEmail
 async function main() {
   // Testmail: kein persönlicher Link, kein Zugang wird angelegt oder verändert.
   if (TEST_TO) {
-    await sendEmail([TEST_TO], `[Test] ${SUBJECT}`, mailHtml(LOGIN_URL, TEST_TO, "Noah Giesecke"), {
+    await sendEmail([TEST_TO], `[Test] ${SUBJECT}`, mailHtml(LOGIN_URL, TEST_TO), {
       senderName: "Endlich Mitarbeiter",
       replyTo: { email: CONTACT.email, name: CONTACT.name },
     })
@@ -141,7 +137,7 @@ async function main() {
     return
   }
   if (PREVIEW) {
-    fs.writeFileSync(PREVIEW_FILE, mailHtml("https://kandidatenwerk.kanzleistelle24.de/passwort-setzen/BEISPIEL-LINK", "kanzlei@beispiel.de", "Max Mustermann"))
+    fs.writeFileSync(PREVIEW_FILE, mailHtml("https://kandidatenwerk.kanzleistelle24.de/passwort-setzen/BEISPIEL-LINK", "kanzlei@beispiel.de"))
     console.log(`Vorschau: ${PREVIEW_FILE}\nBetreff: ${SUBJECT}`)
     return
   }
@@ -168,9 +164,11 @@ async function main() {
         profileId = res.profileId
       }
       const link = await createPasswordLink(profileId, null)
-      await sendEmail([r.email], SUBJECT, mailHtml(link, r.email, r.name), {
+      await sendEmail([r.email], SUBJECT, mailHtml(link, r.email), {
         senderName: "Endlich Mitarbeiter",
         replyTo: { email: CONTACT.email, name: CONTACT.name },
+        // Steffen Neubert in Blindkopie bei jeder Mail (Wunsch 19.10.2026).
+        bcc: [CONTACT.email],
       })
       await db.from("profiles").update({ portal_invited_at: new Date().toISOString() }).eq("id", profileId)
       sent.push(r.email)

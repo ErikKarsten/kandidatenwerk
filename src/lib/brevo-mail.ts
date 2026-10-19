@@ -32,7 +32,7 @@ export async function sendEmail(
   to: string[],
   subject: string,
   htmlContent: string,
-  options: { senderName?: string; replyTo?: { email: string; name?: string }; footerSender?: string } = {}
+  options: { senderName?: string; replyTo?: { email: string; name?: string }; footerSender?: string; bcc?: string[] } = {}
 ): Promise<void> {
   const apiKey = process.env.BREVO_API_KEY
   if (!apiKey) throw new Error("BREVO_API_KEY ist nicht gesetzt.")
@@ -49,6 +49,7 @@ export async function sendEmail(
       sender: { email: SENDER_EMAIL, name: options.senderName || SENDER_NAME },
       ...(options.replyTo ? { replyTo: options.replyTo } : {}),
       to: to.map((email) => ({ email })),
+      ...(options.bcc?.length ? { bcc: options.bcc.map((email) => ({ email })) } : {}),
       subject,
       // Einheitliches Layout für alle Mails (Paket 19, T-87).
       htmlContent: applyEmailLogo(
