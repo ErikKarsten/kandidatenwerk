@@ -1,7 +1,9 @@
-// Einmalige Mail an alle Kunden, die ihren Portal-Zugang noch nicht eingerichtet haben
-// (Paket 68): Umstellung von Leadtable auf Kandidatenwerk, persönlicher Link zum
-// Einrichten, Ansprechpartner Steffen Neubert. Je Zugang (Ansprechpartner mit E-Mail) eine
-// Mail mit eigenem Link. Kunden ohne Zugang, aber mit Kontakt-E-Mail, bekommen vorher einen.
+// Einmalige Mail an alle hinterlegten Ansprechpartner der Kunden (Paket 71): Umstellung von
+// Leadtable auf Kandidatenwerk, persönlicher Link zum Einrichten des Portal-Zugangs,
+// Ansprechpartner Steffen Neubert. Je Ansprechpartner (client_contacts mit E-Mail) eine Mail
+// mit eigenem Link; ohne Ansprechpartner die Kontakt-E-Mail des Kunden. Fehlt der
+// Portal-Zugang, wird er vorher angelegt. Wer seinen Zugang schon eingerichtet hat, bekommt
+// nichts.
 // Kunden im Projektstatus "Onboarding" bekommen keine Mail - das Portal wird mit ihnen im
 // Onboarding gemeinsam durchgegangen (Wunsch 19.10.2026).
 //
@@ -33,13 +35,14 @@ const SUBJECT = "Neu: Ihre Kandidat:innen ab sofort im Kandidatenwerk-Portal"
 
 const db = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, { auth: { persistSession: false } })
 
-function mailHtml(link: string, email: string): string {
+function mailHtml(link: string, email: string, name: string | null = null): string {
   const li = (text: string) => `<li style="margin:4px 0;">${text}</li>`
   return renderEmailLayout({
     subtitle: "Kunden-Portal",
     heading: "Ihre Kandidat:innen finden Sie ab sofort hier",
     contentHtml: [
-      `<p style="margin:0;">Guten Tag,</p>`,
+      // Persönlich nur mit Vor- und Nachnamen ("Guten Tag Neuberger," klingt falsch).
+      `<p style="margin:0;">Guten Tag${name && name.trim().split(/\s+/).length >= 2 ? ` ${escapeHtml(name.trim())}` : ""},</p>`,
       `<p style="margin:12px 0 0;">wir haben unser System umgestellt: Statt über Leadtable stellen wir Ihnen Ihre Kandidat:innen ab sofort in unserem eigenen Kunden-Portal <strong>Kandidatenwerk</strong> bereit.</p>`,
       `<p style="margin:12px 0 0;">Was das für Sie bedeutet:</p>`,
       `<ul style="margin:6px 0 0;padding-left:20px;">${[
@@ -59,17 +62,23 @@ function mailHtml(link: string, email: string): string {
   })
 }
 
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
 interface Recipient {
   clientId: string
   clientName: string
   profileId: string | null
   email: string
+  name: string | null
 }
 
-async function loadRecipients(): Promise<{ recipients: Recipient[]; withoutEmail: string[]; onboarding: string[] }> {
+async function loadRecipients(): Promise<{ recipients: Recipient[]; withoutEmail: string[]; onboarding: string[]; alreadySetUp: number; conflicts: string[] }> {
   const { data: clients, error } = await db.from("clients").select("id, name, active, contact_email, project_phase").order("name")
   if (error) throw new Error(error.message)
-  const { data: profiles } = await db.from("profiles").select("id, email, client_id").eq("role", "client")
+  const { data: contacts } = await db.from("client_contacts").select("client_id, name, email")
+  const { data: profiles } = await db.from("profiles").select("id, email, client_id, role")
   // Eingerichtet = schon angemeldet oder Passwort-Link genutzt.
   const signedIn = new Set<string>()
   for (let page = 1; ; page++) {
@@ -79,40 +88,63 @@ async function loadRecipients(): Promise<{ recipients: Recipient[]; withoutEmail
   }
   const { data: links } = await db.from("password_links").select("user_id").not("used_at", "is", null)
   for (const l of links ?? []) signedIn.add(l.user_id)
+  const profileByEmail = new Map((profiles ?? []).filter((p) => p.email).map((p) => [p.email!.toLowerCase(), p]))
 
   const recipients: Recipient[] = []
   const withoutEmail: string[] = []
   const onboarding: string[] = []
+  const conflicts: string[] = []
+  let alreadySetUp = 0
   for (const c of clients ?? []) {
     if (c.active === false || /^test\b/i.test(c.name)) continue
     if (c.project_phase === "onboarding") {
       onboarding.push(c.name)
       continue
     }
-    const access = (profiles ?? []).filter((p) => p.client_id === c.id && p.email)
-    if (access.some((p) => signedIn.has(p.id))) continue
-    if (access.length) for (const p of access) recipients.push({ clientId: c.id, clientName: c.name, profileId: p.id, email: p.email! })
-    else if (c.contact_email?.trim()) recipients.push({ clientId: c.id, clientName: c.name, profileId: null, email: c.contact_email.trim().toLowerCase() })
-    else withoutEmail.push(c.name)
+    const people = (contacts ?? [])
+      .filter((p) => p.client_id === c.id && p.email?.trim())
+      .map((p) => ({ email: p.email!.trim().toLowerCase(), name: p.name?.trim() || null }))
+    if (!people.length && c.contact_email?.trim()) people.push({ email: c.contact_email.trim().toLowerCase(), name: null })
+    if (!people.length) {
+      withoutEmail.push(c.name)
+      continue
+    }
+    const seen = new Set<string>()
+    for (const person of people) {
+      if (seen.has(person.email)) continue
+      seen.add(person.email)
+      const profile = profileByEmail.get(person.email)
+      if (profile && (profile.role !== "client" || profile.client_id !== c.id)) {
+        conflicts.push(`${c.name}: ${person.email} gehört schon ${profile.role === "client" ? "zu einem anderen Kunden" : "zu einem Team-Zugang"}`)
+        continue
+      }
+      if (profile && signedIn.has(profile.id)) {
+        alreadySetUp++
+        continue
+      }
+      recipients.push({ clientId: c.id, clientName: c.name, profileId: profile?.id ?? null, email: person.email, name: person.name })
+    }
   }
-  return { recipients, withoutEmail, onboarding }
+  return { recipients, withoutEmail, onboarding, alreadySetUp, conflicts }
 }
 
 async function main() {
   if (PREVIEW) {
-    fs.writeFileSync(PREVIEW_FILE, mailHtml("https://kandidatenwerk.kanzleistelle24.de/passwort-setzen/BEISPIEL-LINK", "kanzlei@beispiel.de"))
+    fs.writeFileSync(PREVIEW_FILE, mailHtml("https://kandidatenwerk.kanzleistelle24.de/passwort-setzen/BEISPIEL-LINK", "kanzlei@beispiel.de", "Max Mustermann"))
     console.log(`Vorschau: ${PREVIEW_FILE}\nBetreff: ${SUBJECT}`)
     return
   }
-  const { recipients, withoutEmail, onboarding } = await loadRecipients()
+  const { recipients, withoutEmail, onboarding, alreadySetUp, conflicts } = await loadRecipients()
   const sent: string[] = fs.existsSync(SENT_LOG) ? JSON.parse(fs.readFileSync(SENT_LOG, "utf8")) : []
   const todo = recipients.filter((r) => !sent.includes(r.email))
   console.log(`MODUS: ${EXECUTE ? "VERSAND" : "Probelauf (verschickt nichts)"}`)
-  console.log(`Empfänger: ${recipients.length} (${new Set(recipients.map((r) => r.clientId)).size} Kunden), davon schon verschickt: ${recipients.length - todo.length}`)
-  console.log(`Neu anzulegende Zugänge (Kontakt-E-Mail): ${recipients.filter((r) => !r.profileId).length}`)
+  console.log(`Empfänger (Ansprechpartner): ${recipients.length} bei ${new Set(recipients.map((r) => r.clientId)).size} Kunden, davon schon verschickt: ${recipients.length - todo.length}`)
+  console.log(`Davon ohne Portal-Zugang (wird vorher angelegt): ${recipients.filter((r) => !r.profileId).length}`)
+  console.log(`Ansprechpartner mit schon eingerichtetem Zugang (bekommen nichts): ${alreadySetUp}`)
+  console.log(`Konflikte (bekommen nichts, bitte prüfen): ${conflicts.length}${conflicts.length ? `\n  ${conflicts.join("\n  ")}` : ""}`)
   console.log(`Kunden im Onboarding (bekommen nichts): ${onboarding.length}${onboarding.length ? ` – ${onboarding.join(", ")}` : ""}`)
   console.log(`Kunden ohne E-Mail-Adresse (bekommen nichts): ${withoutEmail.length}${withoutEmail.length ? ` – ${withoutEmail.join(", ")}` : ""}`)
-  for (const r of todo) console.log(`  ${r.clientName} → ${r.email}${r.profileId ? "" : " (Zugang wird angelegt)"}`)
+  for (const r of todo) console.log(`  ${r.clientName} → ${r.name ? `${r.name} ` : ""}<${r.email}>${r.profileId ? "" : " (Zugang wird angelegt)"}`)
   if (!EXECUTE) return
 
   let ok = 0
@@ -125,7 +157,7 @@ async function main() {
         profileId = res.profileId
       }
       const link = await createPasswordLink(profileId, null)
-      await sendEmail([r.email], SUBJECT, mailHtml(link, r.email), {
+      await sendEmail([r.email], SUBJECT, mailHtml(link, r.email, r.name), {
         senderName: "Endlich Mitarbeiter",
         replyTo: { email: CONTACT.email, name: CONTACT.name },
       })
