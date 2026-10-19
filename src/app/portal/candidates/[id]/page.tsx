@@ -219,7 +219,8 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
       <div className="shrink-0 text-sm text-gray-500" style={{ minWidth: "9rem" }}>
         {label}
       </div>
-      <div className="text-sm text-gray-900">{children}</div>
+      {/* Zeilenumbrüche im Wert behalten, lange Wörter umbrechen (Paket 71). */}
+      <div className="min-w-0 whitespace-pre-line text-sm text-gray-900 [overflow-wrap:anywhere]">{children}</div>
     </div>
   )
 }

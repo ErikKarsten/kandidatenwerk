@@ -284,7 +284,7 @@ async function main() {
       let samples
       for (let attempt = 1; ; attempt++) {
         try {
-          samples = await generateSamples(label, people, { avoidNames: recentNames.slice(-40) })
+          samples = await generateSamples({ value: batch[0].berufsbild, label }, people, { avoidNames: recentNames.slice(-40) })
           break
         } catch (err) {
           if (attempt >= 2) {
@@ -296,7 +296,10 @@ async function main() {
         }
       }
       if (!samples) continue
-      for (const [i, s] of samples.entries()) {
+      // Unpassende Profile hat generateSamples weggelassen (Paket 71) - Lücken füllt ein neuer Lauf.
+      stats.fehler += batch.length - samples.length
+      for (const { person, sample: s } of samples) {
+        const i = people.indexOf(person)
         const name = `${s.first_name} ${s.last_name}`
         if (usedNames.has(name.toLowerCase())) {
           stats.doppelt++

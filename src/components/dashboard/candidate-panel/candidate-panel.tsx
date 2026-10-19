@@ -187,7 +187,7 @@ export function CandidatePanel({
                   {[...current.stammdaten, ...current.zusatzfelder].filter((f) => !(anonymize && PERSONAL_FIELD_KEYS.has(f.key))).map((f) => (
                     <div key={f.label}>
                       <dt className="text-xs font-medium text-gray-400">{f.label}</dt>
-                      <dd className="whitespace-pre-wrap text-sm text-gray-800">{f.value}</dd>
+                      <dd className="whitespace-pre-wrap text-sm text-gray-800 [overflow-wrap:anywhere]">{f.value}</dd>
                     </div>
                   ))}
                 </dl>

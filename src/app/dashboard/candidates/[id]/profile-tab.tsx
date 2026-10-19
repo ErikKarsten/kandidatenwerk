@@ -6,6 +6,7 @@ import { CopyButton } from "@/components/ui/copy-button"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { updateCandidateProfileAction, updateCandidateCustomFieldAction } from "./actions"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 function formatLabel(key: string): string {
   return key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())
@@ -288,8 +289,8 @@ export function ProfileTab({
             {extraKeys.map((key) => (
               <FieldRow key={key} label={formatLabel(key)} editMode={editMode} stacked>
                 {editMode ? (
-                  <div className="flex items-center gap-2">
-                    <input
+                  <div className="flex items-start gap-2">
+                    <AutoTextarea
                       className={inputClass}
                       style={inputStyle}
                       value={localCustom[key] ?? ""}
@@ -391,23 +392,19 @@ function CustomFieldRow({
     })
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.currentTarget.blur()
-    }
-  }
-
   return (
     <FieldRow label={label} editMode stacked>
-      <div className="flex items-center gap-2">
-        <input
+      {/* Lange Angaben brechen um und lassen das Feld wachsen (Paket 71); Enter speichert,
+          Umschalt+Enter macht eine neue Zeile. */}
+      <div className="flex items-start gap-2">
+        <AutoTextarea
           className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1 disabled:opacity-50"
           style={{ borderColor: "#dde3ea" }}
           value={localValue}
           placeholder="Hier eingeben"
           onChange={(e) => setLocalValue(e.target.value)}
           onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
+          submitOnEnter
           disabled={pending}
         />
         <CopyButton value={localValue} />
@@ -436,7 +433,7 @@ function FieldRow({
       >
         {label}
       </dt>
-      <dd className={`text-sm text-gray-900 ${useStack ? "w-full" : ""}`}>{children}</dd>
+      <dd className={`min-w-0 whitespace-pre-line text-sm text-gray-900 [overflow-wrap:anywhere] ${useStack ? "w-full" : ""}`}>{children}</dd>
     </div>
   )
 }

@@ -12,6 +12,7 @@ import { KanzleistelleCard, type KanzleistelleStatus } from "./kanzleistelle-car
 import { ClientFilesTab, type ClientFileItem } from "./client-files-tab"
 import type { ProfileFieldConfig } from "@/lib/profile-field-config"
 import { fieldValue, resolveFields, type ResolvedField } from "@/lib/profile-fields"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
 
 export interface ProjectMeta {
   project_phase: string
@@ -343,7 +344,8 @@ function ProfileCard({
                       {f.multiline ? (
                         <textarea className={textarea} style={style} rows={f.key === "gehaltsgefuege" ? 3 : 4} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
                       ) : (
-                        <input className={input} style={style} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
+                        // Wächst und bricht um, statt Text rechts abzuschneiden (Paket 71).
+                        <AutoTextarea className="min-h-9 w-full rounded-md border bg-white px-2 py-1.5 text-sm" style={style} value={value} placeholder={f.hint ?? undefined} onChange={(e) => change(e.target.value)} />
                       )}
                     </label>
                   )

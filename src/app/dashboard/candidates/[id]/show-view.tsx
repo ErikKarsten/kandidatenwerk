@@ -67,7 +67,7 @@ export function CandidateShowView({
               {facts.map((f) => (
                 <div key={f.label}>
                   <dt className="text-xs font-medium text-gray-400">{f.label}</dt>
-                  <dd className="text-sm font-semibold text-gray-900">{f.value}</dd>
+                  <dd className="whitespace-pre-line text-sm font-semibold text-gray-900 [overflow-wrap:anywhere]">{f.value}</dd>
                 </div>
               ))}
             </dl>
@@ -79,7 +79,7 @@ export function CandidateShowView({
                 {s.items.map((i) => (
                   <div key={i.label}>
                     <dt className="text-xs font-medium text-gray-400">{i.label}</dt>
-                    <dd className="whitespace-pre-wrap text-sm text-gray-800">{i.value}</dd>
+                    <dd className="whitespace-pre-wrap text-sm text-gray-800 [overflow-wrap:anywhere]">{i.value}</dd>
                   </div>
                 ))}
               </dl>
