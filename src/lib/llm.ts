@@ -3,6 +3,10 @@
 //   Abrechnung über kie.ai-Credits. Die Schnittstelle kennt keinen eigenen "system"-
 //   Parameter - die Anweisungen stehen deshalb vor der eigentlichen Nachricht.
 // - Anthropic direkt (ANTHROPIC_API_KEY), wenn kein kie.ai-Schlüssel gesetzt ist.
+// - Ausweichmodell (Paket 74): Ist Claude bei kie.ai überlastet (429/5xx/"Internal error"),
+//   antwortet nach drei Fehlversuchen Gemini über kie.ai - ein anderer Anbieter, fällt
+//   meist nicht gleichzeitig aus. Ist Gemini für den Schlüssel nicht freigeschaltet, geht
+//   es wie bisher mit Claude weiter.
 // "fast" für einfache Zuordnungen (Formularfelder), "smart" für Texte (Zusammenfassungen,
 // Benefits).
 import Anthropic from "@anthropic-ai/sdk"
@@ -21,6 +25,11 @@ const KIE_URL = "https://api.kie.ai/claude/v1/messages"
 // Für den kie.ai-Schlüssel ist nur Sonnet 5.5 freigegeben (07.10.2026) - auch für "fast".
 const KIE_MODELS: Record<LlmTier, string> = { fast: "claude-sonnet-5-5", smart: "claude-sonnet-5-5" }
 const ANTHROPIC_MODELS: Record<LlmTier, string> = { fast: "claude-haiku-4-5", smart: "claude-opus-5-5" }
+// Gemini 2.5 Pro nimmt kie.ai nicht mehr an ("Invalid model name", 20.10.2026).
+export const KIE_FALLBACK_MODEL = "gemini-3.1-pro"
+const KIE_FALLBACK_URL = `https://api.kie.ai/${KIE_FALLBACK_MODEL}/v1/chat/completions`
+const CLAUDE_ATTEMPTS_BEFORE_FALLBACK = 3
+const FALLBACK_PAUSE_MS = 10 * 60_000
 
 export function llmConfigured(): boolean {
   return !!(process.env.KIE_API_KEY || process.env.ANTHROPIC_API_KEY)
@@ -65,19 +74,83 @@ async function viaKieOnce(key: string, o: GenerateTextOptions): Promise<string> 
   return textOf(json)
 }
 
+function isRetryable(err: unknown): boolean {
+  return /kie\.ai (429|5\d\d)|internal error/i.test(err instanceof Error ? err.message : String(err))
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Gemini über kie.ai (OpenAI-Format): Modell steht in der Adresse, Fehler kommen mit Status
+// 200 und {code, msg}.
+async function viaKieGeminiOnce(key: string, o: GenerateTextOptions): Promise<string> {
+  const messages = [
+    ...(o.system ? [{ role: "system", content: [{ type: "text", text: o.system }] }] : []),
+    { role: "user", content: [{ type: "text", text: o.prompt }] },
+  ]
+  const res = await fetch(KIE_FALLBACK_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, stream: false, reasoning_effort: o.tier === "smart" ? "high" : "low" }),
+    signal: AbortSignal.timeout(o.timeoutMs ?? 60_000),
+  })
+  const raw = await res.text()
+  let json: { code?: number; msg?: string; choices?: { message?: { content?: string } }[] } | null = null
+  try {
+    json = JSON.parse(raw)
+  } catch {
+    // Kein JSON - Fehlermeldung unten mit Rohtext.
+  }
+  const text = json?.choices?.[0]?.message?.content
+  if (!res.ok || (json?.code && json.code !== 200) || typeof text !== "string") {
+    throw new Error(`kie.ai ${json?.code ?? res.status}: ${json?.msg || raw.slice(0, 200)} (${KIE_FALLBACK_MODEL})`)
+  }
+  if (!text.trim()) throw new Error(`Leere Antwort des Modells (${KIE_FALLBACK_MODEL}).`)
+  return text.trim()
+}
+
+// Ausweichmodell nicht nutzbar (nicht freigeschaltet, unbekannt): eine Weile nicht fragen.
+let fallbackPausedUntil = 0
+
+async function viaKieFallback(key: string, o: GenerateTextOptions): Promise<string | null> {
+  if (Date.now() < fallbackPausedUntil) return null
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const text = await viaKieGeminiOnce(key, o)
+      console.warn(`[llm] Claude bei kie.ai überlastet - Antwort von ${KIE_FALLBACK_MODEL}`)
+      return text
+    } catch (err) {
+      if (!isRetryable(err)) {
+        fallbackPausedUntil = Date.now() + FALLBACK_PAUSE_MS
+        console.warn(`[llm] Ausweichmodell ${KIE_FALLBACK_MODEL} nicht nutzbar: ${err instanceof Error ? err.message : err}`)
+        return null
+      }
+      if (attempt === 0) await sleep(5_000)
+    }
+  }
+  return null
+}
+
 // kie.ai drosselt bei vielen gleichzeitigen Anfragen (429, teils "Internal error") - dann
-// mit wachsender Pause erneut versuchen (Paket 39, Neuimport mit vielen Kunden).
+// mit wachsender Pause erneut versuchen (Paket 39, Neuimport mit vielen Kunden); nach drei
+// Fehlversuchen zusätzlich das Ausweichmodell fragen (Paket 74).
 async function viaKie(key: string, o: GenerateTextOptions): Promise<string> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await viaKieOnce(key, o)
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      const retryable = /kie\.ai (429|5\d\d)|internal error/i.test(message)
-      if (!retryable || attempt >= 4) throw err
-      await new Promise((resolve) => setTimeout(resolve, 5_000 * 2 ** attempt))
+      if (!isRetryable(err) || attempt >= 4) throw err
+      if (attempt === CLAUDE_ATTEMPTS_BEFORE_FALLBACK - 1) {
+        const text = await viaKieFallback(key, o)
+        if (text !== null) return text
+      }
+      await sleep(5_000 * 2 ** attempt)
     }
   }
+}
+
+// Nur für Tests: Pause des Ausweichmodells zurücksetzen.
+export function resetLlmFallbackForTests(): void {
+  fallbackPausedUntil = 0
 }
 
 async function viaAnthropic(key: string, o: GenerateTextOptions): Promise<string> {
