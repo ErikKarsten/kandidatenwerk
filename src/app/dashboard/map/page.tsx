@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { MapOverview, type MapClientPoint, type MapCandidatePoint } from "./map-overview"
 import { getActiveAdAreas } from "@/lib/meta-campaigns-queries"
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
 
 type MapCandidateRow = { id: string; first_name: string; last_name: string; lat: number | null; lng: number | null; campaign_id: string | null; berufsbild: string | null }
 
@@ -12,6 +13,8 @@ async function fetchAllCandidates(supabase: Awaited<ReturnType<typeof createSupa
       .from("candidates")
       .select("id, first_name, last_name, lat, lng, campaign_id, berufsbild")
       .eq("is_demo", false)
+      // Nur vorqualifizierte Kandidaten auf der Karte (Paket 73) - keine abgelehnten oder neuen.
+      .eq("status", ASSIGNABLE_STATUS)
       .order("id")
       .range(from, from + 999)
     if (error) throw new Error(error.message)
@@ -103,7 +106,7 @@ export default async function MapPage() {
     <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Karte</h1>
-        <p className="mt-1 text-sm text-gray-500">Übersicht aller Kanzlei-Standorte und Kandidaten</p>
+        <p className="mt-1 text-sm text-gray-500">Übersicht aller Kanzlei-Standorte und vorqualifizierten Kandidaten</p>
       </div>
 
       <MapOverview clients={clientPoints} candidates={candidatePoints} adAreas={adAreas} />

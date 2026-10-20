@@ -10,6 +10,7 @@ import { notifyLeadRecipients } from "@/lib/lead-notifications"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { ASSIGNABLE_STATUS, ensureCampaignAssignment } from "@/lib/client-assignment"
 import { createSampleCandidates } from "@/lib/sample-candidates"
+import { friendlyAiError } from "@/lib/llm"
 import { cleanExtra, cleanFocus, cleanSoftware } from "@/lib/sample-focus"
 import { canCreateSamples } from "@/lib/teams"
 
@@ -193,6 +194,6 @@ export async function createSampleCandidatesAction(input: {
     return { count: ids.length }
   } catch (err) {
     console.error("Musterdatensätze fehlgeschlagen:", err)
-    return { error: err instanceof Error ? err.message : "Musterdatensätze konnten nicht erstellt werden." }
+    return { error: friendlyAiError(err, "Musterdatensätze konnten nicht erstellt werden.") }
   }
 }
