@@ -239,6 +239,9 @@ export default async function ClientDetailPage({
           id: p.id,
           email: p.email,
           status: data.user?.last_sign_in_at ? ("aktiv" as const) : p.portal_invited_at ? ("eingeladen" as const) : ("angelegt" as const),
+          // Zur Nachverfolgung (Paket 73): letzte Anmeldung bzw. Einladung mit Datum und Uhrzeit.
+          lastSignInAt: data.user?.last_sign_in_at ?? null,
+          invitedAt: p.portal_invited_at ?? null,
         }
       })
     ),

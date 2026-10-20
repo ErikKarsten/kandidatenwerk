@@ -10,6 +10,19 @@ export interface PortalUser {
   email: string | null
   // angelegt = still angelegt (z.B. als Ansprechpartner), Einladung noch nicht verschickt.
   status: "eingeladen" | "aktiv" | "angelegt"
+  lastSignInAt?: string | null
+  invitedAt?: string | null
+}
+
+// "20.10.2026, 09:14 Uhr" - feste Zeitzone, damit Server und Browser gleich anzeigen.
+function formatDateTime(iso: string): string {
+  return `${new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr`
+}
+
+export function accessStatusText(user: PortalUser): string {
+  if (user.status === "aktiv") return user.lastSignInAt ? `Zuletzt angemeldet: ${formatDateTime(user.lastSignInAt)}` : "Aktiv"
+  if (user.status === "eingeladen") return user.invitedAt ? `Eingeladen am ${formatDateTime(user.invitedAt)} · noch kein Login` : "Eingeladen, noch kein Login"
+  return "Angelegt, Einladung noch nicht verschickt"
 }
 
 const inputClass =
@@ -134,7 +147,7 @@ export function PortalAccessSection({
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">{user.email}</p>
             <p className="text-xs mt-0.5" style={{ color: user.status === "aktiv" ? "#1a9a6a" : "#9ca3af" }}>
-              {user.status === "aktiv" ? "Aktiv" : user.status === "eingeladen" ? "Eingeladen, noch kein Login" : "Angelegt, Einladung noch nicht verschickt"}
+              {accessStatusText(user)}
             </p>
           </div>
 
