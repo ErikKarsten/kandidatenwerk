@@ -12,6 +12,7 @@ import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { normalizeTags } from "@/lib/candidate-tags"
 import { ASSIGNMENT_STATUS_OPTIONS, assignmentStatusLabel } from "@/lib/assignment-status"
+import { friendlyAiError } from "@/lib/llm"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -525,7 +526,7 @@ export async function enrichCvWerdegangAction(candidateId: string): Promise<{ er
     return { text }
   } catch (err) {
     console.error("Werdegang per KI fehlgeschlagen:", err)
-    return { error: err instanceof Error ? err.message : "Werdegang konnte nicht erstellt werden." }
+    return { error: friendlyAiError(err, "Werdegang konnte nicht erstellt werden.") }
   }
 }
 

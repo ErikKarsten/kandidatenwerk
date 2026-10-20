@@ -100,3 +100,14 @@ export async function generateText(o: GenerateTextOptions): Promise<string> {
   if (anthropic) return viaAnthropic(anthropic, o)
   throw new Error("Kein KI-Schlüssel gesetzt (KIE_API_KEY oder ANTHROPIC_API_KEY).")
 }
+
+// Verständliche Meldung für die Oberfläche (Paket 73): Überlastung bei kie.ai statt
+// "kie.ai 429: Internal error ...". Andere Fehler bleiben, wie sie sind.
+export function friendlyAiError(err: unknown, fallback = "Die KI-Anfrage ist fehlgeschlagen."): string {
+  const message = err instanceof Error ? err.message : String(err ?? "")
+  if (/kie\.ai (429|5\d\d)|internal error|overloaded|rate limit/i.test(message)) {
+    return "Die KI ist gerade überlastet. Bitte in ein paar Minuten noch einmal versuchen."
+  }
+  if (/timeout|aborted/i.test(message)) return "Die KI hat zu lange gebraucht. Bitte noch einmal versuchen."
+  return message || fallback
+}
