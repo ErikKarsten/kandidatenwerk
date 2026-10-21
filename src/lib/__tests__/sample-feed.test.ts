@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { sampleFeedDue, SAMPLE_FEED_TOTAL } from "@/lib/sample-feed"
-import { isPublicMailDomain, isUndeliverableAddress, sampleEmailDomain, samplePhone } from "@/lib/sample-contact"
+import { isUndeliverableAddress, SAMPLE_EMAIL_DOMAINS, sampleEmailDomain, samplePhone } from "@/lib/sample-contact"
 import { sampleEmail } from "@/lib/sample-candidates"
 
 describe("Beispielkandidaten für Live-Kunden (Paket 76)", () => {
@@ -16,13 +16,12 @@ describe("Beispielkandidaten für Live-Kunden (Paket 76)", () => {
     expect(sampleFeedDue(live, day(200))).toBe(SAMPLE_FEED_TOTAL)
   })
 
-  it("nutzt nie öffentliche Mailanbieter für erfundene Personen", () => {
-    expect(sampleEmailDomain(undefined)).toBe("example.com")
-    expect(sampleEmailDomain("gmail.com")).toBe("example.com")
-    expect(sampleEmailDomain("outlook.de")).toBe("example.com")
-    expect(sampleEmailDomain("bewerbung-kanzleistelle.de")).toBe("bewerbung-kanzleistelle.de")
-    expect(isPublicMailDomain("web.de")).toBe(true)
-    expect(sampleEmail("Jürgen", "Müller", sampleEmailDomain("gmx.de"))).toBe("juergen.mueller@example.com")
+  it("nimmt gängige Mailanbieter, außer eine eigene Domain ist eingestellt", () => {
+    expect(SAMPLE_EMAIL_DOMAINS).toEqual(["gmail.com", "gmx.de", "yahoo.com", "freenet.de"])
+    expect(sampleEmailDomain(() => 0, undefined)).toBe("gmail.com")
+    expect(sampleEmailDomain(() => 0.99, "")).toBe("freenet.de")
+    expect(sampleEmailDomain(() => 0, "bewerbung-kanzleistelle.de")).toBe("bewerbung-kanzleistelle.de")
+    expect(sampleEmail("Jürgen", "Müller", () => 0.3)).toMatch(/^[a-z0-9.-]+@gmx\.de$/)
   })
 
   it("verschickt nichts an reservierte Domains und nimmt Nummern aus der Liste", () => {

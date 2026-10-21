@@ -44,6 +44,7 @@ interface CandidateRow {
   client_id: string | null
   created_at: string
   berufsbild: string | null
+  tags: string[] | null
 }
 
 interface CampaignJoin {
@@ -102,7 +103,7 @@ async function loadCampaignCandidates(
   triggerStatus: string | null,
   joinedAt: Map<string, string>
 ): Promise<CandidateRow[]> {
-  const columns = "id, first_name, last_name, email, phone, status, client_id, created_at, berufsbild"
+  const columns = "id, first_name, last_name, email, phone, status, client_id, created_at, berufsbild, tags"
   let own = supabase.from("candidates").select(columns).eq("campaign_id", campaign.id).eq("is_demo", false)
   if (trigger === "status_change") own = own.eq("status", triggerStatus!)
   const { data: ownRows, error } = await own
@@ -236,6 +237,7 @@ export async function runAutomations(
         const recipients = await resolveAutomationRecipients(supabase, automation.recipient, {
           email: candidate.email,
           client_id: candidate.client_id ?? campaign.client_id,
+          tags: candidate.tags,
         })
 
         if (recipients.length === 0) {

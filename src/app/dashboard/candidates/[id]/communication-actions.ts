@@ -10,6 +10,7 @@ import { sendEmail } from "@/lib/brevo-mail"
 import { wrapAutomationEmailHtml } from "@/lib/automation-engine"
 import { randomUUID } from "node:crypto"
 import { replyAddressFor } from "@/lib/inbound-replies"
+import { SAMPLE_TAG } from "@/lib/candidate-tags"
 
 export async function sendCandidateEmailAction(
   candidateId: string,
@@ -28,11 +29,14 @@ export async function sendCandidateEmailAction(
   if ("error" in ctx) return ctx
 
   const [{ data: candidate }, { data: me }] = await Promise.all([
-    supabase.from("candidates").select("email, is_demo").eq("id", candidateId).maybeSingle(),
+    supabase.from("candidates").select("email, is_demo, tags").eq("id", candidateId).maybeSingle(),
     supabase.from("profiles").select("full_name, email").eq("id", ctx.staff.userId).maybeSingle(),
   ])
   if (!candidate) return { error: "Kandidat nicht gefunden." }
   if (candidate.is_demo) return { error: "An den Beispiel-Lead werden keine Mails verschickt." }
+  // Musterdatensätze (Paket 76): erfundene Person - neutral formuliert, weil nur Admins
+  // sehen sollen, dass es ein Beispielkandidat ist.
+  if (candidate.tags?.includes(SAMPLE_TAG)) return { error: "An diese Adresse werden keine Mails verschickt." }
   const to = candidate.email?.trim()
   if (!to) return { error: "Für den Kandidaten ist keine E-Mail-Adresse hinterlegt." }
 

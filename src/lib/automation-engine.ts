@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
+import { SAMPLE_TAG } from "@/lib/candidate-tags"
 import { renderEmailLayout } from "@/lib/email-layout"
 import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 
@@ -88,9 +89,11 @@ export function wrapAutomationEmailHtml(bodyText: string, footerSender?: string 
 export async function resolveAutomationRecipients(
   supabase: Supabase,
   recipient: string,
-  candidate: { email: string | null; client_id: string | null }
+  candidate: { email: string | null; client_id: string | null; tags?: string[] | null }
 ): Promise<string[]> {
   if (recipient === "candidate") {
+    // Musterdatensätze (Paket 76) sind erfundene Personen - keine Mail an sie.
+    if (candidate.tags?.includes(SAMPLE_TAG)) return []
     return candidate.email ? [candidate.email] : []
   }
 

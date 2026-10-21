@@ -38,8 +38,9 @@ describe("parseSampleAnswer", () => {
 })
 
 describe("sampleEmail", () => {
-  it("baut eine Adresse auf example.com ohne Umlaute", () => {
-    expect(sampleEmail("Jürgen", "Müller-Weiß")).toBe("juergen.mueller-weiss@example.com")
+  it("baut eine Adresse ohne Umlaute mit Zahl", () => {
+    expect(sampleEmail("Jürgen", "Müller-Weiß", () => 0, "gmx.de")).toBe("juergen.mueller-weiss10@gmx.de")
+    for (let i = 0; i < 50; i++) expect(sampleEmail("Özlem", "Şahin")).toMatch(/^[a-z0-9.-]*\d\d@(gmail\.com|gmx\.de|yahoo\.com|freenet\.de)$/)
   })
 })
 

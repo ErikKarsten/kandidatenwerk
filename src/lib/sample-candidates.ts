@@ -244,9 +244,10 @@ export function parseSampleAnswer(text: string, count: number): SampleCandidate[
   })
 }
 
-// "Jürgen Müller-Weiß" -> "juergen.mueller-weiss@example.com" - Domain siehe sample-contact.ts
-// (nie ein öffentlicher Mailanbieter).
-export function sampleEmail(first: string, last: string, domain = sampleEmailDomain()): string {
+// "Jürgen Müller-Weiß" -> z. B. "juergen.mueller-weiss84@gmx.de" - Domain siehe
+// sample-contact.ts. Die Zahl (Geburtsjahr-Endung oder zweistellig) macht es unwahrscheinlich,
+// dass die Adresse einem echten Kandidaten gleichen Namens gehört.
+export function sampleEmail(first: string, last: string, random: () => number = Math.random, domain = sampleEmailDomain(random)): string {
   const slug = (s: string) =>
     s
       .toLowerCase()
@@ -256,7 +257,11 @@ export function sampleEmail(first: string, last: string, domain = sampleEmailDom
       .replace(/ß/g, "ss")
       .normalize("NFD")
       .replace(/[^a-z0-9-]+/g, "")
-  return `${slug(first)}.${slug(last)}@${domain}`
+  const f = slug(first)
+  const l = slug(last)
+  const n = String(10 + Math.floor(random() * 90))
+  const patterns = [`${f}.${l}${n}`, `${f[0]}.${l}${n}`, `${l}.${f}${n}`, `${f}${l}${n}`, `${f}.${l}.${n}`]
+  return `${patterns[Math.floor(random() * patterns.length)]}@${domain}`
 }
 
 // KI-Aufruf für mehrere Personen desselben Berufsbilds. Jeder Datensatz wird geprüft

@@ -1,4 +1,5 @@
 import { applyEmailLogo, hasEmailLayout, renderEmailLayout } from "@/lib/email-layout"
+import { SAMPLE_TAG } from "@/lib/candidate-tags"
 import { isUndeliverableAddress } from "@/lib/sample-contact"
 import { createClient } from "@supabase/supabase-js"
 
@@ -18,6 +19,33 @@ async function getEmailLogoUrl(): Promise<string | null> {
     return null
   }
 }
+// Adressen, die nur zu Musterdatensätzen gehören (Paket 76): erfundene Personen, dorthin geht
+// nie eine Mail. Gehört dieselbe Adresse auch einem echten Kandidaten, bleibt sie im Versand.
+// Fehler bei der Prüfung blockieren den Versand nicht - die Aufrufer (Automatisierungen,
+// Reiter "Kommunikation") lassen Musterdatensätze schon selbst aus, das hier ist das Netz
+// darunter.
+async function sampleOnlyAddresses(to: string[]): Promise<Set<string>> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SECRET_KEY
+    if (!url || !key) return new Set()
+    const emails = [...new Set(to.map((e) => e.trim().toLowerCase()))]
+    const { data, error } = await createClient(url, key).from("candidates").select("email, tags").in("email", emails)
+    if (error) throw new Error(error.message)
+    const real = new Set<string>()
+    const samples = new Set<string>()
+    for (const c of data ?? []) {
+      const email = (c.email as string).toLowerCase()
+      if (((c.tags as string[] | null) ?? []).includes(SAMPLE_TAG)) samples.add(email)
+      else real.add(email)
+    }
+    return new Set([...samples].filter((e) => !real.has(e)))
+  } catch (err) {
+    console.error(`[mail] Prüfung auf Musterdatensätze fehlgeschlagen: ${err instanceof Error ? err.message : err}`)
+    return new Set()
+  }
+}
+
 // Versand von Transactional-E-Mails über die Brevo-API (POST /v3/smtp/email). Bewusst
 // getrennt von der SMTP-Konfiguration, die Supabase Auth für Login-/Bestätigungsmails
 // nutzt - anderer Schlüsseltyp (BREVO_API_KEY beginnt mit "xkeysib-", der SMTP-Key mit
@@ -29,19 +57,21 @@ const SENDER_NAME = "Kandidatenwerk"
 
 // options (Paket 18): eigener Absendername (Adresse bleibt info@) und Antwortadresse,
 // z.B. für Mails aus dem Reiter "Kommunikation" im Namen eines Mitarbeiters.
+// Liefert die Adressen, an die tatsächlich verschickt wurde (leer: alle ausgelassen).
 export async function sendEmail(
   to: string[],
   subject: string,
   htmlContent: string,
   options: { senderName?: string; replyTo?: { email: string; name?: string }; footerSender?: string; bcc?: string[] } = {}
-): Promise<void> {
+): Promise<string[]> {
   const apiKey = process.env.BREVO_API_KEY
   if (!apiKey) throw new Error("BREVO_API_KEY ist nicht gesetzt.")
   if (to.length === 0) throw new Error("Keine Empfänger angegeben.")
-  // Musterdatensätze haben Adressen auf reservierten Domains (Paket 76) - dorthin nichts
-  // schicken, sonst gibt es Rückläufer bei Brevo.
+  // Reservierte Domains (example.com usw.) und Musterdatensätze (Paket 76): nichts schicken.
   to = to.filter((email) => !isUndeliverableAddress(email))
-  if (to.length === 0) return
+  const samples = to.length ? await sampleOnlyAddresses(to) : new Set<string>()
+  to = to.filter((email) => !samples.has(email.trim().toLowerCase()))
+  if (to.length === 0) return []
 
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
@@ -68,4 +98,5 @@ export async function sendEmail(
     const body = await response.text().catch(() => "")
     throw new Error(`Brevo-Versand fehlgeschlagen (${response.status}): ${body}`)
   }
+  return to
 }
