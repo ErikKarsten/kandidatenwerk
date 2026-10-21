@@ -142,3 +142,15 @@ describe("Qualifikation je Berufsbild (Paket 71)", () => {
     expect(sampleProblems({ werdegang: "", felder: { ausbildung: "Steuerfachangestellte 2019" } }, "steuerfachangestellte")).toEqual(["ohne Werdegang"])
   })
 })
+
+describe("Beschreibung mit Stationen (Paket 75)", () => {
+  it("verlangt die Zeitleiste der letzten zehn Jahre in der Beschreibung", async () => {
+    const { buildSamplePrompt, sampleProblems } = await import("@/lib/sample-candidates")
+    const person = { plz: "53111", geschlecht: "weiblich" as const, herkunft: "deutsch", software: "DATEV" as const, allrounder: false }
+    expect(buildSamplePrompt("Steuerfachangestellte", [person])).toContain("Stationen der letzten zehn Jahre:")
+    const werdegang = "08/2019 – heute · Steuerfachangestellte · Steuerkanzlei, ca. 12 Mitarbeitende\n- Finanzbuchhaltung"
+    const felder = { ausbildung: "Steuerfachangestellte 2019" }
+    expect(sampleProblems({ werdegang, felder, beschreibung: "Steuerfachangestellte, 29 Jahre.\n\nStationen der letzten zehn Jahre:\n2019 – heute: Steuerfachangestellte" }, "steuerfachangestellte")).toEqual([])
+    expect(sampleProblems({ werdegang, felder, beschreibung: "Steuerfachangestellte, 29 Jahre." }, "steuerfachangestellte")).toContain("Beschreibung ohne Stationen")
+  })
+})
