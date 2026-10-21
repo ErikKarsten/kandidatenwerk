@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { NotesSection, type Note } from "./notes-section"
 import { PortalFilesList, type PortalFile } from "./files-list"
+import { PortalCandidateTabs } from "./candidate-tabs"
 import { PortalStatusSelector } from "./status-selector"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
 import { berufsbildLabel } from "@/lib/berufsbild"
@@ -141,54 +142,62 @@ export default async function PortalCandidateDetailPage({
           und Notizen zum Kandidaten, die der Kunde bisher nicht sah. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="order-2 min-w-0 lg:order-1">
-          <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Stammdaten</span>
-            <div className="mt-3 flex flex-col gap-2.5">
-              <FieldRow label="Berufsbild">{berufsbildLabel(candidate.berufsbild, berufsbilder) ?? "—"}</FieldRow>
-              <FieldRow label="E-Mail">{candidate.email || "—"}</FieldRow>
-              <FieldRow label="Telefon">{candidate.phone || "—"}</FieldRow>
-              <FieldRow label="PLZ">{candidate.plz || "—"}</FieldRow>
-              {stammdatenFieldDefinitions.map((f) => (
-                <FieldRow key={f.key} label={f.label}>
-                  {customFields[f.key]?.trim() || "—"}
-                </FieldRow>
-              ))}
-            </div>
-          </div>
+          <PortalCandidateTabs
+            fileCount={files.length}
+            noteCount={notes.length}
+            profile={
+              <div>
+              <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Stammdaten</span>
+                <div className="mt-3 flex flex-col gap-2.5">
+                  <FieldRow label="Berufsbild">{berufsbildLabel(candidate.berufsbild, berufsbilder) ?? "—"}</FieldRow>
+                  <FieldRow label="E-Mail">{candidate.email || "—"}</FieldRow>
+                  <FieldRow label="Telefon">{candidate.phone || "—"}</FieldRow>
+                  <FieldRow label="PLZ">{candidate.plz || "—"}</FieldRow>
+                  {stammdatenFieldDefinitions.map((f) => (
+                    <FieldRow key={f.key} label={f.label}>
+                      {customFields[f.key]?.trim() || "—"}
+                    </FieldRow>
+                  ))}
+                </div>
+              </div>
 
-          <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Zusatzfelder</span>
-            {/* Gleiches Boxen-Layout wie die Zusatzfelder im internen Kandidatenprofil
-                (profile-tab.tsx) - hier bewusst als reine, nicht-interaktive Anzeige statt
-                editierbarer Inputs, damit für den Kunden nicht der Eindruck entsteht, er
-                könnte die Werte hier ändern. */}
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {customFieldDefinitions.map((f) => {
-                const value = customFields[f.key]?.trim()
-                return (
-                  <div key={f.key} className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-gray-400">{f.label}</span>
-                    <div
-                      className="rounded-md border px-3 py-1.5 text-sm text-gray-900"
-                      style={{ borderColor: "#dde3ea", backgroundColor: "#f9fafb" }}
-                    >
-                      {value || "—"}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {files.length > 0 && (
-            <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
-              <PortalFilesList files={files} />
-            </div>
-          )}
-
-          <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
-            <NotesSection clientAssignmentId={assignment.id} notes={notes} />
-          </div>
+              <div className="rounded-xl border bg-white p-6 mb-4" style={{ borderColor: "#dde3ea" }}>
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Zusatzfelder</span>
+                {/* Gleiches Boxen-Layout wie die Zusatzfelder im internen Kandidatenprofil
+                    (profile-tab.tsx) - hier bewusst als reine, nicht-interaktive Anzeige statt
+                    editierbarer Inputs, damit für den Kunden nicht der Eindruck entsteht, er
+                    könnte die Werte hier ändern. */}
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {customFieldDefinitions.map((f) => {
+                    const value = customFields[f.key]?.trim()
+                    return (
+                      <div key={f.key} className="flex flex-col gap-1">
+                        <span className="text-xs font-medium text-gray-400">{f.label}</span>
+                        <div
+                          className="rounded-md border px-3 py-1.5 text-sm text-gray-900"
+                          style={{ borderColor: "#dde3ea", backgroundColor: "#f9fafb" }}
+                        >
+                          {value || "—"}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              </div>
+            }
+            files={
+              <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
+                {files.length > 0 ? <PortalFilesList files={files} /> : <p className="text-sm text-gray-400">Noch keine Dateien hinterlegt.</p>}
+              </div>
+            }
+            notes={
+              <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
+                <NotesSection clientAssignmentId={assignment.id} notes={notes} />
+              </div>
+            }
+          />
         </div>
 
         <aside className="order-1 lg:order-2 lg:sticky lg:top-4 lg:self-start">

@@ -3,7 +3,12 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowRightLeft, StickyNote, Circle, Trash2, Mail } from "lucide-react"
-import { deleteNoteAction } from "./actions"
+import { addNoteAction, deleteNoteAction } from "./actions"
+import { AutoTextarea } from "@/components/ui/auto-textarea"
+
+// Schnellbausteine für die eigene Notiz im Verlauf (Paket 77): ein Klick übernimmt den Text,
+// Details lassen sich vor dem Speichern ergänzen.
+const QUICK_NOTES = ["Angerufen – nicht erreicht", "Mailbox besprochen", "Telefoniert", "Termin vereinbart", "Unterlagen angefordert", "Unterlagen erhalten"]
 
 export interface HistoryEntry {
   id: string
@@ -82,10 +87,12 @@ function CollapsibleTextBlock({ title, text }: { title: string; text: string }) 
 // automatische Einträge wie status_change bleiben als unveränderliches Prüfprotokoll
 // erhalten, siehe deleteNoteAction in actions.ts.
 export function HistorySection({
+  candidateId,
   history,
   leadtableDescription,
   weitereAntworten,
 }: {
+  candidateId: string
   history: HistoryEntry[]
   leadtableDescription?: string | null
   weitereAntworten?: string | null
@@ -94,6 +101,24 @@ export function HistorySection({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [deletePending, startDeleteTransition] = useTransition()
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [note, setNote] = useState("")
+  const [notePending, startNoteTransition] = useTransition()
+  const [noteError, setNoteError] = useState<string | null>(null)
+
+  function handleAddNote() {
+    const text = note.trim()
+    if (!text || notePending) return
+    setNoteError(null)
+    startNoteTransition(async () => {
+      const result = await addNoteAction(candidateId, text)
+      if (result?.error) {
+        setNoteError(result.error)
+        return
+      }
+      setNote("")
+      router.refresh()
+    })
+  }
 
   function handleDelete(entryId: string) {
     setDeleteError(null)
@@ -126,6 +151,50 @@ export function HistorySection({
   return (
     <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#dde3ea" }}>
       <p className="mb-3 text-sm font-semibold text-gray-700">Verlauf ({history.length})</p>
+
+      {/* Eigene Notiz bzw. kurzer Stand, intern (Paket 77). */}
+      <div className="mb-4 flex flex-col gap-2 rounded-lg border p-3" style={{ borderColor: "#dde3ea", backgroundColor: "#f8fafc" }}>
+        <div className="flex flex-wrap gap-1.5">
+          {QUICK_NOTES.map((q) => (
+            <button
+              key={q}
+              type="button"
+              onClick={() => setNote((current) => (current.trim() ? `${current.trim()} · ${q}` : q))}
+              className="rounded-full border bg-white px-2.5 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
+              style={{ borderColor: "#dde3ea" }}
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+        <AutoTextarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault()
+              handleAddNote()
+            }
+          }}
+          placeholder="Notiz oder kurzer Stand, z. B. „Rückruf am Donnerstag vereinbart“"
+          className="min-h-9 w-full rounded-md border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1"
+          style={{ borderColor: "#dde3ea" }}
+          disabled={notePending}
+        />
+        {noteError && <p className="text-xs text-red-600">{noteError}</p>}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-gray-400">Nur intern sichtbar · Strg/Cmd + Enter</span>
+          <button
+            type="button"
+            onClick={handleAddNote}
+            disabled={notePending || !note.trim()}
+            className="rounded-md px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: "#1e56a0" }}
+          >
+            {notePending ? "Speichert…" : "Notiz hinzufügen"}
+          </button>
+        </div>
+      </div>
 
       {isEmpty ? (
         <p className="text-sm text-gray-400">Noch keine Aktivität</p>
