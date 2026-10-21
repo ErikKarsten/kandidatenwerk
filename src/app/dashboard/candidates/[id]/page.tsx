@@ -10,6 +10,7 @@ import { mailCampaignName } from "@/lib/automation-engine"
 import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
+import { revealsSample } from "@/lib/candidate-tags"
 
 export default async function CandidateDetailPage({
   params,
@@ -109,7 +110,10 @@ export default async function CandidateDetailPage({
       : { data: [] }
   const creatorNameById = new Map((creatorProfiles ?? []).map((p) => [p.id, p.full_name]))
 
-  const historyWithCreatorNames = (history ?? []).map((h) => ({
+  // Dass es ein Musterdatensatz ist, sehen nur Admins (Paket 76).
+  const { data: me } = user ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle() : { data: null }
+  const canSeeSamples = me?.role === "agency_admin"
+  const historyWithCreatorNames = (history ?? []).filter((h) => canSeeSamples || !revealsSample(h.content)).map((h) => ({
     id: h.id,
     type: h.type,
     content: h.content,
@@ -274,6 +278,7 @@ export default async function CandidateDetailPage({
   return (
     <CandidateDetail
       candidate={candidateData}
+      canSeeSamples={canSeeSamples}
       history={historyWithCreatorNames}
       files={files}
       activeAssignments={activeAssignments}

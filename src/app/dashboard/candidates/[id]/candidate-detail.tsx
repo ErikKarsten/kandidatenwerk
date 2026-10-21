@@ -74,6 +74,8 @@ interface Candidate {
 
 interface CandidateDetailProps {
   candidate: Candidate
+  // Nur Admins sehen, dass es ein Musterdatensatz ist (Paket 76).
+  canSeeSamples?: boolean
   history: HistoryEntry[]
   files: FileItem[]
   activeAssignments: ActiveAssignment[]
@@ -94,7 +96,7 @@ interface CandidateDetailProps {
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, kanzleien, communication, knownTags, tasks, currentUserId, initialTab }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, canSeeSamples = true, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, kanzleien, communication, knownTags, tasks, currentUserId, initialTab }: CandidateDetailProps) {
   const router = useRouter()
   const goBack = useGoBack("/dashboard/candidates")
   const [statusPending, startStatusTransition] = useTransition()
@@ -256,7 +258,13 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                 </h1>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <StatusMenu value={status} pending={statusPending} onChange={changeStatus} />
-                  <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} compact />
+                  <TagEditor
+                    candidateId={candidate.id}
+                    tags={canSeeSamples ? candidate.tags : candidate.tags.filter((t) => t !== SAMPLE_TAG)}
+                    hiddenTags={canSeeSamples ? [] : candidate.tags.filter((t) => t === SAMPLE_TAG)}
+                    knownTags={canSeeSamples ? knownTags : knownTags.filter((t) => t !== SAMPLE_TAG)}
+                    compact
+                  />
                 </div>
               </div>
             </div>
@@ -360,6 +368,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                 candidateId={candidate.id}
                 candidateStatus={candidate.status}
                 isSample={candidate.tags.includes(SAMPLE_TAG)}
+                canSeeSamples={canSeeSamples}
                 candidateName={`${candidate.first_name} ${candidate.last_name}`.trim()}
                 berufsbild={candidate.berufsbild}
                 selfLat={candidate.lat}

@@ -554,6 +554,7 @@ export type Database = {
           close_status_at: string | null
           kanzleistelle_synced_at: string | null
           kanzleistelle_sync_error: string | null
+          live_since: string | null
         }
         Insert: {
           id?: string
@@ -584,6 +585,7 @@ export type Database = {
           close_status_at?: string | null
           kanzleistelle_synced_at?: string | null
           kanzleistelle_sync_error?: string | null
+          live_since?: string | null
         }
         Update: {
           id?: string
@@ -614,6 +616,7 @@ export type Database = {
           close_status_at?: string | null
           kanzleistelle_synced_at?: string | null
           kanzleistelle_sync_error?: string | null
+          live_since?: string | null
         }
         Relationships: [
           {

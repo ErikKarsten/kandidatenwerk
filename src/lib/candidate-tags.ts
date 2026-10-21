@@ -17,7 +17,13 @@ export function normalizeTags(tags: string[]): string[] {
   return out.slice(0, MAX_TAGS)
 }
 
-// Im anonymisierten Modus werden interne Tags (Musterdatensatz) nicht gezeigt.
-export function visibleTags(tags: string[] | null | undefined, showMode: boolean): string[] {
-  return (tags ?? []).filter((t) => !(showMode && t === SAMPLE_TAG))
+// Im anonymisierten Modus werden interne Tags (Musterdatensatz) nicht gezeigt - und nur
+// Admins sehen, dass es ein Musterdatensatz ist (Paket 76).
+export function visibleTags(tags: string[] | null | undefined, showMode: boolean, canSeeSamples = true): string[] {
+  return (tags ?? []).filter((t) => !((showMode || !canSeeSamples) && t === SAMPLE_TAG))
+}
+
+// Verlaufseinträge, die einen Musterdatensatz verraten (nur für Admins).
+export function revealsSample(content: string | null | undefined): boolean {
+  return /musterdatensatz|beispielkandidat/i.test(content ?? "")
 }

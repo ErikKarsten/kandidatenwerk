@@ -1,4 +1,5 @@
 import { applyEmailLogo, hasEmailLayout, renderEmailLayout } from "@/lib/email-layout"
+import { isUndeliverableAddress } from "@/lib/sample-contact"
 import { createClient } from "@supabase/supabase-js"
 
 // Logo aus den Kontoeinstellungen (agency_settings.logo_url), 5 Minuten zwischengespeichert.
@@ -37,6 +38,10 @@ export async function sendEmail(
   const apiKey = process.env.BREVO_API_KEY
   if (!apiKey) throw new Error("BREVO_API_KEY ist nicht gesetzt.")
   if (to.length === 0) throw new Error("Keine Empfänger angegeben.")
+  // Musterdatensätze haben Adressen auf reservierten Domains (Paket 76) - dorthin nichts
+  // schicken, sonst gibt es Rückläufer bei Brevo.
+  to = to.filter((email) => !isUndeliverableAddress(email))
+  if (to.length === 0) return
 
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",

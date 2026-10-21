@@ -12,6 +12,7 @@ import { generateText } from "@/lib/llm"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
 import { cleanWerdegang } from "@/lib/cv-werdegang"
 import { SAMPLE_FOCUS_OPTIONS, type SampleSoftware } from "@/lib/sample-focus"
+import { sampleEmailDomain, samplePhone } from "@/lib/sample-contact"
 
 export const SAMPLE_COUNT = 3
 export const SAMPLE_RADIUS_KM = 15
@@ -243,8 +244,9 @@ export function parseSampleAnswer(text: string, count: number): SampleCandidate[
   })
 }
 
-// "Jürgen Müller-Weiß" -> "juergen.mueller-weiss@example.com" (reservierte Domain, kein echtes Postfach).
-export function sampleEmail(first: string, last: string): string {
+// "Jürgen Müller-Weiß" -> "juergen.mueller-weiss@example.com" - Domain siehe sample-contact.ts
+// (nie ein öffentlicher Mailanbieter).
+export function sampleEmail(first: string, last: string, domain = sampleEmailDomain()): string {
   const slug = (s: string) =>
     s
       .toLowerCase()
@@ -254,7 +256,7 @@ export function sampleEmail(first: string, last: string): string {
       .replace(/ß/g, "ss")
       .normalize("NFD")
       .replace(/[^a-z0-9-]+/g, "")
-  return `${slug(first)}.${slug(last)}@example.com`
+  return `${slug(first)}.${slug(last)}@${domain}`
 }
 
 // KI-Aufruf für mehrere Personen desselben Berufsbilds. Jeder Datensatz wird geprüft
@@ -299,7 +301,7 @@ export async function insertSampleCandidate(
       first_name: sample.first_name,
       last_name: sample.last_name,
       email: sampleEmail(sample.first_name, sample.last_name),
-      phone: `+49 30 23125 ${200 + Math.floor(Math.random() * 800)}`,
+      phone: samplePhone(),
       status: "vorqualifiziert",
       source: "manual",
       berufsbild,

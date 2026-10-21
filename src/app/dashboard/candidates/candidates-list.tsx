@@ -60,6 +60,8 @@ export interface CandidateListItem {
 interface CandidatesListProps {
   candidates: CandidateListItem[]
   showArchived?: boolean
+  // Nur Admins sehen den Tag Musterdatensatz (Paket 76).
+  canSeeSamples?: boolean
   trulyEmpty: boolean
   totalCount: number
   page: number
@@ -80,6 +82,7 @@ interface CandidatesListProps {
 export function CandidatesList({
   candidates,
   showArchived = false,
+  canSeeSamples = true,
   trulyEmpty,
   totalCount,
   page,
@@ -252,7 +255,7 @@ export function CandidatesList({
             style={{ borderColor: "#dde3ea" }}
           >
             <option value="alle">Alle Tags</option>
-            {visibleTags(knownTags, showMode).map((t) => (
+            {visibleTags(knownTags, showMode, canSeeSamples).map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
@@ -311,9 +314,9 @@ export function CandidatesList({
                         >
                           {showMode ? anonymousName(c.id) : `${c.first_name} ${c.last_name}`}
                         </Link>
-                        {visibleTags(c.tags, showMode).length > 0 && (
+                        {visibleTags(c.tags, showMode, canSeeSamples).length > 0 && (
                           <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
-                            {visibleTags(c.tags, showMode).map((t) => (
+                            {visibleTags(c.tags, showMode, canSeeSamples).map((t) => (
                               <TagChip key={t} tag={t} />
                             ))}
                           </span>
