@@ -412,6 +412,7 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
             save={saveOpenQuestionsAction}
           />
           <HistorySection
+            candidateId={candidate.id}
             history={history}
             leadtableDescription={candidate.description}
             weitereAntworten={candidate.custom_fields?.[WEITERE_ANTWORTEN_KEY]}

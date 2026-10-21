@@ -5,6 +5,8 @@
 // schickt jede eingehende Mail als JSON an /api/webhooks/brevo-inbound. Die Antwort wird
 // dem Kandidaten zugeordnet (über die Adresse, sonst über die Absender-Mail), im Reiter
 // "Kommunikation" und im Verlauf gezeigt, und der Mitarbeiter bekommt eine Kopie.
+// Anhänge (Paket 77) lädt Kandidatenwerk bei Brevo herunter und legt sie beim Kandidaten
+// unter "Dateien" ab; eingebettete Bilder (z. B. Logos aus Signaturen) bleiben weg.
 // Ohne INBOUND_REPLY_DOMAIN gehen Antworten wie bisher direkt an den Mitarbeiter.
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
@@ -29,6 +31,14 @@ interface Mailbox {
   Name?: string | null
 }
 
+export interface InboundAttachment {
+  Name?: string | null
+  ContentType?: string | null
+  ContentLength?: number | null
+  ContentID?: string | null
+  DownloadToken?: string | null
+}
+
 export interface InboundItem {
   MessageId?: string | null
   From?: Mailbox | null
@@ -38,6 +48,70 @@ export interface InboundItem {
   RawTextBody?: string | null
   ExtractedMarkdownMessage?: string | null
   SentAtDate?: string | null
+  Attachments?: InboundAttachment[] | null
+}
+
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
+
+// Welche Anhänge übernommen werden: echte Dateien, keine eingebetteten Bilder.
+export function attachmentsToSave(list: InboundAttachment[] | null | undefined): InboundAttachment[] {
+  return (list ?? []).filter(
+    (a) =>
+      !!a.DownloadToken &&
+      !!a.Name?.trim() &&
+      !(a.ContentID && /^image\//i.test(a.ContentType ?? "")) &&
+      (a.ContentLength ?? 0) <= MAX_ATTACHMENT_BYTES
+  )
+}
+
+// Dateiname für den Speicher: ohne Pfadtrenner und Steuerzeichen.
+function storageName(name: string): string {
+  return name.replace(/[\/\\\u0000-\u001f]/g, "_").slice(0, 150)
+}
+
+export async function saveInboundAttachments(
+  db: SupabaseClient<Database>,
+  candidateId: string,
+  attachments: InboundAttachment[],
+  fetchImpl: typeof fetch = fetch
+): Promise<{ saved: string[]; failed: string[] }> {
+  const saved: string[] = []
+  const failed: string[] = []
+  for (const a of attachmentsToSave(attachments)) {
+    const name = a.Name!.trim()
+    try {
+      const res = await fetchImpl(`https://api.brevo.com/v3/inbound/attachments/${encodeURIComponent(a.DownloadToken!)}`, {
+        headers: { "api-key": process.env.BREVO_API_KEY ?? "", Accept: "*/*" },
+      })
+      if (!res.ok) throw new Error(`Brevo ${res.status}`)
+      const content = await res.arrayBuffer()
+      const path = `${candidateId}/${Date.now()}-${storageName(name)}`
+      const { error: uploadError } = await db.storage.from("candidate-files").upload(path, content, { contentType: a.ContentType || undefined })
+      if (uploadError) throw new Error(uploadError.message)
+      const { error: insertError } = await db.from("candidate_files").insert({
+        candidate_id: candidateId,
+        file_name: name,
+        file_path: path,
+        file_size: content.byteLength,
+        mime_type: a.ContentType || null,
+      })
+      if (insertError) throw new Error(insertError.message)
+      saved.push(name)
+    } catch (err) {
+      console.error(`[brevo-inbound] Anhang „${name}“: ${err instanceof Error ? err.message : err}`)
+      failed.push(name)
+    }
+  }
+  return { saved, failed }
+}
+
+function attachmentNote(saved: string[], failed: string[]): string {
+  return [
+    saved.length ? `Anhänge (im Reiter „Dateien“): ${saved.join(", ")}` : "",
+    failed.length ? `Nicht übernommen: ${failed.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
 }
 
 function escapeHtml(s: string): string {
@@ -70,7 +144,7 @@ export async function processInboundItem(db: SupabaseClient<Database>, item: Inb
 
   const body = (item.ExtractedMarkdownMessage || item.RawTextBody || "").trim() || "(leere Nachricht)"
   const subject = item.Subject?.trim() || (original.subject ? `Re: ${original.subject}` : "Antwort")
-  const { error } = await db.from("candidate_messages").insert({
+  const { data: inserted, error } = await db.from("candidate_messages").insert({
     candidate_id: original.candidate_id,
     channel: "email",
     direction: "eingehend",
@@ -81,11 +155,16 @@ export async function processInboundItem(db: SupabaseClient<Database>, item: Inb
     sent_by: original.sent_by,
     status: "gesendet",
     external_id: item.MessageId ?? null,
-  })
+  }).select("id").single()
   if (error) {
     if (error.code === "23505") return "bereits verarbeitet"
     throw new Error(error.message)
   }
+
+  // Anhänge in die Dateien des Kandidaten, Hinweis an der Nachricht.
+  const { saved, failed } = await saveInboundAttachments(db, original.candidate_id, item.Attachments ?? [])
+  const note = attachmentNote(saved, failed)
+  if (note) await db.from("candidate_messages").update({ body: `${body}\n\n${note}` }).eq("id", inserted.id)
 
   const [{ data: candidate }, { data: employee }] = await Promise.all([
     db.from("candidates").select("first_name, last_name, email").eq("id", original.candidate_id).maybeSingle(),
@@ -95,7 +174,7 @@ export async function processInboundItem(db: SupabaseClient<Database>, item: Inb
   await db.from("candidate_history").insert({
     candidate_id: original.candidate_id,
     type: "email",
-    content: `Antwort per E-Mail: „${subject}“`,
+    content: `Antwort per E-Mail: „${subject}“${saved.length ? ` – ${saved.length === 1 ? "1 Anhang" : `${saved.length} Anhänge`} unter „Dateien“` : ""}`,
   })
 
   // Kopie an den Mitarbeiter, der die Mail geschickt hat.
@@ -106,7 +185,7 @@ export async function processInboundItem(db: SupabaseClient<Database>, item: Inb
       `Antwort von ${name}: ${subject}`,
       renderEmailLayout({
         heading: `Antwort von ${escapeHtml(name)}`,
-        contentHtml: `<p style="margin:0 0 8px;color:#6b7280;font-size:13px;">${escapeHtml(subject)}</p><div style="white-space:pre-wrap;border-left:3px solid #dde3ea;padding-left:12px;">${escapeHtml(body)}</div>${emailButton(link, "Im Kandidatenwerk öffnen")}`,
+        contentHtml: `<p style="margin:0 0 8px;color:#6b7280;font-size:13px;">${escapeHtml(subject)}</p><div style="white-space:pre-wrap;border-left:3px solid #dde3ea;padding-left:12px;">${escapeHtml(note ? `${body}\n\n${note}` : body)}</div>${emailButton(link, "Im Kandidatenwerk öffnen")}`,
         footerNote: "Die Antwort steht auch im Reiter „Kommunikation“ beim Kandidaten.",
       }),
       candidate?.email ? { replyTo: { email: candidate.email, name } } : {}
