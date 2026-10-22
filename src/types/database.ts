@@ -916,6 +916,7 @@ export type Database = {
           updated_at: string
           offene_fragen: string | null
           cv_werdegang: string | null
+          cv_werdegang_input: string | null
           bewerbung: string | null
         }
         Insert: {
@@ -944,6 +945,7 @@ export type Database = {
           updated_at?: string
           offene_fragen?: string | null
           cv_werdegang?: string | null
+          cv_werdegang_input?: string | null
           bewerbung?: string | null
         }
         Update: {
@@ -972,6 +974,7 @@ export type Database = {
           updated_at?: string
           offene_fragen?: string | null
           cv_werdegang?: string | null
+          cv_werdegang_input?: string | null
           bewerbung?: string | null
         }
         Relationships: [
