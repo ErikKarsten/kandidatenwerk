@@ -41,3 +41,30 @@ describe("Anhänge aus E-Mail-Antworten", () => {
     expect(result).toEqual({ saved: [], failed: ["Lebenslauf.pdf"] })
   })
 })
+
+describe("Anhänge an der Nachricht (Paket 78)", () => {
+  const message = {
+    direction: "eingehend",
+    created_at: "2026-10-22T08:25:17.900Z",
+    body: "Anbei mein Lebenslauf.\n\nAnhänge (im Reiter „Dateien“): Lebenslauf.pdf, Zeugnis, Teil 1.pdf",
+  }
+  const files = [
+    { name: "Lebenslauf.pdf", created_at: "2026-10-22T08:25:18.385Z" },
+    { name: "Zeugnis, Teil 1.pdf", created_at: "2026-10-22T08:25:19.100Z" },
+    { name: "Lebenslauf.pdf", created_at: "2026-09-01T10:00:00.000Z" },
+    { name: "Foto.jpg", created_at: "2026-10-22T08:25:18.500Z" },
+  ]
+
+  it("findet die Dateien, die mit der Antwort gekommen sind", async () => {
+    const { filesOfMessage } = await import("@/lib/inbound-replies")
+    expect(filesOfMessage(message, files)).toEqual([files[0], files[1]])
+    expect(filesOfMessage({ ...message, direction: "ausgehend" }, files)).toEqual([])
+    expect(filesOfMessage({ ...message, body: "Ohne Anhang" }, files)).toEqual([])
+  })
+
+  it("nimmt den Hinweis aus dem Text, wenn die Dateien darunter stehen", async () => {
+    const { bodyWithoutSavedNote } = await import("@/lib/inbound-replies")
+    expect(bodyWithoutSavedNote(message.body)).toBe("Anbei mein Lebenslauf.")
+    expect(bodyWithoutSavedNote("Text\n\nNicht übernommen: gross.zip")).toBe("Text\n\nNicht übernommen: gross.zip")
+  })
+})

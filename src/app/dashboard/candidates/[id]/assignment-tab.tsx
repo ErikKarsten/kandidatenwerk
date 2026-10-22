@@ -54,6 +54,7 @@ export function AssignmentTab({
   candidateId,
   candidateStatus,
   isSample = false,
+  canSeeSamples = true,
   candidateName,
   berufsbild,
   selfLat,
@@ -68,6 +69,7 @@ export function AssignmentTab({
   candidateStatus: string
   // Musterdatensätze (Paket 62) lassen sich keiner Kanzlei zuordnen.
   isSample?: boolean
+  canSeeSamples?: boolean
   candidateName: string
   berufsbild: string | null
   selfLat: number | null
@@ -203,7 +205,9 @@ export function AssignmentTab({
             {!assignable && (
               <p className="mt-3 rounded-md px-3 py-2 text-xs" style={{ backgroundColor: "#fef3c7", color: "#92400e" }}>
                 {isSample
-                  ? "Musterdatensätze dienen nur zum Vorführen und lassen sich keiner Kanzlei zuordnen."
+                  ? canSeeSamples
+                    ? "Musterdatensätze ordnet Kandidatenwerk Live-Kunden automatisch zu (je Kanzlei fünf über drei Monate) – von Hand lassen sie sich nicht zuordnen."
+                    : "Dieser Kandidat ist exklusiv einer Kanzlei zugeordnet und lässt sich nicht weiter zuordnen."
                   : "Zuordnen ist nur bei vorqualifizierten Kandidaten möglich – bitte zuerst den Status auf „Vorqualifiziert“ setzen."}
               </p>
             )}

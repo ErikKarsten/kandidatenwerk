@@ -398,19 +398,17 @@ export function ClientDetail({
             </a>
           )}
 
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-            style={{
-              backgroundColor: client.active ? "#1a9a6a18" : "#9ca3af18",
-              color: client.active ? "#1a9a6a" : "#6b7280",
-            }}
-          >
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: client.active ? "#1a9a6a" : "#9ca3af" }}
-            />
-            {client.active ? "Aktiv" : "Inaktiv"}
-          </span>
+          {/* Projektphase statt "Aktiv" (Paket 78): "Live" steht nur da, wenn die Kanzlei live ist. */}
+          {(() => {
+            const phase = PROJECT_PHASES.find((p) => p.value === project.meta.project_phase)
+            const color = phase?.color ?? "#6b7280"
+            return (
+              <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: `${color}18`, color }}>
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+                {phase?.label ?? "Ohne Phase"}
+              </span>
+            )
+          })()}
 
           {client.status === "Archiviert" && (
             <>

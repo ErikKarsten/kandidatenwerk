@@ -12,6 +12,7 @@ import { generateText } from "@/lib/llm"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
 import { cleanWerdegang } from "@/lib/cv-werdegang"
 import { SAMPLE_FOCUS_OPTIONS, type SampleSoftware } from "@/lib/sample-focus"
+import { sampleEmailDomain, samplePhone } from "@/lib/sample-contact"
 
 export const SAMPLE_COUNT = 3
 export const SAMPLE_RADIUS_KM = 15
@@ -156,10 +157,12 @@ function qualificationRule(kind: QualificationKind, label: string): string {
 // Prüft einen erzeugten Musterdatensatz (Paket 71): Werdegang vorhanden, Qualifikation des
 // Berufsbilds heute erreicht. Liefert die Probleme (leer = in Ordnung).
 const PLANNED = /geplant|angestrebt|in vorbereitung|läuft|laufend|voraussichtlich|berufsbegleitend|derzeit in|bereitet sich/i
-export function sampleProblems(s: Pick<SampleCandidate, "werdegang" | "felder">, berufsbild: string): string[] {
+export function sampleProblems(s: Pick<SampleCandidate, "werdegang" | "felder"> & { beschreibung?: string }, berufsbild: string): string[] {
   const problems: string[] = []
   const werdegang = s.werdegang?.trim() ?? ""
   if (!werdegang || !/·/.test(werdegang)) problems.push("ohne Werdegang")
+  // Paket 75: Beschreibung mit grober Zeitleiste der letzten zehn Jahre.
+  if ("beschreibung" in s && !/stationen/i.test(String(s.beschreibung ?? "")) ) problems.push("Beschreibung ohne Stationen")
   const ausbildung = String(s.felder?.ausbildung ?? "")
   const strict: Partial<Record<QualificationKind, RegExp>> = {
     steuerberater: /steuerberater/i,
@@ -210,7 +213,7 @@ export function buildSamplePrompt(berufsbildLabel: string, people: SamplePerson[
       : []),
     ...(extra ? [`- Zusätzliche Vorgaben des Vertriebs (unbedingt berücksichtigen): ${extra}`] : []),
     // Ohne Namen - sonst stünde er im anonymisierten Modus trotzdem in der Beschreibung.
-    '- beschreibung: 2-3 Sätze Kurzprofil aus Sicht des Recruiters, sachlich, ohne den Namen der Person (z. B. "Steuerfachangestellte, 29 Jahre, ...").',
+    '- beschreibung: 2-3 Sätze Kurzprofil aus Sicht des Recruiters, sachlich, ohne den Namen der Person (z. B. "Steuerfachangestellte, 29 Jahre, ..."). Danach eine Leerzeile, die Zeile "Stationen der letzten zehn Jahre:" und je Station eine Zeile "JJJJ – heute: Position, Steuerkanzlei ca. N Mitarbeitende – Schwerpunkt der Aufgaben" bzw. "JJJJ – JJJJ: ...", neueste zuerst, dieselben Stationen wie im Werdegang. Änderungen der Aufgaben innerhalb einer Station ergänzen (z. B. "ab 2022 zusätzlich Jahresabschlüsse", "seit 2023 Teamleitung Lohn").',
     '- offene_fragen: 2-3 Fragen des Kandidaten an den neuen Arbeitgeber, je Zeile mit "- ".',
     '- felder: ausbildung (alle abgeschlossenen Abschlüsse mit Jahr, der höchste zuletzt, z. B. "Steuerfachangestellte 2012, Steuerfachwirtin 2016"), alter (Zahl), verfuegbar_ab, wechselgrund, erwartungen_neuer_ag, bevorzugter_bereich, datev_erfahrung, anzahl_ag_5_jahre (Zahl), aktuelle_steuerkanzlei ("Ja"), kanzleigroesse, gehaltsvorstellung (Jahresbrutto in €), erreichbarkeit.',
     `- werdegang: lückenloser beruflicher Werdegang der letzten zehn Jahre (${year - 10} bis heute; bei Jüngeren ab Ausbildungsbeginn), neueste Station zuerst, nur Steuerkanzleien (einschließlich Ausbildung). Je Station eine Kopfzeile "MM/JJJJ – MM/JJJJ · Position · Steuerkanzlei, ca. N Mitarbeitende" (aktuelle Station "MM/JJJJ – heute"), darunter 3-5 typische Aufgaben je Zeile mit "- ", zwischen den Stationen eine Leerzeile. Die aktuelle Station zeigt die heutige Position ${berufsbildLabel}; Abschlüsse bzw. Bestellung im passenden Jahr. Keine Kanzleinamen, keine Orte, keine Branchen.`,
@@ -241,8 +244,10 @@ export function parseSampleAnswer(text: string, count: number): SampleCandidate[
   })
 }
 
-// "Jürgen Müller-Weiß" -> "juergen.mueller-weiss@example.com" (reservierte Domain, kein echtes Postfach).
-export function sampleEmail(first: string, last: string): string {
+// "Jürgen Müller-Weiß" -> z. B. "juergen.mueller-weiss84@gmx.de" - Domain siehe
+// sample-contact.ts. Die Zahl (Geburtsjahr-Endung oder zweistellig) macht es unwahrscheinlich,
+// dass die Adresse einem echten Kandidaten gleichen Namens gehört.
+export function sampleEmail(first: string, last: string, random: () => number = Math.random, domain = sampleEmailDomain(random)): string {
   const slug = (s: string) =>
     s
       .toLowerCase()
@@ -252,7 +257,11 @@ export function sampleEmail(first: string, last: string): string {
       .replace(/ß/g, "ss")
       .normalize("NFD")
       .replace(/[^a-z0-9-]+/g, "")
-  return `${slug(first)}.${slug(last)}@example.com`
+  const f = slug(first)
+  const l = slug(last)
+  const n = String(10 + Math.floor(random() * 90))
+  const patterns = [`${f}.${l}${n}`, `${f[0]}.${l}${n}`, `${l}.${f}${n}`, `${f}${l}${n}`, `${f}.${l}.${n}`]
+  return `${patterns[Math.floor(random() * patterns.length)]}@${domain}`
 }
 
 // KI-Aufruf für mehrere Personen desselben Berufsbilds. Jeder Datensatz wird geprüft
@@ -297,7 +306,7 @@ export async function insertSampleCandidate(
       first_name: sample.first_name,
       last_name: sample.last_name,
       email: sampleEmail(sample.first_name, sample.last_name),
-      phone: `+49 30 23125 ${200 + Math.floor(Math.random() * 800)}`,
+      phone: samplePhone(),
       status: "vorqualifiziert",
       source: "manual",
       berufsbild,

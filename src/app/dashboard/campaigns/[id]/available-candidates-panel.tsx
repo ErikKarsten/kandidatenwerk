@@ -13,6 +13,7 @@ import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/li
 import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 import { RadiusControl } from "@/components/ui/radius-control"
 import { isNationwide } from "@/lib/radius"
+import { LIVE_PHASE, PROJECT_PHASES } from "@/lib/client-project"
 
 // Leaflet greift beim Import auf Browser-Globals zu - nur clientseitig laden.
 const MatchesMap = dynamic(() => import("@/components/dashboard/matches-map").then((m) => m.MatchesMap), {
@@ -43,9 +44,13 @@ interface SearchState {
 // werden (außer "Weiterschieben" im Kandidatenprofil).
 export function AvailableCandidatesPanel({
   campaign,
+  clientPhase,
 }: {
   campaign: { id: string; title: string; berufsbild: string | null; radius_km: number | null; lat: number | null; lng: number | null; extra_points?: { lat: number; lng: number; plz?: string | null }[] }
+  // Projektphase der Kanzlei: zuordnen nur bei "Live" (Paket 78).
+  clientPhase: string | null
 }) {
+  const clientLive = clientPhase === LIVE_PHASE
   const bb = useBerufsbilder()
   const berufsbildLabel = (value: string | null) => bb.label(value) ?? "ohne Berufsbild"
   const router = useRouter()
@@ -111,6 +116,12 @@ export function AvailableCandidatesPanel({
 
   return (
     <div className="flex flex-col gap-3">
+      {!clientLive && (
+        <p className="rounded-md border px-3 py-2 text-sm" style={{ borderColor: "#fde68a", backgroundColor: "#fffbeb", color: "#92400e" }}>
+          Die Kanzlei ist noch nicht live (Projektphase „{PROJECT_PHASES.find((p) => p.value === clientPhase)?.label ?? "ohne Phase"}“). Kandidaten lassen sich erst
+          zuordnen, wenn die Phase auf „Live“ steht.
+        </p>
+      )}
       {!campaign.berufsbild ? (
         <p className="text-sm text-red-600">
           Für diese Kampagne ist kein Berufsbild hinterlegt – bitte unter „Einrichtung“ ergänzen, dann erscheinen hier passende Kandidaten.
@@ -211,7 +222,8 @@ export function AvailableCandidatesPanel({
                     <td className="px-4 py-2.5 text-right">
                       <button
                         type="button"
-                        disabled={done || assigningId === c.id}
+                        disabled={done || assigningId === c.id || !clientLive}
+                        title={clientLive ? undefined : "Erst möglich, wenn die Kanzlei live ist"}
                         onClick={() => handleAssign(c.id)}
                         className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                         style={{ backgroundColor: done ? "#1a9a6a" : "#1e56a0" }}

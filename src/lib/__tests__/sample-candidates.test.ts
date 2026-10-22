@@ -38,8 +38,9 @@ describe("parseSampleAnswer", () => {
 })
 
 describe("sampleEmail", () => {
-  it("baut eine Adresse auf example.com ohne Umlaute", () => {
-    expect(sampleEmail("Jürgen", "Müller-Weiß")).toBe("juergen.mueller-weiss@example.com")
+  it("baut eine Adresse ohne Umlaute mit Zahl", () => {
+    expect(sampleEmail("Jürgen", "Müller-Weiß", () => 0, "gmx.de")).toBe("juergen.mueller-weiss10@gmx.de")
+    for (let i = 0; i < 50; i++) expect(sampleEmail("Özlem", "Şahin")).toMatch(/^[a-z0-9.-]*\d\d@(gmail\.com|gmx\.de|yahoo\.com|freenet\.de)$/)
   })
 })
 
@@ -140,5 +141,17 @@ describe("Qualifikation je Berufsbild (Paket 71)", () => {
     expect(sampleProblems({ werdegang, felder: { ausbildung: "Steuerfachangestellte 2010; Steuerfachwirtin geplant" } }, "steuerberater")).toContain("Qualifikation fehlt in der Ausbildung")
     expect(sampleProblems({ werdegang, felder: { ausbildung: "Steuerfachangestellte 2016; Steuerfachwirt-Lehrgang läuft" } }, "steuerfachwirt")).toContain("Qualifikation erst geplant")
     expect(sampleProblems({ werdegang: "", felder: { ausbildung: "Steuerfachangestellte 2019" } }, "steuerfachangestellte")).toEqual(["ohne Werdegang"])
+  })
+})
+
+describe("Beschreibung mit Stationen (Paket 75)", () => {
+  it("verlangt die Zeitleiste der letzten zehn Jahre in der Beschreibung", async () => {
+    const { buildSamplePrompt, sampleProblems } = await import("@/lib/sample-candidates")
+    const person = { plz: "53111", geschlecht: "weiblich" as const, herkunft: "deutsch", software: "DATEV" as const, allrounder: false }
+    expect(buildSamplePrompt("Steuerfachangestellte", [person])).toContain("Stationen der letzten zehn Jahre:")
+    const werdegang = "08/2019 – heute · Steuerfachangestellte · Steuerkanzlei, ca. 12 Mitarbeitende\n- Finanzbuchhaltung"
+    const felder = { ausbildung: "Steuerfachangestellte 2019" }
+    expect(sampleProblems({ werdegang, felder, beschreibung: "Steuerfachangestellte, 29 Jahre.\n\nStationen der letzten zehn Jahre:\n2019 – heute: Steuerfachangestellte" }, "steuerfachangestellte")).toEqual([])
+    expect(sampleProblems({ werdegang, felder, beschreibung: "Steuerfachangestellte, 29 Jahre." }, "steuerfachangestellte")).toContain("Beschreibung ohne Stationen")
   })
 })

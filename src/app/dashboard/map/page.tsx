@@ -3,6 +3,7 @@ import { MapOverview, type MapClientPoint, type MapCandidatePoint } from "./map-
 import { getActiveAdAreas } from "@/lib/meta-campaigns-queries"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
+import { LIVE_PHASE } from "@/lib/client-project"
 
 type MapCandidateRow = { id: string; first_name: string; last_name: string; lat: number | null; lng: number | null; campaign_id: string | null; berufsbild: string | null }
 
@@ -37,7 +38,7 @@ export default async function MapPage() {
   const [{ data: clients }, { data: candidates }, { data: campaigns }, adAreas, { data: locations }] = await Promise.all([
     supabase
       .from("clients")
-      .select("id, name, lat, lng")
+      .select("id, name, lat, lng, project_phase")
       .not("lat", "is", null)
       .not("lng", "is", null),
     // Seitenweise: mit den Musterdatensätzen (Paket 62) sind es mehr als die 1.000 Zeilen,
@@ -47,7 +48,7 @@ export default async function MapPage() {
     // Werbegebiete laufender Meta-Kampagnen (Atlas T-38) für die Ebene "Werbegebiete".
     getActiveAdAreas(supabase as unknown as SupabaseClient),
     // Alle Standorte aller Kunden als Kanzlei-Punkte (Paket 16, T-75).
-    supabase.from("client_locations").select("client_id, plz, ort, lat, lng, clients(name)").not("lat", "is", null).not("lng", "is", null),
+    supabase.from("client_locations").select("client_id, plz, ort, lat, lng, clients(name, project_phase)").not("lat", "is", null).not("lng", "is", null),
   ])
 
   const clientList = clients ?? []
@@ -55,19 +56,23 @@ export default async function MapPage() {
   const campaignClientId = new Map((campaigns ?? []).map((c) => [c.id, c.client_id]))
 
   const located = new Set((locations ?? []).map((l) => l.client_id))
+  // Als Kanzlei-Punkte nur Kunden in der Projektphase "Live" (Paket 78). Der ungefähre
+  // Standort von Kandidaten (über die Kampagne) nutzt weiter alle Kunden.
   const clientPoints: MapClientPoint[] = [
-    ...(locations ?? []).map((l) => {
-      const rel = l.clients as { name: string } | { name: string }[] | null
+    ...(locations ?? []).flatMap((l) => {
+      const rel = l.clients as { name: string; project_phase: string | null } | { name: string; project_phase: string | null }[] | null
+      const client = Array.isArray(rel) ? rel[0] : rel
+      if (client?.project_phase !== LIVE_PHASE) return []
       return {
         id: l.client_id,
-        name: (Array.isArray(rel) ? rel[0]?.name : rel?.name) ?? "Kanzlei",
+        name: client.name ?? "Kanzlei",
         lat: l.lat as number,
         lng: l.lng as number,
         place: [l.plz, l.ort].filter(Boolean).join(" "),
       }
     }),
     // Kunden ohne Standortliste (sollte nach der Migration nicht vorkommen) wie bisher.
-    ...clientList.filter((c) => !located.has(c.id)).map((c) => ({ id: c.id, name: c.name, lat: c.lat as number, lng: c.lng as number })),
+    ...clientList.filter((c) => !located.has(c.id) && c.project_phase === LIVE_PHASE).map((c) => ({ id: c.id, name: c.name, lat: c.lat as number, lng: c.lng as number })),
   ]
 
   const candidatePoints: MapCandidatePoint[] = []

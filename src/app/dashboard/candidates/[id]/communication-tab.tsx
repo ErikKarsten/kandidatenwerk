@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Send } from "lucide-react"
+import { Download, Paperclip, Send } from "lucide-react"
 import { substituteTemplateVars, type TemplateVars } from "@/lib/automation-engine"
 import { sendCandidateEmailAction } from "./communication-actions"
 
@@ -18,6 +18,41 @@ export interface CandidateMessage {
   status: string
   error: string | null
   createdAt: string
+  // Anhänge einer Antwort, abgelegt unter "Dateien" (Paket 78).
+  attachments?: MessageAttachment[]
+}
+
+export interface MessageAttachment {
+  id: string
+  name: string
+  size: number | null
+  url: string | null
+  downloadUrl: string | null
+}
+
+// Anhänge direkt sichtbar, auch bei zugeklappter Nachricht: Name öffnet, Pfeil lädt herunter.
+function AttachmentChips({ attachments }: { attachments: MessageAttachment[] }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {attachments.map((a) => (
+        <span key={a.id} className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-white px-2 py-1 text-xs" style={{ borderColor: "#dde3ea" }}>
+          <Paperclip size={12} className="shrink-0 text-gray-400" />
+          {a.url ? (
+            <a href={a.url} target="_blank" rel="noreferrer" className="truncate font-medium hover:underline" style={{ color: "#1e56a0" }} title="Öffnen">
+              {a.name}
+            </a>
+          ) : (
+            <span className="truncate font-medium text-gray-700">{a.name}</span>
+          )}
+          {a.downloadUrl && (
+            <a href={a.downloadUrl} className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Herunterladen" aria-label={`${a.name} herunterladen`}>
+              <Download size={12} />
+            </a>
+          )}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 export interface MessageTemplate {
@@ -141,6 +176,7 @@ export function CommunicationTab({
                 {m.status === "fehler" ? " · fehlgeschlagen" : ""}
               </span>
             </button>
+            {!!m.attachments?.length && <AttachmentChips attachments={m.attachments} />}
             {openId === m.id && (
               <div className="mt-2 border-t pt-2" style={{ borderColor: "#eef2f6" }}>
                 <p className="text-xs text-gray-500">{m.direction === "eingehend" ? `Von ${m.fromAddress ?? "?"}` : `An ${m.toAddress}`}</p>

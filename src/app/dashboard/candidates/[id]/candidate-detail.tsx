@@ -74,6 +74,8 @@ interface Candidate {
 
 interface CandidateDetailProps {
   candidate: Candidate
+  // Nur Admins sehen, dass es ein Musterdatensatz ist (Paket 76).
+  canSeeSamples?: boolean
   history: HistoryEntry[]
   files: FileItem[]
   activeAssignments: ActiveAssignment[]
@@ -94,11 +96,13 @@ interface CandidateDetailProps {
 
 type ModalStep = null | "choice"
 
-export function CandidateDetail({ candidate, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, kanzleien, communication, knownTags, tasks, currentUserId, initialTab }: CandidateDetailProps) {
+export function CandidateDetail({ candidate, canSeeSamples = true, history, files, activeAssignments, clients, clientNotes, profiles, customFieldDefinitions, templateFieldKeys, kanzleiCampaigns, kanzleien, communication, knownTags, tasks, currentUserId, initialTab }: CandidateDetailProps) {
   const router = useRouter()
   const goBack = useGoBack("/dashboard/candidates")
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung" | "kommunikation" | "aufgaben">(initialTab ?? "profil")
+  // Klick auf eine #Aufgabe im Verlauf springt zum Reiter "Aufgaben" (Paket 78).
+  const tabsRef = useRef<HTMLDivElement>(null)
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [modalError, setModalError] = useState<string | null>(null)
   const [archivePending, startArchiveTransition] = useTransition()
@@ -256,7 +260,13 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                 </h1>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <StatusMenu value={status} pending={statusPending} onChange={changeStatus} />
-                  <TagEditor candidateId={candidate.id} tags={candidate.tags} knownTags={knownTags} compact />
+                  <TagEditor
+                    candidateId={candidate.id}
+                    tags={canSeeSamples ? candidate.tags : candidate.tags.filter((t) => t !== SAMPLE_TAG)}
+                    hiddenTags={canSeeSamples ? [] : candidate.tags.filter((t) => t === SAMPLE_TAG)}
+                    knownTags={canSeeSamples ? knownTags : knownTags.filter((t) => t !== SAMPLE_TAG)}
+                    compact
+                  />
                 </div>
               </div>
             </div>
@@ -310,7 +320,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
         <div className="flex flex-col gap-4">
           {/* Tab-Bar */}
           {/* Ohne sichtbare Scrollleiste (Paket 69); bei schmalem Fenster weiter wischbar. */}
-          <div className="flex gap-0 overflow-x-auto overflow-y-hidden border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: "#dde3ea" }}>
+          <div ref={tabsRef} className="flex gap-0 overflow-x-auto overflow-y-hidden border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: "#dde3ea" }}>
             <TabButton
               active={tab === "profil"}
               onClick={() => setTab("profil")}
@@ -321,7 +331,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
               active={tab === "dateien"}
               onClick={() => setTab("dateien")}
             >
-              Dateien
+              Dateien ({files.length})
             </TabButton>
             <TabButton
               active={tab === "zuordnung"}
@@ -360,6 +370,7 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
                 candidateId={candidate.id}
                 candidateStatus={candidate.status}
                 isSample={candidate.tags.includes(SAMPLE_TAG)}
+                canSeeSamples={canSeeSamples}
                 candidateName={`${candidate.first_name} ${candidate.last_name}`.trim()}
                 berufsbild={candidate.berufsbild}
                 selfLat={candidate.lat}
@@ -407,6 +418,13 @@ export function CandidateDetail({ candidate, history, files, activeAssignments, 
             history={history}
             leadtableDescription={candidate.description}
             weitereAntworten={candidate.custom_fields?.[WEITERE_ANTWORTEN_KEY]}
+            team={profiles}
+            currentUserId={currentUserId}
+            tasks={tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, assigneeName: t.assigneeName }))}
+            onOpenTask={() => {
+              setTab("aufgaben")
+              tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }}
           />
         </div>
       </div>

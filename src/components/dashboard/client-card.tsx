@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge"
 import { ASSIGNMENT_STATUS_OPTIONS, type AssignmentStatusValue } from "@/lib/assignment-status"
+import { LIVE_PHASE } from "@/lib/client-project"
 
 // Pipeline nach dem Status beim Kunden (Paket 31) - zugeordnete Kandidaten sind intern
 // immer "vorqualifiziert", entscheidend ist, was der Kunde gesetzt hat.
@@ -24,11 +25,16 @@ export interface ClientCardProps {
   }
   pipeline: PipelineSegment[]
   // Projekt-Infos (Paket 13): Phase, Key Account Manager, Kanzleiprofil final?
-  project?: { phaseLabel: string; phaseColor: string; kamName: string | null; profileFinalized: boolean }
+  project?: { phase: string; phaseLabel: string; phaseColor: string; kamName: string | null; profileFinalized: boolean }
 }
 
 export function ClientCard({ name, active, tags, stats, pipeline, project }: ClientCardProps) {
   const total = pipeline.reduce((s, p) => s + p.count, 0)
+  // Oben rechts nur "Live", wenn die Projektphase live ist (Paket 78) - "Aktiv" war
+  // irreführend, solange eine Kanzlei noch im Onboarding steckt. Andere Phasen stehen
+  // in der Zeile darunter. Ohne Projekt-Infos wie bisher Aktiv/Inaktiv.
+  const live = project ? project.phase === LIVE_PHASE : active
+  const badge = project ? (live ? "Live" : null) : active ? "Aktiv" : "Inaktiv"
 
   return (
     <div
@@ -40,26 +46,30 @@ export function ClientCard({ name, active, tags, stats, pipeline, project }: Cli
           <div className="flex items-center gap-2 min-w-0">
             <span
               className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: active ? "#1a9a6a" : "#9ca3af" }}
+              style={{ backgroundColor: live ? "#1a9a6a" : "#9ca3af" }}
             />
             <h3 className="truncate font-semibold text-gray-900">{name}</h3>
           </div>
-          <span
-            className="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
-            style={{
-              backgroundColor: active ? "#1a9a6a18" : "#9ca3af18",
-              color: active ? "#1a9a6a" : "#6b7280",
-            }}
-          >
-            {active ? "Aktiv" : "Inaktiv"}
-          </span>
+          {badge && (
+            <span
+              className="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+              style={{
+                backgroundColor: live ? "#1a9a6a18" : "#9ca3af18",
+                color: live ? "#1a9a6a" : "#6b7280",
+              }}
+            >
+              {badge}
+            </span>
+          )}
         </div>
 
         {project && (
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="rounded-full px-2 py-0.5 font-medium" style={{ backgroundColor: `${project.phaseColor}18`, color: project.phaseColor }}>
-              {project.phaseLabel}
-            </span>
+            {!live && (
+              <span className="rounded-full px-2 py-0.5 font-medium" style={{ backgroundColor: `${project.phaseColor}18`, color: project.phaseColor }}>
+                {project.phaseLabel}
+              </span>
+            )}
             <span className="text-gray-500">{project.kamName ? `KAM: ${project.kamName}` : "Kein KAM"}</span>
             {!project.profileFinalized && (
               <span className="inline-flex items-center gap-1 text-amber-700">

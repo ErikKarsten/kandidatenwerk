@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { BackButton } from "@/components/ui/back-button"
 import { CandidateForm } from "./candidate-form"
+import { LIVE_PHASE } from "@/lib/client-assignment"
 
 export default async function NewCandidatePage({
   searchParams,
@@ -14,8 +15,13 @@ export default async function NewCandidatePage({
 
   const { data: campaigns } = await supabase
     .from("campaigns")
-    .select("id, title, kind, berufsbild, clients(name)")
+    .select("id, title, kind, berufsbild, clients(name, project_phase)")
     .order("title", { ascending: true })
+  // Kanzlei-Kampagnen nur von Kanzleien in der Phase "Live" (Paket 78); die Kampagne, aus
+  // der man kommt, bleibt drin - beim Speichern kommt dann der Hinweis.
+  const clientOf = (c: { clients: unknown }) =>
+    (Array.isArray(c.clients) ? c.clients[0] ?? null : c.clients) as { name: string; project_phase: string | null } | null
+  const selectable = (campaigns ?? []).filter((c) => c.kind !== "kanzlei" || clientOf(c)?.project_phase === LIVE_PHASE || c.id === campaign_id)
 
   return (
     <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
@@ -39,12 +45,12 @@ export default async function NewCandidatePage({
 
       <div className="max-w-2xl rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
         <CandidateForm
-          campaigns={(campaigns ?? []).map((c) => ({
+          campaigns={selectable.map((c) => ({
             id: c.id,
             title: c.title,
             kind: c.kind,
             berufsbild: c.berufsbild,
-            clients: Array.isArray(c.clients) ? c.clients[0] ?? null : c.clients as { name: string } | null,
+            clients: clientOf(c),
           }))}
           defaultCampaignId={campaign_id}
         />

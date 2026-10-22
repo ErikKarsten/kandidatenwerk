@@ -6,13 +6,14 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getStaffContext, requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
-import { ensureCampaignAssignment, ensureClientAssignment } from "@/lib/client-assignment"
+import { clientNotLiveError, ensureCampaignAssignment, ensureClientAssignment } from "@/lib/client-assignment"
 import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { normalizeTags } from "@/lib/candidate-tags"
 import { ASSIGNMENT_STATUS_OPTIONS, assignmentStatusLabel } from "@/lib/assignment-status"
 import { friendlyAiError } from "@/lib/llm"
+import { notifyHistoryNoteReferences } from "@/lib/history-mentions"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -175,6 +176,9 @@ export async function addNoteAction(
   })
 
   if (error) return { error: error.message }
+
+  // @Kollegen und Zuständige von #Aufgaben per Mail benachrichtigen (Paket 78).
+  if (user && /[@#]/.test(content)) await notifyHistoryNoteReferences(supabase, { candidateId, authorId: user.id, content })
 
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   return null
@@ -536,6 +540,8 @@ export async function assignCandidateToClientAction(candidateId: string, clientI
   const supabase = await createSupabaseServerClient()
   const guard = await getStaffContext(supabase)
   if ("error" in guard) return guard
+  const notLive = await clientNotLiveError(supabase, clientId)
+  if (notLive) return { error: notLive }
   try {
     await ensureClientAssignment(supabase, candidateId, clientId)
   } catch (err) {

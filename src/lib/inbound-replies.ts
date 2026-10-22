@@ -105,13 +105,42 @@ export async function saveInboundAttachments(
   return { saved, failed }
 }
 
+const SAVED_NOTE_PREFIX = "Anhänge (im Reiter „Dateien“): "
+
 function attachmentNote(saved: string[], failed: string[]): string {
   return [
-    saved.length ? `Anhänge (im Reiter „Dateien“): ${saved.join(", ")}` : "",
+    saved.length ? `${SAVED_NOTE_PREFIX}${saved.join(", ")}` : "",
     failed.length ? `Nicht übernommen: ${failed.join(", ")}` : "",
   ]
     .filter(Boolean)
     .join("\n")
+}
+
+// Dateien, die mit einer Antwort gekommen sind (Paket 78): im Hinweis an der Nachricht
+// genannt und direkt nach ihr beim Kandidaten abgelegt - für die Anhänge im Reiter
+// "Kommunikation".
+export function filesOfMessage<T extends { name: string; created_at: string }>(
+  message: { direction: string; body: string; created_at: string },
+  files: T[]
+): T[] {
+  if (message.direction !== "eingehend") return []
+  const line = message.body.split("\n").find((l) => l.startsWith(SAVED_NOTE_PREFIX))
+  if (!line) return []
+  const names = line.slice(SAVED_NOTE_PREFIX.length)
+  const from = Date.parse(message.created_at)
+  return files.filter((f) => {
+    const at = Date.parse(f.created_at)
+    return names.includes(f.name) && at >= from - 60_000 && at <= from + 10 * 60_000
+  })
+}
+
+// Nachrichtentext ohne den Hinweis auf gespeicherte Anhänge (die stehen dann als Dateien darunter).
+export function bodyWithoutSavedNote(body: string): string {
+  return body
+    .split("\n")
+    .filter((l) => !l.startsWith(SAVED_NOTE_PREFIX))
+    .join("\n")
+    .trimEnd()
 }
 
 function escapeHtml(s: string): string {

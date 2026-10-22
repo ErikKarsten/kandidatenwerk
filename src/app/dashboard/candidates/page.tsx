@@ -51,12 +51,13 @@ export default async function CandidatesPage({
   const sp = await searchParams
   const showArchived = sp.show_archived === "1"
   // Musterdatensätze (Paket 62) nur über den Schalter bzw. den Tag-Filter.
+  // Nur Admins sehen, dass es Musterdatensätze gibt (Paket 76).
   const showSamples = sp.muster === "1"
   const search = (sp.q ?? "").trim()
   const statusFilter = sp.status && VALID_STATUSES.has(sp.status) ? sp.status : "alle"
   const berufsbildFilter = sp.berufsbild && BERUFSBILD_KEY.test(sp.berufsbild) ? sp.berufsbild : "alle"
   const sourceFilter = sp.source && VALID_SOURCES.has(sp.source) ? sp.source : "alle"
-  const tagFilter = (sp.tag ?? "").trim() || "alle"
+  const tagFilterRaw = (sp.tag ?? "").trim() || "alle"
   // Aus "Kandidaten nach Kampagnen" (Paket 46): nur Kandidaten einer Lead-Kampagne.
   const campaignFilter = /^[0-9a-f-]{36}$/.test(sp.campaign ?? "") ? sp.campaign! : null
   const sort: CandidatesSortOption =
@@ -70,6 +71,8 @@ export default async function CandidatesPage({
   // Musterdatensätze nur für Admins und den Vertrieb (Paket 44).
   const { data: { user } } = await supabase.auth.getUser()
   const { data: me } = user ? await supabase.from("profiles").select("role, team").eq("id", user.id).maybeSingle() : { data: null }
+  const canSeeSamples = me?.role === "agency_admin"
+  const tagFilter = !canSeeSamples && tagFilterRaw === SAMPLE_TAG ? "alle" : tagFilterRaw
 
   let query = supabase
     .from("candidate_list_rows")
@@ -84,7 +87,11 @@ export default async function CandidatesPage({
   if (berufsbildFilter !== "alle") query = query.eq("berufsbild", berufsbildFilter)
   if (sourceFilter !== "alle") query = query.eq("source", sourceFilter)
   if (tagFilter !== "alle") query = query.contains("tags", [tagFilter])
-  if (showSamples) query = query.contains("tags", [SAMPLE_TAG])
+  if (!canSeeSamples) {
+    // Für alle anderen sind zugeordnete Beispielkandidaten ganz normale Kandidaten; freie
+    // Musterdatensätze erscheinen nicht.
+    query = query.or(`tags.not.cs.{${SAMPLE_TAG}},assignment_status.not.is.null`)
+  } else if (showSamples) query = query.contains("tags", [SAMPLE_TAG])
   else if (tagFilter !== SAMPLE_TAG) query = query.not("tags", "cs", `{${SAMPLE_TAG}}`)
   if (campaignFilter) query = query.eq("campaign_id", campaignFilter)
   if (search) {
@@ -117,7 +124,7 @@ export default async function CandidatesPage({
     supabase.from("candidate_tag_list").select("tag").order("tag"),
     campaignFilter ? supabase.from("campaigns").select("title").eq("id", campaignFilter).maybeSingle() : Promise.resolve({ data: null }),
   ])
-  const knownTags = (tagRows ?? []).map((r) => r.tag).filter((t): t is string => !!t)
+  const knownTags = (tagRows ?? []).map((r) => r.tag).filter((t): t is string => !!t && (canSeeSamples || t !== SAMPLE_TAG))
 
   // Generierte View-Spalten sind laut database.ts pauschal nullable (PostgREST gibt
   // fuer Views keine NOT-NULL-Constraints ans OpenAPI-Schema weiter) - diese Felder
@@ -180,6 +187,7 @@ export default async function CandidatesPage({
             <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: showArchived ? "#1e56a0" : "#d1d5db" }} />
             Archivierte anzeigen
           </Link>
+          {canSeeSamples && (
           <Link
             href={showSamples ? "/dashboard/candidates" : "/dashboard/candidates?muster=1"}
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-gray-50"
@@ -192,6 +200,7 @@ export default async function CandidatesPage({
             <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: showSamples ? "#1e56a0" : "#d1d5db" }} />
             Musterdatensätze anzeigen
           </Link>
+          )}
           {canCreateSamples(me) && <SampleCandidatesButton />}
           <Button asChild style={{ backgroundColor: "#1e56a0" }}>
             <Link href="/dashboard/candidates/new">
@@ -226,6 +235,7 @@ export default async function CandidatesPage({
         berufsbildFilter={berufsbildFilter}
         tagFilter={tagFilter}
         knownTags={knownTags}
+        canSeeSamples={canSeeSamples}
         sort={sort}
       />
     </div>

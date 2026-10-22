@@ -10,6 +10,9 @@ import { mailCampaignName } from "@/lib/automation-engine"
 import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
+import { revealsSample } from "@/lib/candidate-tags"
+import { LIVE_PHASE } from "@/lib/client-assignment"
+import { bodyWithoutSavedNote, filesOfMessage } from "@/lib/inbound-replies"
 
 export default async function CandidateDetailPage({
   params,
@@ -80,13 +83,13 @@ export default async function CandidateDetailPage({
     // Ziele für "Weiterschieben" im Reiter Zuordnung: alle aktiven Kanzlei-Kampagnen.
     supabase
       .from("campaigns")
-      .select("id, title, berufsbild, client_id, plz, lat, lng, extra_plz, clients(name)")
+      .select("id, title, berufsbild, client_id, plz, lat, lng, extra_plz, clients(name, project_phase)")
       .eq("kind", "kanzlei")
       .eq("status", "active")
       .eq("is_demo", false)
       .order("title", { ascending: true }),
     // Kanzleien im Umkreis mit Standorten und gesuchten Stellen (Paket 46).
-    supabase.from("clients").select("id, name, ort, lat, lng, status").order("name"),
+    supabase.from("clients").select("id, name, ort, lat, lng, status, project_phase").order("name"),
     supabase.from("client_locations").select("client_id, lat, lng"),
     supabase.from("client_positions").select("*").order("sort_order").order("title"),
     loadProfileFieldConfig(supabase),
@@ -109,7 +112,10 @@ export default async function CandidateDetailPage({
       : { data: [] }
   const creatorNameById = new Map((creatorProfiles ?? []).map((p) => [p.id, p.full_name]))
 
-  const historyWithCreatorNames = (history ?? []).map((h) => ({
+  // Dass es ein Musterdatensatz ist, sehen nur Admins (Paket 76).
+  const { data: me } = user ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle() : { data: null }
+  const canSeeSamples = me?.role === "agency_admin"
+  const historyWithCreatorNames = (history ?? []).filter((h) => canSeeSamples || !revealsSample(h.content)).map((h) => ({
     id: h.id,
     type: h.type,
     content: h.content,
@@ -157,6 +163,8 @@ export default async function CandidateDetailPage({
         mime_type: f.mime_type,
         created_at: f.created_at,
         signedUrl: urlData?.signedUrl ?? null,
+        // Gleicher Link, aber als Download statt im Browser öffnen (Supabase: &download=).
+        downloadUrl: urlData?.signedUrl ? `${urlData.signedUrl}&download=${encodeURIComponent(f.file_name)}` : null,
       }
     })
   )
@@ -205,9 +213,11 @@ export default async function CandidateDetailPage({
     }
   })
 
-  const kanzleiCampaigns = (kanzleiCampaignRows ?? []).map((c) => {
-    const clientRel = c.clients as { name: string } | { name: string }[] | null
+  // Ziele zum Zuordnen/Weiterschieben: nur Kanzleien in der Phase "Live" (Paket 78).
+  const kanzleiCampaigns = (kanzleiCampaignRows ?? []).flatMap((c) => {
+    const clientRel = c.clients as { name: string; project_phase: string | null } | { name: string; project_phase: string | null }[] | null
     const client = Array.isArray(clientRel) ? clientRel[0] ?? null : clientRel
+    if (client?.project_phase !== LIVE_PHASE) return []
     return {
       id: c.id,
       title: c.title,
@@ -256,24 +266,30 @@ export default async function CandidateDetailPage({
       Bewerberlink: "",
     },
     templates: (messageTemplateRows ?? []).map((t) => ({ id: t.id, name: t.name, subject: t.subject, body: t.body_html })),
-    messages: (messageRows ?? []).map((m) => ({
+    messages: (messageRows ?? []).map((m) => {
+      // Anhänge einer Antwort direkt an der Nachricht (Paket 78).
+      const attachments = filesOfMessage(m, files).map((f) => ({ id: f.id, name: f.name, size: f.size, url: f.signedUrl, downloadUrl: f.downloadUrl }))
+      return {
       id: m.id,
       channel: m.channel,
       direction: m.direction,
       fromAddress: m.from_address,
       toAddress: m.to_address,
       subject: m.subject,
-      body: m.body,
+      body: attachments.length ? bodyWithoutSavedNote(m.body) : m.body,
+      attachments,
       senderName: profiles.find((p) => p.id === m.sent_by)?.full_name ?? null,
       status: m.status,
       error: m.error,
       createdAt: m.created_at,
-    })),
+      }
+    }),
   }
 
   return (
     <CandidateDetail
       candidate={candidateData}
+      canSeeSamples={canSeeSamples}
       history={historyWithCreatorNames}
       files={files}
       activeAssignments={activeAssignments}
@@ -284,7 +300,7 @@ export default async function CandidateDetailPage({
       templateFieldKeys={templateFieldKeys}
       kanzleiCampaigns={kanzleiCampaigns}
       kanzleien={buildKanzleiOptions(
-        (kanzleiClientRows ?? []).filter((c) => c.status !== "Archiviert"),
+        (kanzleiClientRows ?? []).filter((c) => c.status !== "Archiviert" && c.project_phase === LIVE_PHASE),
         kanzleiLocationRows ?? [],
         kanzleiPositionRows ?? [],
         resolveFields("stelle", profileFieldConfig.settings)

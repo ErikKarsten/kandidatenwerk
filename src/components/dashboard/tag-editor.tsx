@@ -28,12 +28,15 @@ export function TagEditor({
   knownTags = [],
   onChanged,
   compact = false,
+  hiddenTags = [],
 }: {
   candidateId: string
   tags: string[]
   knownTags?: string[]
   onChanged?: () => void
   compact?: boolean
+  // Nicht angezeigte Tags (z. B. Musterdatensatz für Nicht-Admins) bleiben beim Speichern erhalten.
+  hiddenTags?: string[]
 }) {
   const router = useRouter()
   const listId = useId()
@@ -49,7 +52,7 @@ export function TagEditor({
     setCurrent(normalized)
     setError(null)
     startTransition(async () => {
-      const res = await updateCandidateTagsAction(candidateId, normalized)
+      const res = await updateCandidateTagsAction(candidateId, normalizeTags([...normalized, ...hiddenTags]))
       if (res?.error) {
         setCurrent(previous)
         setError(res.error)
