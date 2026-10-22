@@ -246,6 +246,9 @@ export async function updateCampaignSettingsAction(
   if (formData.has("field_template_id")) {
     update.field_template_id = (formData.get("field_template_id") as string) || null
   }
+  if (formData.has("skip_lead_confirmation")) {
+    update.skip_lead_confirmation = formData.get("skip_lead_confirmation") === "1"
+  }
 
   let matchingRelevantChanged = false
 

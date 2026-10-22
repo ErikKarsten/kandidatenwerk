@@ -94,6 +94,7 @@ interface Campaign {
   leadtable_campaign_id: string | null
   kanzleistelle_job_id: string | null
   meta_webhook_last_test_at: string | null
+  skip_lead_confirmation?: boolean
   client: { id: string; name: string; project_phase?: string | null } | null
   kind: string
   field_template_id?: string | null
@@ -960,6 +961,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
             radiusKm={campaign.radius_km}
             extraPlz={campaign.extra_plz}
             metaWebhookLastTestAt={campaign.meta_webhook_last_test_at}
+            skipLeadConfirmation={campaign.skip_lead_confirmation ?? false}
             kind={campaign.kind}
             fieldTemplateId={campaign.field_template_id ?? null}
             fieldTemplates={fieldTemplates}

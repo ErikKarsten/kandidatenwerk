@@ -95,6 +95,7 @@ export default async function CampaignDetailPage({
         kind: campaign.kind,
         field_template_id: campaign.field_template_id ?? null,
         meta_webhook_last_test_at: campaign.meta_webhook_last_test_at ?? null,
+        skip_lead_confirmation: campaign.skip_lead_confirmation ?? false,
         client,
       }}
       candidates={shownCandidates}

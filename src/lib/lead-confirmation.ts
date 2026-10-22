@@ -3,6 +3,8 @@
 // (Meta-Lead-Formulare, Kanzleistelle24), nicht für von Hand angelegte; nur für Leads ab dem
 // Einschalten, je Kandidat einmal (candidate_mail_runs, vor dem Versand reserviert).
 // Läuft sofort im Meta-Webhook und als Absicherung im 5-Minuten-Job.
+// Kampagnen mit "Keine Eingangsbestätigung" (Paket 80, eigene Meta-Kampagne einer Kanzlei)
+// werden übersprungen: einmal als erledigt vermerkt, damit sie nicht jeder Lauf neu prüft.
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { sendEmail } from "@/lib/brevo-mail"
@@ -29,12 +31,13 @@ export async function sendLeadConfirmations(db: Db, opts: { candidateIds?: strin
 
   let query = db
     .from("candidates")
-    .select("id, first_name, last_name, email, phone, berufsbild, campaigns(title, kind, clients(name))")
+    .select("id, first_name, last_name, email, phone, berufsbild, campaigns(title, kind, skip_lead_confirmation, clients(name))")
     .in("source", IMPORT_SOURCES)
     .eq("is_demo", false)
     .not("email", "is", null)
     .gte("created_at", settings.confirmation_active_since)
-    .order("created_at")
+    // Neueste zuerst: sonst stünden nach 50 Leads nur noch erledigte im Fenster.
+    .order("created_at", { ascending: false })
     .limit(50)
   if (opts.candidateIds) query = query.in("id", opts.candidateIds)
   const { data: candidates, error } = await query
@@ -49,7 +52,20 @@ export async function sendLeadConfirmations(db: Db, opts: { candidateIds?: strin
     // Reservieren vor dem Versand - schlägt das fehl, hat ein paralleler Lauf ihn schon.
     const { error: claimError } = await db.from("candidate_mail_runs").insert({ kind: KIND, candidate_id: c.id })
     if (claimError) continue
-    const campaign = (Array.isArray(c.campaigns) ? c.campaigns[0] : c.campaigns) as { title: string; kind: string | null; clients: { name: string } | { name: string }[] | null } | null
+    const campaign = (Array.isArray(c.campaigns) ? c.campaigns[0] : c.campaigns) as {
+      title: string
+      kind: string | null
+      skip_lead_confirmation: boolean | null
+      clients: { name: string } | { name: string }[] | null
+    } | null
+    if (campaign?.skip_lead_confirmation) {
+      await db.from("candidate_history").insert({
+        candidate_id: c.id,
+        type: "automation",
+        content: `Keine Eingangsbestätigung: für die Kampagne „${campaign.title}“ abgeschaltet`,
+      })
+      continue
+    }
     const client = Array.isArray(campaign?.clients) ? campaign?.clients[0] : campaign?.clients
     const vars = {
       Kandidatenname: `${c.first_name} ${c.last_name}`.trim(),

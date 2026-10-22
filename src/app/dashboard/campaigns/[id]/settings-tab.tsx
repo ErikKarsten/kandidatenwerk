@@ -33,11 +33,13 @@ interface SettingsTabProps {
   // Kanzlei-Kampagnen: Feld-Vorlage statt Meta-Formular (Paket 8) - Leads kommen nur
   // noch über Lead-Kampagnen.
   kind: string
+  // Keine Eingangsbestätigung an Leads dieser Kampagne (Paket 80).
+  skipLeadConfirmation?: boolean
   fieldTemplateId: string | null
   fieldTemplates: { id: string; name: string; is_default: boolean }[]
 }
 
-export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, plz, radiusKm, extraPlz, metaWebhookLastTestAt, kind, fieldTemplateId, fieldTemplates }: SettingsTabProps) {
+export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, plz, radiusKm, extraPlz, metaWebhookLastTestAt, kind, skipLeadConfirmation = false, fieldTemplateId, fieldTemplates }: SettingsTabProps) {
   const bb = useBerufsbilder()
   const isKanzlei = kind === "kanzlei"
   const [localTemplateId, setLocalTemplateId] = useState(fieldTemplateId ?? "")
@@ -75,6 +77,7 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
   const [ownPending, startOwnTransition] = useTransition()
   const [ownError, setOwnError] = useState<string | null>(null)
   const [ownQuery, setOwnQuery] = useState("")
+  const [localSkipConfirmation, setLocalSkipConfirmation] = useState(skipLeadConfirmation)
   const [testLeadPending, startTestLeadTransition] = useTransition()
   const [testLeadMessage, setTestLeadMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
@@ -115,6 +118,9 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
   }
 
   function handleOwnFormSelect(campaignName: string, formId: string, formName: string | null) {
+    // Erstes Formular verknüpft: Eingangsbestätigung standardmäßig aus - die Bewerber haben
+    // sich bei der Kanzlei beworben, nicht bei KS24.
+    if (!localFormId) setLocalSkipConfirmation(true)
     setLocalFormId(formId)
     setSelectedFormLabel(`${formName ?? `Formular ${formId}`} · ${campaignName}`)
     setOwnOpen(false)
@@ -152,6 +158,7 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
       fd.append("field_template_id", localTemplateId)
       fd.append("meta_form_id", localFormId)
       fd.append("meta_form_name", localFormId ? selectedFormLabel ?? "" : "")
+      fd.append("skip_lead_confirmation", localSkipConfirmation ? "1" : "0")
     } else {
       fd.append("meta_form_id", localFormId)
       fd.append("meta_form_name", selectedFormLabel ?? "")
@@ -335,7 +342,19 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
                 ✓ Verbindung zuletzt per Webhook bestätigt: {new Date(metaWebhookLastTestAt).toLocaleString("de-DE")}
               </p>
             )}
-            {localFormId !== (metaFormId ?? "") && <p className="text-xs text-amber-700">Noch nicht gespeichert – unten „Einstellungen speichern“.</p>}
+            <label className="mt-1 flex items-start gap-2 text-sm text-gray-700">
+              <input type="checkbox" className="mt-0.5" checked={localSkipConfirmation} onChange={(e) => setLocalSkipConfirmation(e.target.checked)} />
+              <span>
+                Keine Eingangsbestätigung an Leads dieser Kampagne
+                <span className="block text-xs text-gray-400">
+                  Überspringt die allgemeine Eingangsbestätigung (Einstellungen → E-Mail-Vorlagen) – sinnvoll, wenn sich die Bewerber
+                  auf eine Anzeige der Kanzlei beworben haben.
+                </span>
+              </span>
+            </label>
+            {(localFormId !== (metaFormId ?? "") || localSkipConfirmation !== skipLeadConfirmation) && (
+              <p className="text-xs text-amber-700">Noch nicht gespeichert – unten „Einstellungen speichern“.</p>
+            )}
 
             {ownOpen && (
               <div className="flex flex-col gap-2 rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
