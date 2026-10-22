@@ -17,7 +17,7 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { matchCampaignToCandidates } from "@/lib/matching"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
-import { fetchMetaPages, fetchMetaLeadForms, createMetaTestLead, buildFormToPageAccessTokenMap, type MetaPage, type MetaLeadForm } from "@/lib/meta-ads-client"
+import { fetchMetaPages, fetchMetaLeadForms, createMetaTestLead, ensureLeadgenSubscription, fetchFormDirectory, type MetaPage, type MetaLeadForm } from "@/lib/meta-ads-client"
 import { ensureClientAssignment } from "@/lib/client-assignment"
 import type { TablesUpdate } from "@/types/database"
 import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
@@ -291,8 +291,16 @@ export async function updateCampaignSettingsAction(
   if (error) return { error: error.message }
 
   // Neu verknüpftes Formular: Fragen gleich einlesen, damit schon der erste Lead richtig
-  // auf die Zusatzfelder verteilt wird (sonst erst beim nächsten Abgleich).
+  // auf die Zusatzfelder verteilt wird (sonst erst beim nächsten Abgleich), und die Seite für
+  // Echtzeit-Leads anmelden (Paket 81).
   if (newFormId && newFormId !== before?.meta_form_id) {
+    try {
+      const form = (await fetchFormDirectory()).get(newFormId)
+      const warning = form ? await ensureLeadgenSubscription(form) : null
+      if (warning) console.warn(`[kampagne ${campaignId}] ${warning}`)
+    } catch (subError) {
+      console.error("Webhook-Anmeldung fehlgeschlagen", newFormId, subError)
+    }
     try {
       let agencyId = before?.agency_id ?? null
       if (!agencyId && before?.client_id) {
@@ -376,7 +384,7 @@ export async function listMetaLeadFormsAction(
 
 // Fordert einen Test-Lead bei Meta an (siehe createMetaTestLead-Kommentar). Braucht nur
 // die Formular-ID - die passende Seite (und deren Access-Token) wird selbst über
-// buildFormToPageAccessTokenMap() nachgeschlagen (iteriert einmal alle Seiten/Formulare,
+// fetchFormDirectory() nachgeschlagen (iteriert einmal alle Seiten/Formulare,
 // wie scripts/meta-leads-sync.ts es auch tut), statt eine zuvor im Browser-State
 // ausgewählte Seiten-ID vorauszusetzen (bis 14.09.2026 der Fall - Button war dadurch nach
 // jedem Neuladen/Speichern erst wieder nutzbar, nachdem man das Formular über "Formular
@@ -390,12 +398,14 @@ export async function requestMetaTestLeadAction(
   if (staffError) return { success: false, error: staffError.error }
 
   try {
-    const tokenMap = await buildFormToPageAccessTokenMap()
-    const pageAccessToken = tokenMap.get(formId)
-    if (!pageAccessToken) {
-      return { success: false, error: "Kein Zugriffstoken für das Formular dieser Seite gefunden." }
+    const form = (await fetchFormDirectory()).get(formId)
+    if (!form) {
+      return { success: false, error: "Kein Zugriff auf das Formular: Die Facebook-Seite ist dem Meta-Systemnutzer nicht freigegeben." }
     }
-    const result = await createMetaTestLead(formId, pageAccessToken)
+    // Ohne angemeldeten Webhook käme die Bestätigung nie an (Paket 81).
+    const warning = await ensureLeadgenSubscription(form)
+    if (warning) return { success: false, error: warning }
+    const result = await createMetaTestLead(formId, form.accessToken)
     return { success: true, leadId: result.id }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) }

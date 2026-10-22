@@ -7,8 +7,9 @@ import { Printer, Sparkles } from "lucide-react"
 import { enrichCvWerdegangAction } from "@/app/dashboard/candidates/[id]/actions"
 
 // Leiste über dem Lebenslauf (nicht gedruckt): Variante wechseln, Werdegang per KI
-// (neu) anreichern (Paket 43; fehlt er, automatisch beim Öffnen) und als PDF sichern.
-export function CvToolbar({ candidateId, anonym, hasWerdegang }: { candidateId: string; anonym: boolean; hasWerdegang: boolean }) {
+// (neu) erstellen (Paket 43; fehlt er oder haben sich die Angaben geändert, automatisch
+// beim Öffnen - Paket 82) und als PDF sichern.
+export function CvToolbar({ candidateId, anonym, hasWerdegang, outdated = false }: { candidateId: string; anonym: boolean; hasWerdegang: boolean; outdated?: boolean }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -24,11 +25,11 @@ export function CvToolbar({ candidateId, anonym, hasWerdegang }: { candidateId: 
   }
 
   useEffect(() => {
-    if (hasWerdegang || started.current) return
+    if ((hasWerdegang && !outdated) || started.current) return
     started.current = true
     enrich()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasWerdegang])
+  }, [hasWerdegang, outdated])
 
   const tab = (active: boolean) =>
     active ? { backgroundColor: "#1e56a0", color: "white", borderColor: "#1e56a0" } : { backgroundColor: "white", color: "#374151", borderColor: "#dde3ea" }
@@ -51,7 +52,7 @@ export function CvToolbar({ candidateId, anonym, hasWerdegang }: { candidateId: 
             className="inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium disabled:opacity-50"
             style={{ borderColor: "#1e56a0", color: "#1e56a0" }}
           >
-            <Sparkles size={14} /> {hasWerdegang ? "Werdegang neu anreichern" : "Werdegang ergänzen"}
+            <Sparkles size={14} /> {hasWerdegang ? "Werdegang neu erstellen" : "Werdegang ergänzen"}
           </button>
           <button
             type="button"
@@ -66,7 +67,9 @@ export function CvToolbar({ candidateId, anonym, hasWerdegang }: { candidateId: 
       </div>
       {pending && (
         <p className="rounded-md px-3 py-2 text-xs" style={{ backgroundColor: "#1e56a012", color: "#1e56a0" }}>
-          Werdegang wird per KI aus den Angaben formuliert und um typische Aufgaben des Berufsbilds ergänzt (dauert etwa eine Minute)…
+          {outdated
+            ? "Die Angaben haben sich geändert – der Werdegang wird per KI neu erstellt (dauert etwa eine Minute)…"
+            : "Werdegang wird per KI aus den Angaben formuliert und um typische Aufgaben des Berufsbilds ergänzt (dauert etwa eine Minute)…"}
         </p>
       )}
       {error && <p className="text-xs text-red-600">Werdegang konnte nicht ergänzt werden: {error}</p>}

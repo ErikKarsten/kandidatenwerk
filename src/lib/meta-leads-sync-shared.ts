@@ -6,7 +6,7 @@
 // statt sie zweimal zu pflegen.
 import type { SupabaseClient as GenericSupabaseClient } from "@supabase/supabase-js"
 import type { Database, Json } from "@/types/database"
-import { extractMetaContactFields, type MetaLead } from "@/lib/meta-ads-client"
+import { extractMetaContactFields, isMetaTestLead, type MetaLead } from "@/lib/meta-ads-client"
 import { extractCleanName } from "@/lib/leadtable-import"
 import { mapKanzleistelleBerufsbild } from "@/lib/sync-kanzleistelle"
 import { applyFormMapping, loadFormQuestions, rememberFormKeys, resolvePlzFromAnswer } from "@/lib/lead-form-mapping"
@@ -39,6 +39,7 @@ export type ProcessMetaLeadOutcome =
   | { status: "linked_existing"; candidateId: string }
   | { status: "skipped_no_email" }
   | { status: "already_known" }
+  | { status: "test_lead" }
 
 // Verarbeitet EINEN Meta-Lead für eine Kampagne (Dublettenschutz per meta_lead_id, dann
 // per E-Mail, sonst neuer Kandidat mit Feld-Zuordnung des Formulars) - siehe
@@ -59,6 +60,10 @@ export async function processMetaLead(
     .maybeSingle()
   if (metaIdLookupError) throw new Error(metaIdLookupError.message)
   if (existingByMetaId) return { status: "already_known" }
+  // Meta-Testleads (Platzhalter-Antworten, E-Mail test@meta.com) nie als Kandidat anlegen -
+  // der Webhook bestätigt damit nur die Verbindung (Paket 81; vorher landeten sie über den
+  // 30-Minuten-Abgleich als Kandidat "for full_name>").
+  if (isMetaTestLead(lead)) return { status: "test_lead" }
 
   const { name: fallbackName, email: fallbackEmail, phone: fallbackPhone, record } = extractMetaContactFields(lead.field_data)
 
@@ -96,16 +101,19 @@ export async function processMetaLead(
   // diesen Lead direkt per ID erkennen statt jedes Mal erneut per E-Mail zu suchen.
   const { data: existingByEmail, error: emailLookupError } = await supabase
     .from("candidates")
-    .select("id, meta_lead_id")
+    .select("id, meta_lead_id, campaign_id")
     .eq("email", email)
     .maybeSingle()
   if (emailLookupError) throw new Error(emailLookupError.message)
 
   if (existingByEmail) {
-    if (!existingByEmail.meta_lead_id) {
+    // Eigene Meta-Kampagne einer Kanzlei (Paket 81): Kandidaten ohne Herkunft (z. B. aus
+    // Leadtable) bekommen diese Kampagne als Herkunft - dann stehen sie dort unter "Neue Leads".
+    const adoptCampaign = campaign.kind === "kanzlei" && !existingByEmail.campaign_id
+    if (!existingByEmail.meta_lead_id || adoptCampaign) {
       const { error: linkError } = await supabase
         .from("candidates")
-        .update({ meta_lead_id: lead.id })
+        .update({ ...(!existingByEmail.meta_lead_id ? { meta_lead_id: lead.id } : {}), ...(adoptCampaign ? { campaign_id: campaign.id } : {}) })
         .eq("id", existingByEmail.id)
       if (linkError) throw new Error(linkError.message)
     }
