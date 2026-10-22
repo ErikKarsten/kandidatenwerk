@@ -189,6 +189,7 @@ export async function fetchMetaLeadsForForm(
 export interface MetaFormInfo {
   name: string
   status: string | null
+  pageId: string
   pageName: string
   accessToken: string
 }
@@ -202,7 +203,7 @@ export async function fetchFormDirectory(): Promise<Map<string, MetaFormInfo>> {
     try {
       const forms = await fetchMetaLeadForms(page.id, page.access_token)
       for (const form of forms) {
-        map.set(form.id, { name: form.name, status: form.status ?? null, pageName: page.name, accessToken: page.access_token })
+        map.set(form.id, { name: form.name, status: form.status ?? null, pageId: page.id, pageName: page.name, accessToken: page.access_token })
       }
     } catch (err) {
       console.warn(
@@ -337,4 +338,21 @@ export async function fetchMetaLead(leadgenId: string, pageAccessToken: string):
 // statt das für jede der aktuell 54 Seiten einzeln im Business Manager anzuklicken.
 export async function subscribePageToLeadgenWebhook(pageId: string, pageAccessToken: string): Promise<void> {
   await metaGraphPost(`/${pageId}/subscribed_apps`, { subscribed_fields: "leadgen" }, pageAccessToken)
+}
+
+// Seite eines Formulars für den Leadgen-Webhook anmelden, falls noch nicht geschehen
+// (Paket 81): Neu freigegebene Kundenseiten fehlen sonst - Leads kommen dann nur über den
+// 30-Minuten-Abgleich, Testleads werden nie bestätigt. null = angemeldet, sonst der Grund.
+export async function ensureLeadgenSubscription(form: Pick<MetaFormInfo, "pageId" | "pageName" | "accessToken">): Promise<string | null> {
+  try {
+    const subs = await metaGraphFetch<{ data: { subscribed_fields?: string[] }[] }>(`/${form.pageId}/subscribed_apps`, undefined, form.accessToken)
+    if (subs.data.some((a) => a.subscribed_fields?.includes("leadgen"))) return null
+    await subscribePageToLeadgenWebhook(form.pageId, form.accessToken)
+    return null
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return /administrative permission|\(#200\)/i.test(message)
+      ? `Die Facebook-Seite „${form.pageName}“ ließ sich nicht für Echtzeit-Leads anmelden: Dem Meta-Systemnutzer fehlen Admin-Rechte auf der Seite. Leads kommen trotzdem alle 30 Minuten, Testleads werden aber nicht bestätigt.`
+      : `Die Facebook-Seite „${form.pageName}“ ließ sich nicht für Echtzeit-Leads anmelden: ${message}`
+  }
 }
