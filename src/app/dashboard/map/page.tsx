@@ -14,6 +14,8 @@ async function fetchAllCandidates(supabase: Awaited<ReturnType<typeof createSupa
       .from("candidates")
       .select("id, first_name, last_name, lat, lng, campaign_id, berufsbild")
       .eq("is_demo", false)
+      // Leads aus eigenen Meta-Kampagnen von Kanzleien gehören nur in die Kampagne (Paket 83).
+      .eq("campaign_only", false)
       // Nur vorqualifizierte Kandidaten auf der Karte (Paket 73) - keine abgelehnten oder neuen.
       .eq("status", ASSIGNABLE_STATUS)
       .order("id")

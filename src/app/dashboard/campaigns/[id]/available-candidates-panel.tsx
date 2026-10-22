@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react"
 import { CandidatePanel } from "@/components/dashboard/candidate-panel/candidate-panel"
 import { useRouter } from "next/navigation"
-import { Search } from "lucide-react"
+import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react"
 import dynamic from "next/dynamic"
 import { assignCandidateToCampaignAction, searchAvailableCandidatesAction } from "./actions"
 import type { MapPoint } from "@/components/dashboard/matches-map"
@@ -36,6 +36,41 @@ interface SearchState {
   truncated: boolean
   campaignHasLocation: boolean
   effectiveRadiusKm: number | null
+}
+
+// Spaltenkopf zum Sortieren (Paket 84): erster Klick nächste bzw. neueste zuerst, zweiter
+// Klick umgekehrt. Pfeil zeigt die aktive Richtung.
+function SortHeader({
+  label,
+  asc,
+  desc,
+  sort,
+  onSort,
+  firstClick = "asc",
+}: {
+  label: string
+  asc: AvailableSort
+  desc: AvailableSort
+  sort: AvailableSort
+  onSort: (s: AvailableSort) => void
+  firstClick?: "asc" | "desc"
+}) {
+  const active = sort === asc || sort === desc
+  const next = active ? (sort === asc ? desc : asc) : firstClick === "asc" ? asc : desc
+  return (
+    <th className="px-4 py-2 font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(next)}
+        className="inline-flex items-center gap-1 hover:text-gray-800"
+        style={active ? { color: "#1e56a0" } : undefined}
+        title={`Nach ${label} sortieren`}
+      >
+        {label}
+        {active ? sort === asc ? <ArrowUp size={12} /> : <ArrowDown size={12} /> : <ArrowUpDown size={12} className="text-gray-300" />}
+      </button>
+    </th>
+  )
 }
 
 // Reiter "Passende Kandidaten" einer Kanzlei-Kampagne (Atlas T-40): Kandidaten mit
@@ -150,7 +185,9 @@ export function AvailableCandidatesPanel({
         <RadiusControl value={radiusKm} onChange={(km) => changeFilter(() => setRadiusKm(km))} />
         <select value={sort} onChange={(e) => changeFilter(() => setSort(e.target.value as AvailableSort))} className={selectClass} style={borderStyle}>
           <option value="distance">Nächste zuerst</option>
+          <option value="farthest">Entfernteste zuerst</option>
           <option value="newest">Neueste zuerst</option>
+          <option value="oldest">Älteste zuerst</option>
         </select>
       </div>
 
@@ -187,8 +224,8 @@ export function AvailableCandidatesPanel({
                 <th className="px-4 py-2 font-medium">Berufsbild</th>
                 <th className="px-4 py-2 font-medium">Status</th>
                 <th className="px-4 py-2 font-medium">PLZ</th>
-                <th className="px-4 py-2 font-medium">Entfernung</th>
-                <th className="px-4 py-2 font-medium">Eingang</th>
+                <SortHeader label="Entfernung" asc="distance" desc="farthest" sort={sort} onSort={(s) => changeFilter(() => setSort(s))} />
+                <SortHeader label="Eingang" asc="oldest" desc="newest" sort={sort} onSort={(s) => changeFilter(() => setSort(s))} firstClick="desc" />
                 <th className="px-4 py-2" />
               </tr>
             </thead>

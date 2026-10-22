@@ -35,6 +35,15 @@ describe("rankAvailableCandidates", () => {
     expect(r.items.map((c) => c.id)).toEqual(["ohne-standort", "hannover", "hamburg", "braunschweig"])
   })
 
+  it("sortiert auch umgekehrt: älteste bzw. entfernteste zuerst (Paket 84)", () => {
+    const oldest = rankAvailableCandidates(rows, new Set(), { ...client, radiusKm: null, sort: "oldest", page: 1, pageSize: 10 })
+    expect(oldest.items.map((c) => c.id)).toEqual(["braunschweig", "hamburg", "hannover", "ohne-standort"])
+    const farthest = rankAvailableCandidates(rows, new Set(), { ...client, radiusKm: null, sort: "farthest", page: 1, pageSize: 10 })
+    const nearest = rankAvailableCandidates(rows, new Set(), { ...client, radiusKm: null, sort: "distance", page: 1, pageSize: 10 })
+    const withLocation = nearest.items.filter((c) => c.distanceKm !== null).map((c) => c.id)
+    expect(farthest.items.map((c) => c.id)).toEqual([...withLocation.reverse(), "ohne-standort"])
+  })
+
   it("ignoriert den Umkreis, wenn der Kunde keinen Standort hat", () => {
     const r = rankAvailableCandidates(rows, new Set(), { points: [], radiusKm: 25, sort: "distance", page: 1, pageSize: 10 })
     expect(r.total).toBe(4)

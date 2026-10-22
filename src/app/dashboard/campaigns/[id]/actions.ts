@@ -25,6 +25,7 @@ import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
 import { listOwnMetaCampaigns, type OwnMetaCampaign } from "@/lib/meta-own-campaigns"
 import { syncMetaLeadForms } from "@/lib/lead-form-mapping"
+import { loadAutomationSends, previewAutomationMail, resendAutomationMail, type AutomationSendLog } from "@/lib/automation-sends"
 
 
 // requireStaffUser() aus src/lib/auth-guards.ts (Security-Review 08./09.09.2026) -
@@ -680,6 +681,8 @@ export async function searchAvailableCandidatesAction(
     // Kanzleien bekommen nur vorqualifizierte Kandidaten (Paket 19, T-86).
     .eq("status", ASSIGNABLE_STATUS)
     .eq("is_demo", false)
+    // Leads aus der eigenen Meta-Kampagne einer Kanzlei nur dort (Paket 83).
+    .eq("campaign_only", false)
     // Musterdatensätze sind keiner Kanzlei zuordenbar (Paket 62).
     .not("tags", "cs", `{${SAMPLE_TAG}}`)
     .eq("berufsbild", campaign.berufsbild)
@@ -748,4 +751,44 @@ export async function assignCandidateToCampaignAction(
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   if (campaign.client_id) revalidatePath(`/dashboard/clients/${campaign.client_id}`)
   return null
+}
+
+// Versandprotokoll der Automatisierungen (Paket 84): Anzahl und Liste der gesendeten Mails,
+// Vorschau und erneut senden. campaign_automation_runs liest nur die Service-Role.
+export async function loadAutomationSendsAction(campaignId: string): Promise<{ logs: AutomationSendLog[] } | { error: string }> {
+  const supabase = await createSupabaseServerClient()
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
+  try {
+    return { logs: await loadAutomationSends(createSupabaseAdminClient(), campaignId) }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function previewAutomationMailAction(
+  automationId: string,
+  candidateId: string
+): Promise<{ recipients: string[]; subject: string; html: string } | { error: string }> {
+  const supabase = await createSupabaseServerClient()
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
+  try {
+    return await previewAutomationMail(createSupabaseAdminClient(), automationId, candidateId)
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function resendAutomationMailAction(automationId: string, candidateId: string): Promise<{ recipients: string[] } | { error: string }> {
+  const supabase = await createSupabaseServerClient()
+  const guard = await getStaffContext(supabase)
+  if ("error" in guard) return guard
+  try {
+    const recipients = await resendAutomationMail(createSupabaseAdminClient(), automationId, candidateId, guard.staff.userId)
+    revalidatePath(`/dashboard/candidates/${candidateId}`)
+    return { recipients }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
 }

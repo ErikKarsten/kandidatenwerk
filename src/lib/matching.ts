@@ -10,13 +10,14 @@ type Supabase = SupabaseClient<Database>
 export async function matchCandidateToCampaigns(supabase: Supabase, candidateId: string): Promise<void> {
   const { data: candidate, error: candidateError } = await supabase
     .from("candidates")
-    .select("id, berufsbild, lat, lng, is_demo, tags")
+    .select("id, berufsbild, lat, lng, is_demo, tags, campaign_only")
     .eq("id", candidateId)
     .single()
 
   if (candidateError) throw new Error(candidateError.message)
-  // Musterdatensätze (Paket 62) nie matchen - sie sind keiner Kanzlei zuordenbar.
-  if (candidate.is_demo || (candidate.tags ?? []).includes(SAMPLE_TAG)) return
+  // Musterdatensätze (Paket 62) nie matchen - sie sind keiner Kanzlei zuordenbar. Leads aus
+  // der eigenen Meta-Kampagne einer Kanzlei auch nicht (Paket 83).
+  if (candidate.is_demo || candidate.campaign_only || (candidate.tags ?? []).includes(SAMPLE_TAG)) return
   if (!candidate.berufsbild || candidate.lat === null || candidate.lng === null) return
 
   const { data: campaigns, error: campaignsError } = await supabase
@@ -71,6 +72,7 @@ export async function matchCampaignToCandidates(supabase: Supabase, campaignId: 
     .select("id, lat, lng")
     .eq("berufsbild", campaign.berufsbild)
     .eq("is_demo", false)
+    .eq("campaign_only", false)
     .not("tags", "cs", `{${SAMPLE_TAG}}`)
     .not("lat", "is", null)
     .not("lng", "is", null)

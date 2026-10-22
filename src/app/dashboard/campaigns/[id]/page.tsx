@@ -26,7 +26,7 @@ export default async function CampaignDetailPage({
     // Herkunft: Kandidaten, deren Bewerbung über diese Kampagne kam (Lead-Kampagnen).
     supabase
       .from("candidates")
-      .select("id, first_name, last_name, email, phone, status, berufsbild, plz, created_at, source")
+      .select("id, first_name, last_name, email, phone, status, berufsbild, plz, created_at, source, campaign_only")
       .eq("campaign_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -64,7 +64,7 @@ export default async function CampaignDetailPage({
       })
       .filter((c): c is AssignedCandidateJoin & { assignmentId: string; assignmentStatus: string } => c !== null)
     const assignedIds = new Set(shownCandidates.map((c) => c.id))
-    ownLeads = (candidates ?? []).filter((c) => c.source === "meta_ads" && !assignedIds.has(c.id))
+    ownLeads = (candidates ?? []).filter((c) => c.campaign_only && !assignedIds.has(c.id))
   }
 
   const client = Array.isArray(campaign.clients)
