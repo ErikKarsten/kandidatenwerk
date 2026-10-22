@@ -48,16 +48,30 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
+type TileSort = "newest" | "name-asc" | "name-desc"
+
+// "Neueste zuerst" ist die Reihenfolge vom Server (laufende zuerst, dann letzter Lead).
+const SORT_OPTIONS: { value: TileSort; label: string }[] = [
+  { value: "newest", label: "Neueste zuerst" },
+  { value: "name-asc", label: "Name (A-Z)" },
+  { value: "name-desc", label: "Name (Z-A)" },
+]
+
 // Kacheln je Lead-Kampagne im Stil von Leadtable (Paket 47). Klick zeigt die Kandidaten der
 // Kampagne in "Alle Kandidaten" (Filter ?campaign=), das Zahnrad öffnet die Kampagne.
 export function LeadCampaignTiles({ tiles }: { tiles: LeadCampaignTile[] }) {
   const router = useRouter()
   const [q, setQ] = useState("")
   const [onlyRunning, setOnlyRunning] = useState(false)
+  const [sort, setSort] = useState<TileSort>("newest")
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    return tiles.filter((t) => (!onlyRunning || t.running) && (!needle || t.title.toLowerCase().includes(needle)))
-  }, [tiles, q, onlyRunning])
+    const filtered = tiles.filter((t) => (!onlyRunning || t.running) && (!needle || t.title.toLowerCase().includes(needle)))
+    if (sort === "newest") return filtered
+    // Alphabetisch nach dem angezeigten Namen (ohne "KS24 -"), Zahlen natürlich sortiert.
+    const dir = sort === "name-asc" ? 1 : -1
+    return [...filtered].sort((a, b) => dir * displayTitle(a.title).localeCompare(displayTitle(b.title), "de", { numeric: true, sensitivity: "base" }))
+  }, [tiles, q, onlyRunning, sort])
 
   return (
     <div className="flex flex-col gap-4">
@@ -72,6 +86,19 @@ export function LeadCampaignTiles({ tiles }: { tiles: LeadCampaignTile[] }) {
             style={{ borderColor: "#dde3ea" }}
           />
         </div>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as TileSort)}
+          aria-label="Sortierung"
+          className="rounded-md border bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none"
+          style={{ borderColor: "#dde3ea" }}
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
         <label className="flex items-center gap-1.5 text-sm text-gray-600">
           <input type="checkbox" checked={onlyRunning} onChange={(e) => setOnlyRunning(e.target.checked)} />
           Nur laufende

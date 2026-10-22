@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react"
 import dynamic from "next/dynamic"
-import { Search } from "lucide-react"
+import { Lock, LockOpen, Search } from "lucide-react"
 import type { MapCircle, MapPoint, MatchesMapHandle, SearchPin } from "@/components/dashboard/matches-map"
 import { CandidatePanel } from "@/components/dashboard/candidate-panel/candidate-panel"
 import type { AdArea } from "@/lib/meta-campaigns-queries"
@@ -11,6 +11,7 @@ import { searchLocationAction } from "./actions"
 import { anonymousName, useShowMode } from "@/lib/show-mode"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { RadiusControl } from "@/components/ui/radius-control"
+import { haversineDistanceKm } from "@/lib/geo-distance"
 
 // Leaflet greift beim Modul-Import auf Browser-Globals zu - muss deshalb clientseitig-only
 // geladen werden (ssr:false), sonst schlägt das Server-Rendering fehl (gleiches Muster
@@ -79,6 +80,13 @@ const CANDIDATE_COLOR = "#1e56a0"
 
 const AD_AREA_COLOR = "#f59e0b"
 
+// "12 km bis Berlin" (Luftlinie) - für Punkte bei festgehaltenem Pin (Paket 75).
+function distanceText(from: { lat: number; lng: number }, pin: Focus, approximate = false): string {
+  const km = haversineDistanceKm(from.lat, from.lng, pin.lat, pin.lng)
+  const value = km < 1 ? "unter 1 km" : `${approximate ? "ca. " : ""}${Math.round(km)} km`
+  return `${value} bis ${pin.label === "Umkreis" ? "zum Pin" : pin.label}`
+}
+
 export function MapOverview({
   clients,
   candidates,
@@ -123,16 +131,30 @@ export function MapOverview({
   const [focus, setFocus] = useState<Focus | null>(null)
   const [focusRadiusKm, setFocusRadiusKm] = useState(FOCUS_RADIUS_KM)
   const [suggestOpen, setSuggestOpen] = useState(false)
+  // Pin festhalten (Paket 75): Klicks auf Punkte verschieben Pin und Umkreis nicht mehr,
+  // Kandidaten und Kanzleien zeigen ihre Entfernung zum Pin. Eine neue Suche setzt den
+  // Pin neu (bleibt festgehalten), "Umkreis entfernen" löst ihn.
+  const [pinLocked, setPinLocked] = useState(false)
+  const lockedPin = pinLocked ? focus : null
 
   function focusOn(target: Focus, opts: { pin?: boolean; fly?: boolean } = {}) {
     setFocus(target)
-    setSearchPin(opts.pin ? { lat: target.lat, lng: target.lng, label: target.label, ringsKm: [] } : null)
+    // Festgehalten: auch Kanzlei-/Kandidatentreffer aus der Suche bekommen die Stecknadel.
+    setSearchPin(opts.pin || pinLocked ? { lat: target.lat, lng: target.lng, label: target.label, ringsKm: [] } : null)
     if (opts.fly) mapRef.current?.flyToRadius(target.lat, target.lng, focusRadiusKm)
   }
 
   function clearFocus() {
     setFocus(null)
     setSearchPin(null)
+    setPinLocked(false)
+  }
+
+  function togglePinLock() {
+    if (!focus) return
+    // Umkreis ohne Stecknadel (z. B. nach Klick auf eine Kanzlei): beim Festhalten eine setzen.
+    if (!pinLocked && !searchPin) setSearchPin({ lat: focus.lat, lng: focus.lng, label: focus.label, ringsKm: [] })
+    setPinLocked(!pinLocked)
   }
 
   // Kanzleien und (außer im anonymisierten Modus) Kandidaten nach Namen.
@@ -207,7 +229,7 @@ export function MapOverview({
           lat: c.lat,
           lng: c.lng,
           label: showMode ? "Kanzlei" : c.name,
-          sublabel: showMode ? undefined : c.place ? `Kanzlei · ${c.place}` : "Kanzlei",
+          sublabel: [showMode ? null : c.place ? `Kanzlei · ${c.place}` : "Kanzlei", lockedPin ? distanceText(c, lockedPin) : null].filter(Boolean).join(" · ") || undefined,
           color: CLIENT_COLOR,
           href: showMode ? undefined : `/dashboard/clients/${c.id}`,
         }))
@@ -219,7 +241,9 @@ export function MapOverview({
       lat: c.lat,
       lng: c.lng,
       label: showMode ? anonymousName(c.id) : c.name,
-      sublabel: [showMode ? null : "Kandidat", bb.label(c.berufsbild)].filter(Boolean).join(" · ") || "Kandidat",
+      sublabel:
+        [showMode ? null : "Kandidat", bb.label(c.berufsbild), lockedPin ? distanceText(c, lockedPin, c.approximate) : null].filter(Boolean).join(" · ") ||
+        "Kandidat",
       color: CANDIDATE_COLOR,
       approximate: c.approximate,
       note: c.approximate ? "Ungefährer Standort, keine eigene PLZ hinterlegt" : undefined,
@@ -227,7 +251,10 @@ export function MapOverview({
     }))
 
     return [...clientPoints, ...candidatePoints]
-  }, [clients, candidates, includeClients, includeCandidates, showMode, bb])
+  }, [clients, candidates, includeClients, includeCandidates, showMode, bb, lockedPin])
+
+  const selectedCandidate = selectedCandidateId ? candidates.find((c) => c.id === selectedCandidateId) : undefined
+  const selectedDistance = lockedPin && selectedCandidate ? distanceText(selectedCandidate, lockedPin, selectedCandidate.approximate) : null
 
   const circles = useMemo<MapCircle[]>(
     () => [
@@ -306,6 +333,27 @@ export function MapOverview({
               style={{ borderColor: "#dde3ea" }}
             >
               Umkreis entfernen
+            </button>
+          )}
+          {focus && (
+            <button
+              type="button"
+              onClick={togglePinLock}
+              aria-pressed={pinLocked}
+              title={
+                pinLocked
+                  ? "Pin ist festgehalten: Klicks auf Kandidaten verschieben ihn nicht, die Entfernung zum Pin wird angezeigt. Klicken zum Lösen."
+                  : "Pin und Umkreis festhalten, damit sie beim Klick auf Kandidaten stehen bleiben - dann wird die Entfernung zum Pin angezeigt."
+              }
+              className="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium"
+              style={
+                pinLocked
+                  ? { backgroundColor: "#fef2f2", borderColor: "#fecaca", color: FOCUS_COLOR }
+                  : { backgroundColor: "white", borderColor: "#dde3ea", color: "#4b5563" }
+              }
+            >
+              {pinLocked ? <Lock size={13} /> : <LockOpen size={13} />}
+              {pinLocked ? "Pin festgehalten" : "Pin festhalten"}
             </button>
           )}
           {focus && (
@@ -388,9 +436,13 @@ export function MapOverview({
         scrollWheelZoom
         canvas
         searchPin={searchPin}
-        onMarkerClick={(lat, lng) => focusOn({ lat, lng, label: "Umkreis" })}
+        onMarkerClick={(lat, lng) => {
+          if (!pinLocked) focusOn({ lat, lng, label: "Umkreis" })
+        }}
       />
-      {selectedCandidateId && <CandidatePanel candidateId={selectedCandidateId} onClose={() => setSelectedCandidateId(null)} anonymize={showMode} />}
+      {selectedCandidateId && (
+        <CandidatePanel candidateId={selectedCandidateId} onClose={() => setSelectedCandidateId(null)} anonymize={showMode} distanceNote={selectedDistance} />
+      )}
     </div>
   )
 }

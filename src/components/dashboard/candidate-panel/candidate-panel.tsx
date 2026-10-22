@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ExternalLink, Mail, Phone, X } from "lucide-react"
+import { ExternalLink, Mail, MapPin, Phone, X } from "lucide-react"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
@@ -30,6 +30,7 @@ export function CandidatePanel({
   onChanged,
   onAssigned,
   anonymize = false,
+  distanceNote = null,
 }: {
   candidateId: string
   onClose: () => void
@@ -37,6 +38,8 @@ export function CandidatePanel({
   onChanged?: () => void
   onAssigned?: (candidateId: string) => void
   anonymize?: boolean
+  // Z. B. "12 km bis Berlin" - Karte mit festgehaltenem Pin (Paket 75).
+  distanceNote?: string | null
 }) {
   const bb = useBerufsbilder()
   const router = useRouter()
@@ -98,6 +101,12 @@ export function CandidatePanel({
                 {current.plz ? `PLZ ${current.plz}` : "Wohnort unbekannt"}
                 {current.origin ? ` · über ${current.origin}` : ""}
                 {` · seit ${new Date(current.createdAt).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`}
+              </p>
+            )}
+            {distanceNote && (
+              <p className="mt-1 inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium" style={{ color: "#dc2626", backgroundColor: "#fef2f2", borderColor: "#fecaca" }}>
+                <MapPin size={12} />
+                {distanceNote}
               </p>
             )}
           </div>
