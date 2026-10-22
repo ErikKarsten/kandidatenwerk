@@ -400,7 +400,7 @@ export function MapOverview({
         <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CLIENT_COLOR }} />
-            Kanzlei
+            Kanzlei (live)
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CANDIDATE_COLOR }} />

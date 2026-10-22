@@ -92,7 +92,7 @@ interface Campaign {
   leadtable_campaign_id: string | null
   kanzleistelle_job_id: string | null
   meta_webhook_last_test_at: string | null
-  client: { id: string; name: string } | null
+  client: { id: string; name: string; project_phase?: string | null } | null
   kind: string
   field_template_id?: string | null
 }
@@ -932,6 +932,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
               lng: campaign.lng,
               extra_points: campaign.extra_points,
             }}
+            clientPhase={campaign.client?.project_phase ?? null}
           />
       )}
 

@@ -6,7 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getStaffContext, requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
-import { ensureCampaignAssignment, ensureClientAssignment } from "@/lib/client-assignment"
+import { clientNotLiveError, ensureCampaignAssignment, ensureClientAssignment } from "@/lib/client-assignment"
 import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
@@ -536,6 +536,8 @@ export async function assignCandidateToClientAction(candidateId: string, clientI
   const supabase = await createSupabaseServerClient()
   const guard = await getStaffContext(supabase)
   if ("error" in guard) return guard
+  const notLive = await clientNotLiveError(supabase, clientId)
+  if (notLive) return { error: notLive }
   try {
     await ensureClientAssignment(supabase, candidateId, clientId)
   } catch (err) {

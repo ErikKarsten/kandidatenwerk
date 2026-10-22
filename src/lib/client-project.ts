@@ -10,6 +10,9 @@ export const PROJECT_PHASES = [
   { value: "gekuendigt", label: "Gekündigt", color: "#dc2626" },
 ] as const
 
+// Nur Kanzleien in dieser Phase bekommen Kandidaten und erscheinen auf der Karte (Paket 78).
+export const LIVE_PHASE = "live"
+
 // Automatische Aufgabe, sobald ein Projekt in "Kampagne in Vorbereitung" wechselt
 // (Paket 13). Zuständig ist Elea Günther; gibt es den Zugang nicht, bekommt sie, wer
 // die Phase gesetzt hat.

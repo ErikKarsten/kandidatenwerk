@@ -11,6 +11,7 @@ import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
 import { revealsSample } from "@/lib/candidate-tags"
+import { LIVE_PHASE } from "@/lib/client-assignment"
 import { bodyWithoutSavedNote, filesOfMessage } from "@/lib/inbound-replies"
 
 export default async function CandidateDetailPage({
@@ -82,13 +83,13 @@ export default async function CandidateDetailPage({
     // Ziele für "Weiterschieben" im Reiter Zuordnung: alle aktiven Kanzlei-Kampagnen.
     supabase
       .from("campaigns")
-      .select("id, title, berufsbild, client_id, plz, lat, lng, extra_plz, clients(name)")
+      .select("id, title, berufsbild, client_id, plz, lat, lng, extra_plz, clients(name, project_phase)")
       .eq("kind", "kanzlei")
       .eq("status", "active")
       .eq("is_demo", false)
       .order("title", { ascending: true }),
     // Kanzleien im Umkreis mit Standorten und gesuchten Stellen (Paket 46).
-    supabase.from("clients").select("id, name, ort, lat, lng, status").order("name"),
+    supabase.from("clients").select("id, name, ort, lat, lng, status, project_phase").order("name"),
     supabase.from("client_locations").select("client_id, lat, lng"),
     supabase.from("client_positions").select("*").order("sort_order").order("title"),
     loadProfileFieldConfig(supabase),
@@ -212,9 +213,11 @@ export default async function CandidateDetailPage({
     }
   })
 
-  const kanzleiCampaigns = (kanzleiCampaignRows ?? []).map((c) => {
-    const clientRel = c.clients as { name: string } | { name: string }[] | null
+  // Ziele zum Zuordnen/Weiterschieben: nur Kanzleien in der Phase "Live" (Paket 78).
+  const kanzleiCampaigns = (kanzleiCampaignRows ?? []).flatMap((c) => {
+    const clientRel = c.clients as { name: string; project_phase: string | null } | { name: string; project_phase: string | null }[] | null
     const client = Array.isArray(clientRel) ? clientRel[0] ?? null : clientRel
+    if (client?.project_phase !== LIVE_PHASE) return []
     return {
       id: c.id,
       title: c.title,
@@ -297,7 +300,7 @@ export default async function CandidateDetailPage({
       templateFieldKeys={templateFieldKeys}
       kanzleiCampaigns={kanzleiCampaigns}
       kanzleien={buildKanzleiOptions(
-        (kanzleiClientRows ?? []).filter((c) => c.status !== "Archiviert"),
+        (kanzleiClientRows ?? []).filter((c) => c.status !== "Archiviert" && c.project_phase === LIVE_PHASE),
         kanzleiLocationRows ?? [],
         kanzleiPositionRows ?? [],
         resolveFields("stelle", profileFieldConfig.settings)

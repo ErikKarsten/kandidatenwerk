@@ -111,6 +111,7 @@ export default async function ClientsPage({
       project: (() => {
         const phase = PROJECT_PHASES.find((p) => p.value === client.project_phase) ?? PROJECT_PHASES[0]
         return {
+          phase: phase.value,
           phaseLabel: phase.label,
           phaseColor: phase.color,
           kamName: team.find((t) => t.id === client.key_account_manager_id)?.full_name ?? null,

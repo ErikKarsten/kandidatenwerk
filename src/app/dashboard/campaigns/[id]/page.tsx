@@ -19,7 +19,7 @@ export default async function CampaignDetailPage({
   const [{ data: campaign }, { data: candidates }, { data: automations }, { data: clientRows }, { data: templateRows }] = await Promise.all([
     supabase
       .from("campaigns")
-      .select("*, clients(id, name)")
+      .select("*, clients(id, name, project_phase)")
       .eq("id", id)
       .single(),
     // Herkunft: Kandidaten, deren Bewerbung über diese Kampagne kam (Lead-Kampagnen).
@@ -64,7 +64,7 @@ export default async function CampaignDetailPage({
 
   const client = Array.isArray(campaign.clients)
     ? campaign.clients[0] ?? null
-    : (campaign.clients as { id: string; name: string } | null)
+    : (campaign.clients as { id: string; name: string; project_phase: string | null } | null)
 
   return (
     <CampaignDetail

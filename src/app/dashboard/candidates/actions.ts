@@ -8,7 +8,7 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
-import { ASSIGNABLE_STATUS, ensureCampaignAssignment } from "@/lib/client-assignment"
+import { ASSIGNABLE_STATUS, clientNotLiveError, ensureCampaignAssignment } from "@/lib/client-assignment"
 import { createSampleCandidates } from "@/lib/sample-candidates"
 import { friendlyAiError } from "@/lib/llm"
 import { cleanExtra, cleanFocus, cleanSoftware } from "@/lib/sample-focus"
@@ -48,11 +48,16 @@ export async function createCandidateAction(
   // Kanzlei-Kampagne (Paket 53): nicht als Herkunft speichern, sondern zuordnen - sonst
   // erscheint der Kandidat nicht in der Kampagne. Kanzleien sehen nur vorqualifizierte.
   const { data: targetCampaign } = campaign_id
-    ? await supabase.from("campaigns").select("id, kind, title").eq("id", campaign_id).maybeSingle()
+    ? await supabase.from("campaigns").select("id, kind, title, client_id").eq("id", campaign_id).maybeSingle()
     : { data: null }
   const kanzleiCampaign = targetCampaign?.kind === "kanzlei" ? targetCampaign : null
   if (kanzleiCampaign && status !== ASSIGNABLE_STATUS) {
     return { error: "Kanzleien sehen nur vorqualifizierte Kandidaten – bitte den Status „Vorqualifiziert“ wählen oder ohne Kampagne anlegen." }
+  }
+  // Vor dem Anlegen prüfen, sonst entstünde der Kandidat ohne die gewünschte Zuordnung.
+  if (kanzleiCampaign?.client_id) {
+    const notLive = await clientNotLiveError(supabase, kanzleiCampaign.client_id)
+    if (notLive) return { error: `${notLive} Bitte ohne Kampagne anlegen oder die Phase der Kanzlei ändern.` }
   }
 
   const { data: candidate, error } = await supabase

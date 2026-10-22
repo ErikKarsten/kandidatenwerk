@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
+import { LIVE_PHASE } from "@/lib/client-project"
 
 type Supabase = SupabaseClient<Database>
 
@@ -10,6 +11,16 @@ export const ASSIGNABLE_STATUS = "vorqualifiziert"
 export const NOT_ASSIGNABLE_MESSAGE = "Nur vorqualifizierte Kandidaten können einer Kanzlei zugeordnet werden."
 // Musterdatensätze (Paket 62) sind nur zum Vorführen da und nie einer Kanzlei zuordenbar.
 export const SAMPLE_NOT_ASSIGNABLE_MESSAGE = "Musterdatensätze können keiner Kanzlei zugeordnet werden."
+
+// Zuordnen nur an Kanzleien in der Projektphase "Live" (Paket 78) - im Onboarding, in
+// der Kampagnen-Vorbereitung, pausiert oder gekündigt bekommen sie keine Kandidaten.
+export { LIVE_PHASE }
+export const CLIENT_NOT_LIVE_MESSAGE = "Kandidaten können nur Kanzleien in der Projektphase „Live“ zugeordnet werden."
+
+export async function clientNotLiveError(supabase: Supabase, clientId: string): Promise<string | null> {
+  const { data } = await supabase.from("clients").select("project_phase").eq("id", clientId).maybeSingle()
+  return data?.project_phase === LIVE_PHASE ? null : CLIENT_NOT_LIVE_MESSAGE
+}
 
 export function isSampleCandidate(tags: string[] | null | undefined): boolean {
   return (tags ?? []).includes(SAMPLE_TAG)
@@ -77,6 +88,8 @@ export async function ensureCampaignAssignment(
   }
   const notAssignable = await assignabilityError(supabase, candidateId)
   if (notAssignable) throw new Error(notAssignable)
+  const notLive = await clientNotLiveError(supabase, campaign.client_id)
+  if (notLive) throw new Error(notLive)
 
   // Eine aktive Zuordnung je Kandidat und Kanzlei (Paket 31, Unique-Index): über dieselbe
   // Kampagne idempotent, über eine andere Kampagne derselben Kanzlei ein klarer Hinweis.
