@@ -329,7 +329,7 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
               active={tab === "dateien"}
               onClick={() => setTab("dateien")}
             >
-              Dateien
+              Dateien ({files.length})
             </TabButton>
             <TabButton
               active={tab === "zuordnung"}

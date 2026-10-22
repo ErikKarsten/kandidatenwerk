@@ -11,6 +11,7 @@ import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
 import { revealsSample } from "@/lib/candidate-tags"
+import { bodyWithoutSavedNote, filesOfMessage } from "@/lib/inbound-replies"
 
 export default async function CandidateDetailPage({
   params,
@@ -161,6 +162,8 @@ export default async function CandidateDetailPage({
         mime_type: f.mime_type,
         created_at: f.created_at,
         signedUrl: urlData?.signedUrl ?? null,
+        // Gleicher Link, aber als Download statt im Browser öffnen (Supabase: &download=).
+        downloadUrl: urlData?.signedUrl ? `${urlData.signedUrl}&download=${encodeURIComponent(f.file_name)}` : null,
       }
     })
   )
@@ -260,19 +263,24 @@ export default async function CandidateDetailPage({
       Bewerberlink: "",
     },
     templates: (messageTemplateRows ?? []).map((t) => ({ id: t.id, name: t.name, subject: t.subject, body: t.body_html })),
-    messages: (messageRows ?? []).map((m) => ({
+    messages: (messageRows ?? []).map((m) => {
+      // Anhänge einer Antwort direkt an der Nachricht (Paket 78).
+      const attachments = filesOfMessage(m, files).map((f) => ({ id: f.id, name: f.name, size: f.size, url: f.signedUrl, downloadUrl: f.downloadUrl }))
+      return {
       id: m.id,
       channel: m.channel,
       direction: m.direction,
       fromAddress: m.from_address,
       toAddress: m.to_address,
       subject: m.subject,
-      body: m.body,
+      body: attachments.length ? bodyWithoutSavedNote(m.body) : m.body,
+      attachments,
       senderName: profiles.find((p) => p.id === m.sent_by)?.full_name ?? null,
       status: m.status,
       error: m.error,
       createdAt: m.created_at,
-    })),
+      }
+    }),
   }
 
   return (

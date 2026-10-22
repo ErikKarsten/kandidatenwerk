@@ -4,6 +4,7 @@ import { useTransition, useState } from "react"
 import { useRouter } from "next/navigation"
 import { uploadFileAction, deleteFileAction } from "./actions"
 import { FileDropZone } from "@/components/ui/file-drop-zone"
+import { Download } from "lucide-react"
 
 interface FileItem {
   id: string
@@ -13,6 +14,7 @@ interface FileItem {
   mime_type: string | null
   created_at: string
   signedUrl: string | null
+  downloadUrl?: string | null
 }
 
 interface FilesTabProps {
@@ -123,10 +125,21 @@ export function FilesTab({ candidateId, files }: FilesTabProps) {
                   })}
                 </span>
               </div>
+              {f.downloadUrl && (
+                <a
+                  href={f.downloadUrl}
+                  className="ml-4 flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                  style={{ borderColor: "#dde3ea" }}
+                  title="Herunterladen"
+                >
+                  <Download size={12} />
+                  Herunterladen
+                </a>
+              )}
               <button
                 onClick={() => handleDelete(f.id, f.storage_path)}
                 disabled={deletePending}
-                className="ml-4 shrink-0 rounded-md px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                className="ml-2 shrink-0 rounded-md px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                 title="Datei löschen"
               >
                 ✕
