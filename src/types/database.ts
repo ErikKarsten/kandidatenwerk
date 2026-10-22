@@ -1808,18 +1808,30 @@ export type Database = {
           automation_id: string
           candidate_id: string
           fired_at: string
+          status: string | null
+          recipients: string[]
+          last_sent_at: string | null
+          send_count: number
         }
         Insert: {
           id?: string
           automation_id: string
           candidate_id: string
           fired_at?: string
+          status?: string | null
+          recipients?: string[]
+          last_sent_at?: string | null
+          send_count?: number
         }
         Update: {
           id?: string
           automation_id?: string
           candidate_id?: string
           fired_at?: string
+          status?: string | null
+          recipients?: string[]
+          last_sent_at?: string | null
+          send_count?: number
         }
         Relationships: [
           {

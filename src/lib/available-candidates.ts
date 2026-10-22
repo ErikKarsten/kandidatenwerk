@@ -8,7 +8,8 @@ import { haversineDistanceKm } from "@/lib/geo-distance"
 // Reine Funktion ohne Datenbankzugriff (Filter/Sortierung/Seiten), damit sie testbar
 // ist - die Action in campaigns/[id]/actions.ts lädt die Rohdaten.
 
-export type AvailableSort = "distance" | "newest"
+// Paket 84: auch absteigend (Spaltenköpfe "Entfernung" und "Eingang" zum Umschalten).
+export type AvailableSort = "distance" | "farthest" | "newest" | "oldest"
 
 export interface CandidateRow {
   id: string
@@ -80,14 +81,15 @@ export function rankAvailableCandidates(
   }
 
   items.sort((a, b) => {
-    if (opts.sort === "distance") {
+    if (opts.sort === "distance" || opts.sort === "farthest") {
+      // Ohne Standort immer ans Ende.
       if (a.distanceKm === null && b.distanceKm !== null) return 1
       if (a.distanceKm !== null && b.distanceKm === null) return -1
       if (a.distanceKm !== null && b.distanceKm !== null && a.distanceKm !== b.distanceKm) {
-        return a.distanceKm - b.distanceKm
+        return opts.sort === "distance" ? a.distanceKm - b.distanceKm : b.distanceKm - a.distanceKm
       }
     }
-    return b.createdAt.localeCompare(a.createdAt)
+    return opts.sort === "oldest" ? a.createdAt.localeCompare(b.createdAt) : b.createdAt.localeCompare(a.createdAt)
   })
 
   const total = items.length

@@ -34,7 +34,7 @@ import {
 
 type Supabase = SupabaseClient<Database>
 
-interface CandidateRow {
+export interface CandidateRow {
   id: string
   first_name: string
   last_name: string
@@ -47,12 +47,50 @@ interface CandidateRow {
   tags: string[] | null
 }
 
-interface CampaignJoin {
+export interface CampaignJoin {
   id: string
   title: string
   kind: string
   client_id: string | null
   clients: { name: string } | { name: string }[] | null
+}
+
+// Automatisierungs-Mail für einen Kandidaten (Empfänger, Betreff, HTML) - im Lauf und beim
+// erneuten Senden aus dem Reiter "Automatisierungen" (Paket 84) gleich aufgebaut.
+export interface AutomationMailSource {
+  recipient: string
+  subject: string
+  body_html: string
+}
+
+export async function buildAutomationMail(
+  supabase: Supabase,
+  automation: AutomationMailSource,
+  campaign: CampaignJoin,
+  candidate: CandidateRow,
+  berufsbilder: Awaited<ReturnType<typeof fetchBerufsbilder>>
+): Promise<{ recipients: string[]; subject: string; html: string; bodyText: string }> {
+  // Kanzlei der Kampagne, wenn beim Kandidaten keine hinterlegt ist (Lead-Kampagnen ohne
+  // automatische Zuordnung, Kanzlei-Kampagnen über die Zuordnung).
+  const recipients = await resolveAutomationRecipients(supabase, automation.recipient, {
+    email: candidate.email,
+    client_id: candidate.client_id ?? campaign.client_id,
+    tags: candidate.tags,
+  })
+  const vars = {
+    Kandidatenname: `${candidate.first_name} ${candidate.last_name}`.trim(),
+    Kampagnenname: mailCampaignName(campaign, berufsbildLabel(candidate.berufsbild, berufsbilder)),
+    Kundenname: unwrapOne(campaign.clients)?.name ?? "",
+    Email: candidate.email ?? "",
+    Telefon: candidate.phone ?? "",
+    Bewerberlink: candidatePortalLink(candidate.id),
+  }
+  const subject = substituteTemplateVars(automation.subject, vars)
+  // automation.body_html ist trotz des Namens reiner Fließtext (\n\n-Absätze, siehe
+  // automations-tab.tsx) - wrapAutomationEmailHtml rendert das erst beim Versand in
+  // die gebrandete Kartenvorlage, der Editor selbst bleibt unverändert Klartext.
+  const bodyText = substituteTemplateVars(automation.body_html, vars)
+  return { recipients, subject, html: wrapAutomationEmailHtml(bodyText), bodyText }
 }
 
 export interface RunAutomationsResult {
@@ -232,13 +270,7 @@ export async function runAutomations(
         }
 
         const candidateName = `${candidate.first_name} ${candidate.last_name}`.trim()
-        // Kanzlei der Kampagne, wenn beim Kandidaten keine hinterlegt ist (Lead-Kampagnen ohne
-        // automatische Zuordnung, Kanzlei-Kampagnen über die Zuordnung).
-        const recipients = await resolveAutomationRecipients(supabase, automation.recipient, {
-          email: candidate.email,
-          client_id: candidate.client_id ?? campaign.client_id,
-          tags: candidate.tags,
-        })
+        const { recipients, subject, html: emailHtml } = await buildAutomationMail(supabase, automation, campaign, candidate, berufsbilder)
 
         if (recipients.length === 0) {
           // Kein Empfänger ermittelbar (z.B. Kandidat ohne E-Mail, Kunde ohne
@@ -252,27 +284,12 @@ export async function runAutomations(
             await supabase.from("campaign_automation_runs").insert({
               automation_id: automation.id,
               candidate_id: candidate.id,
+              status: "kein_empfaenger",
             })
           }
           skipped++
           continue
         }
-
-        const vars = {
-          Kandidatenname: candidateName,
-          Kampagnenname: mailCampaignName(campaign, berufsbildLabel(candidate.berufsbild, berufsbilder)),
-          Kundenname: unwrapOne(campaign.clients)?.name ?? "",
-          Email: candidate.email ?? "",
-          Telefon: candidate.phone ?? "",
-          Bewerberlink: candidatePortalLink(candidate.id),
-        }
-
-        const subject = substituteTemplateVars(automation.subject, vars)
-        // automation.body_html ist trotz des Namens reiner Fließtext (\n\n-Absätze, siehe
-        // automations-tab.tsx) - wrapAutomationEmailHtml rendert das erst beim Versand in
-        // die gebrandete Kartenvorlage, der Editor selbst bleibt unverändert Klartext.
-        const bodyText = substituteTemplateVars(automation.body_html, vars)
-        const emailHtml = wrapAutomationEmailHtml(bodyText)
 
         if (dryRun) {
           log(
@@ -286,6 +303,7 @@ export async function runAutomations(
           const { error: claimError } = await supabase.from("campaign_automation_runs").insert({
             automation_id: automation.id,
             candidate_id: candidate.id,
+            status: "gesendet",
           })
           if (claimError) {
             if (claimError.code === "23505") {
@@ -294,13 +312,24 @@ export async function runAutomations(
             }
             throw new Error(claimError.message)
           }
+          let delivered: string[]
           try {
-            await sendEmail(recipients, subject, emailHtml)
+            delivered = await sendEmail(recipients, subject, emailHtml)
           } catch (sendError) {
             // Reservierung zurücknehmen, damit der nächste Lauf es erneut versucht.
             await supabase.from("campaign_automation_runs").delete().eq("automation_id", automation.id).eq("candidate_id", candidate.id)
             throw sendError
           }
+          // Versandprotokoll für den Reiter "Automatisierungen" (Paket 84).
+          await supabase
+            .from("campaign_automation_runs")
+            .update(
+              delivered.length
+                ? { recipients: delivered, last_sent_at: new Date().toISOString(), send_count: 1 }
+                : { status: "kein_empfaenger" }
+            )
+            .eq("automation_id", automation.id)
+            .eq("candidate_id", candidate.id)
 
           await supabase.from("candidate_history").insert({
             candidate_id: candidate.id,
@@ -323,7 +352,7 @@ export async function runAutomations(
     if (!dryRun && beforeActivation.length > 0) {
       await supabase
         .from("campaign_automation_runs")
-        .insert(beforeActivation.map((candidateId) => ({ automation_id: automation.id, candidate_id: candidateId })))
+        .insert(beforeActivation.map((candidateId) => ({ automation_id: automation.id, candidate_id: candidateId, status: "vor_aktivierung" })))
     }
   }
 

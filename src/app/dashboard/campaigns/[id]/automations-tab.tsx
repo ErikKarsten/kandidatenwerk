@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useCallback, useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Pencil, Trash2, Mail, ChevronDown } from "lucide-react"
 import {
@@ -22,6 +22,9 @@ import {
   isCampaignTrigger,
 } from "@/lib/automation-templates"
 import type { AutomationTemplate, AutomationTemplateSet } from "../../einstellungen/automation-template-actions"
+import { loadAutomationSendsAction } from "./actions"
+import { AutomationSendsDialog } from "./automation-sends-dialog"
+import type { AutomationSendLog } from "@/lib/automation-sends"
 
 export interface Automation {
   id: string
@@ -87,6 +90,23 @@ export function AutomationsTab({
   const [savePending, startSaveTransition] = useTransition()
   const [deletePending, startDeleteTransition] = useTransition()
   const [togglePendingId, setTogglePendingId] = useState<string | null>(null)
+  // Versandprotokoll (Paket 84): Anzahl je Automatisierung, Liste mit Vorschau/Erneut senden.
+  const [sendLogs, setSendLogs] = useState<AutomationSendLog[] | null>(null)
+  const [sendsError, setSendsError] = useState<string | null>(null)
+  const [sendsOpenId, setSendsOpenId] = useState<string | null>(null)
+  const reloadSends = useCallback(() => {
+    loadAutomationSendsAction(campaignId).then((res) => {
+      if ("error" in res) setSendsError(res.error)
+      else {
+        setSendsError(null)
+        setSendLogs(res.logs)
+      }
+    })
+  }, [campaignId])
+  useEffect(() => {
+    reloadSends()
+  }, [reloadSends])
+  const sendsOf = (id: string) => sendLogs?.find((l) => l.automationId === id)?.sends ?? []
 
   function openNew() {
     setForm(DEFAULT_FORM)
@@ -261,6 +281,7 @@ export function AutomationsTab({
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Trigger</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">An</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Verschickt</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Aktiv</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -274,6 +295,21 @@ export function AutomationsTab({
                   <td className="px-4 py-3 font-medium text-gray-900">{a.name}</td>
                   <td className="px-4 py-3 text-gray-600 text-xs">{triggerLabel(a.trigger, a.trigger_status)}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{recipientLabel(a.recipient)}</td>
+                  <td className="px-4 py-3">
+                    {sendLogs === null ? (
+                      <span className="text-xs text-gray-300" title={sendsError ?? undefined}>{sendsError ? "–" : "…"}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setSendsOpenId(a.id)}
+                        className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium hover:bg-gray-50"
+                        style={{ borderColor: "#dde3ea", color: sendsOf(a.id).length ? "#1e56a0" : "#9ca3af" }}
+                        title="Gesendete E-Mails anzeigen"
+                      >
+                        <Mail size={12} /> {sendsOf(a.id).length}
+                      </button>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <button
                       onClick={() => handleToggle(a)}
@@ -302,6 +338,16 @@ export function AutomationsTab({
             </tbody>
           </table>
         </div>
+      )}
+
+      {sendsOpenId && (
+        <AutomationSendsDialog
+          automationId={sendsOpenId}
+          automationName={automations.find((a) => a.id === sendsOpenId)?.name ?? ""}
+          sends={sendsOf(sendsOpenId)}
+          onClose={() => setSendsOpenId(null)}
+          onResent={reloadSends}
+        />
       )}
 
       {/* Modal */}
