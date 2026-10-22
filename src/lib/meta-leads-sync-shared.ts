@@ -28,6 +28,10 @@ export interface MetaSyncCampaign {
   agency_id?: string | null
   // Formular, über das der Lead kam - bestimmt die Feld-Zuordnung (meta_lead_forms).
   meta_form_id?: string | null
+  // "kanzlei": eigene Meta-Kampagne einer Kanzlei (Paket 80) - der Lead kommt mit dieser
+  // Kampagne als Herkunft ins Team, die Kanzlei sieht ihn erst nach Vorqualifizierung
+  // und Zuordnung (deshalb ohne candidates.client_id).
+  kind?: string | null
 }
 
 export type ProcessMetaLeadOutcome =
@@ -150,6 +154,14 @@ export async function processMetaLead(
       if (resolved.fromPlace) locationNote = `PLZ aus Wohnort „${mapped.plzAnswer}“ ermittelt.`
     }
   }
+  // Eigene Kampagne einer Kanzlei: Standort der Kampagne als Schätzung.
+  if (!location && campaign.kind === "kanzlei") {
+    const { data: own } = await supabase.from("campaigns").select("plz, lat, lng").eq("id", campaign.id).maybeSingle()
+    if (own?.plz && own.lat !== null && own.lng !== null) {
+      location = { plz: own.plz, lat: own.lat, lng: own.lng }
+      locationNote = "PLZ geschätzt (kein Wohnort angegeben): Standort der Kampagne."
+    }
+  }
   if (!location) {
     const { data: area } = await db
       .from("campaign_ad_areas")
@@ -182,7 +194,7 @@ export async function processMetaLead(
       status: META_FALLBACK_CANDIDATE_STATUS,
       source: "meta_ads",
       campaign_id: campaign.id,
-      client_id: campaign.client_id,
+      client_id: campaign.kind === "kanzlei" ? null : campaign.client_id,
       meta_lead_id: lead.id,
       custom_fields: customFields as Json,
     })
@@ -192,7 +204,12 @@ export async function processMetaLead(
   await supabase.from("candidate_history").insert({
     candidate_id: inserted.id,
     type: "note",
-    content: [`${notePrefix}Import direkt aus Meta, Kampagne „${campaign.title}“.`, locationNote].filter(Boolean).join(" "),
+    content: [
+      `${notePrefix}Import direkt aus Meta, Kampagne „${campaign.title}“${campaign.kind === "kanzlei" ? " (eigene Meta-Kampagne der Kanzlei – nach der Vorqualifizierung zuordnen)" : ""}.`,
+      locationNote,
+    ]
+      .filter(Boolean)
+      .join(" "),
   })
 
 

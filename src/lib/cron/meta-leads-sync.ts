@@ -39,6 +39,7 @@ interface CampaignRow {
   client_id: string | null
   agency_id: string | null
   meta_form_id: string | null
+  kind: string
 }
 
 export interface MetaLeadsSyncResult {

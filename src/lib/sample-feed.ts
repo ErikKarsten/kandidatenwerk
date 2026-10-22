@@ -20,6 +20,12 @@ const EVERY_DAYS = 18
 // Ein neu erzeugter Musterdatensatz braucht bis zu gut einer Minute (KI).
 const GENERATE_RESERVE_MS = 100_000
 
+// Pausenschalter (Paket 79): Der stündliche Lauf ordnet nur zu, wenn das Worker-Secret
+// SAMPLE_FEED_ENABLED auf "1" steht - so lässt sich der Start ohne Deploy freigeben.
+export function sampleFeedEnabled(value = process.env.SAMPLE_FEED_ENABLED): boolean {
+  return value?.trim() === "1"
+}
+
 export function sampleFeedDue(liveSince: string, now: Date): number {
   const days = (now.getTime() - Date.parse(liveSince)) / 86_400_000
   if (!Number.isFinite(days) || days < FIRST_AFTER_DAYS) return 0

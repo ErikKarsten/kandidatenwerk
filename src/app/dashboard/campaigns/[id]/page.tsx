@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getAutomationTemplates } from "../../einstellungen/automation-template-actions"
 import { CampaignDetail } from "./campaign-detail"
 import { campaignPoints } from "@/lib/campaign-locations"
+import type { OwnLead } from "./own-leads-section"
 
 export default async function CampaignDetailPage({
   params,
@@ -25,7 +26,7 @@ export default async function CampaignDetailPage({
     // Herkunft: Kandidaten, deren Bewerbung über diese Kampagne kam (Lead-Kampagnen).
     supabase
       .from("candidates")
-      .select("id, first_name, last_name, email, phone, status, berufsbild, plz, created_at")
+      .select("id, first_name, last_name, email, phone, status, berufsbild, plz, created_at, source")
       .eq("campaign_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -45,6 +46,8 @@ export default async function CampaignDetailPage({
   // Import (candidates.campaign_id) werden bewusst nicht mehr gezeigt - sie stehen in
   // "Alle Kandidaten" und werden über "Passende Kandidaten" neu zugeordnet.
   let shownCandidates = candidates ?? []
+  // Leads aus der eigenen Meta-Kampagne der Kanzlei (Paket 80), noch nicht zugeordnet.
+  let ownLeads: OwnLead[] = []
   if (campaign.kind === "kanzlei") {
     const { data: assignmentRows } = await supabase
       .from("client_assignments")
@@ -60,6 +63,8 @@ export default async function CampaignDetailPage({
         return c ? { ...c, assignmentId: a.id as string, assignmentStatus: a.status as string } : null
       })
       .filter((c): c is AssignedCandidateJoin & { assignmentId: string; assignmentStatus: string } => c !== null)
+    const assignedIds = new Set(shownCandidates.map((c) => c.id))
+    ownLeads = (candidates ?? []).filter((c) => c.source === "meta_ads" && !assignedIds.has(c.id))
   }
 
   const client = Array.isArray(campaign.clients)
@@ -90,9 +95,11 @@ export default async function CampaignDetailPage({
         kind: campaign.kind,
         field_template_id: campaign.field_template_id ?? null,
         meta_webhook_last_test_at: campaign.meta_webhook_last_test_at ?? null,
+        skip_lead_confirmation: campaign.skip_lead_confirmation ?? false,
         client,
       }}
       candidates={shownCandidates}
+      ownLeads={ownLeads}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       automations={(automations ?? []) as any}
       automationTemplates={automationTemplates}

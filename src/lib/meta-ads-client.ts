@@ -183,21 +183,26 @@ export async function fetchMetaLeadsForForm(
   return leads
 }
 
-// Baut einmalig eine Formular-ID -> Seiten-Token-Zuordnung über ALLE dem Systemnutzer
-// zugewiesenen Seiten auf. Kampagnen speichern aktuell nur die Formular-ID (nicht die
-// Seiten-ID), daher lässt sich der passende Page-Access-Token nicht direkt ableiten -
-// wird u.a. vom Sync-Skript einmal pro Lauf genutzt (siehe scripts/meta-leads-sync.ts),
-// statt bei jeder Kampagne einzeln zu raten oder zu scheitern.
-export async function buildFormToPageAccessTokenMap(): Promise<Map<string, string>> {
+// Alle Lead-Formulare aller dem Systemnutzer zugewiesenen Seiten mit Name, Status und
+// Seiten-Token (Paket 80: Auswahl für Kanzlei-Kampagnen). Formulare von Seiten, die dem
+// Systemnutzer nicht freigegeben sind, fehlen hier - deren Leads kommen nicht an.
+export interface MetaFormInfo {
+  name: string
+  status: string | null
+  pageName: string
+  accessToken: string
+}
+
+export async function fetchFormDirectory(): Promise<Map<string, MetaFormInfo>> {
   const pages = await fetchMetaPages()
-  const map = new Map<string, string>()
+  const map = new Map<string, MetaFormInfo>()
 
   for (const page of pages) {
     if (!page.access_token) continue
     try {
       const forms = await fetchMetaLeadForms(page.id, page.access_token)
       for (const form of forms) {
-        map.set(form.id, page.access_token)
+        map.set(form.id, { name: form.name, status: form.status ?? null, pageName: page.name, accessToken: page.access_token })
       }
     } catch (err) {
       console.warn(
@@ -209,6 +214,16 @@ export async function buildFormToPageAccessTokenMap(): Promise<Map<string, strin
   }
 
   return map
+}
+
+// Baut einmalig eine Formular-ID -> Seiten-Token-Zuordnung über ALLE dem Systemnutzer
+// zugewiesenen Seiten auf. Kampagnen speichern aktuell nur die Formular-ID (nicht die
+// Seiten-ID), daher lässt sich der passende Page-Access-Token nicht direkt ableiten -
+// wird u.a. vom Sync-Skript einmal pro Lauf genutzt (siehe scripts/meta-leads-sync.ts),
+// statt bei jeder Kampagne einzeln zu raten oder zu scheitern.
+export async function buildFormToPageAccessTokenMap(): Promise<Map<string, string>> {
+  const directory = await fetchFormDirectory()
+  return new Map([...directory].map(([id, f]) => [id, f.accessToken]))
 }
 
 // Wandelt Metas field_data-Array (Frage-Key + Antwort-Werte) in eine flache

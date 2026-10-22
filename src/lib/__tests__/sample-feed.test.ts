@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { sampleFeedDue, SAMPLE_FEED_TOTAL } from "@/lib/sample-feed"
+import { sampleFeedDue, sampleFeedEnabled, SAMPLE_FEED_TOTAL } from "@/lib/sample-feed"
 import { isUndeliverableAddress, SAMPLE_EMAIL_DOMAINS, sampleEmailDomain, samplePhone } from "@/lib/sample-contact"
 import { sampleEmail } from "@/lib/sample-candidates"
 
@@ -14,6 +14,13 @@ describe("Beispielkandidaten für Live-Kunden (Paket 76)", () => {
     expect(sampleFeedDue(live, day(21))).toBe(2)
     expect(sampleFeedDue(live, day(75))).toBe(5)
     expect(sampleFeedDue(live, day(200))).toBe(SAMPLE_FEED_TOTAL)
+  })
+
+  it("läuft nur, wenn der Schalter auf 1 steht", () => {
+    expect(sampleFeedEnabled(undefined)).toBe(false)
+    expect(sampleFeedEnabled("")).toBe(false)
+    expect(sampleFeedEnabled("0")).toBe(false)
+    expect(sampleFeedEnabled(" 1 ")).toBe(true)
   })
 
   it("nimmt gängige Mailanbieter, außer eine eigene Domain ist eingestellt", () => {

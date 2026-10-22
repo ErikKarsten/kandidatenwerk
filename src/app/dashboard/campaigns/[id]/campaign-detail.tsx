@@ -31,6 +31,8 @@ import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
 import { AvailableCandidatesPanel } from "./available-candidates-panel"
+import { OwnLeadsSection, type OwnLead } from "./own-leads-section"
+import { LIVE_PHASE } from "@/lib/client-project"
 import { useMeetingMode } from "@/lib/meeting-mode"
 import { MeetingModeToggle } from "@/components/dashboard/meeting-mode-toggle"
 import type { AutomationTemplate, AutomationTemplateSet } from "../../einstellungen/automation-template-actions"
@@ -92,6 +94,7 @@ interface Campaign {
   leadtable_campaign_id: string | null
   kanzleistelle_job_id: string | null
   meta_webhook_last_test_at: string | null
+  skip_lead_confirmation?: boolean
   client: { id: string; name: string; project_phase?: string | null } | null
   kind: string
   field_template_id?: string | null
@@ -109,6 +112,7 @@ interface CampaignDetailProps {
   automationTemplates: { templates: AutomationTemplate[]; sets: AutomationTemplateSet[] }
   clients: ClientOption[]
   fieldTemplates: { id: string; name: string; is_default: boolean }[]
+  ownLeads?: OwnLead[]
 }
 
 type ModalStep = null | "choice" | "delete_options"
@@ -138,7 +142,7 @@ function triggerCSVDownload(csv: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function CampaignDetail({ campaign, candidates, automations, automationTemplates, clients, fieldTemplates }: CampaignDetailProps) {
+export function CampaignDetail({ campaign, candidates, automations, automationTemplates, clients, fieldTemplates, ownLeads = [] }: CampaignDetailProps) {
   const bb = useBerufsbilder()
   const isKanzleiCampaign = campaign.kind === "kanzlei"
   const berufsbildLabel = (value: string | null) => bb.label(value) ?? "—"
@@ -693,6 +697,9 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
       {/* Kandidaten-Tab */}
       {tab === "kandidaten" && (
         <div className="flex flex-col gap-4">
+          {isKanzleiCampaign && !meetingMode && ownLeads.length > 0 && (
+            <OwnLeadsSection campaignId={campaign.id} leads={ownLeads} clientLive={campaign.client?.project_phase === LIVE_PHASE} />
+          )}
           {/* Tab-header: count + view toggle */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-gray-500">
@@ -954,6 +961,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
             radiusKm={campaign.radius_km}
             extraPlz={campaign.extra_plz}
             metaWebhookLastTestAt={campaign.meta_webhook_last_test_at}
+            skipLeadConfirmation={campaign.skip_lead_confirmation ?? false}
             kind={campaign.kind}
             fieldTemplateId={campaign.field_template_id ?? null}
             fieldTemplates={fieldTemplates}

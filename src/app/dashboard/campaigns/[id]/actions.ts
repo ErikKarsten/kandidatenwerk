@@ -23,6 +23,8 @@ import type { TablesUpdate } from "@/types/database"
 import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
+import { listOwnMetaCampaigns, type OwnMetaCampaign } from "@/lib/meta-own-campaigns"
+import { syncMetaLeadForms } from "@/lib/lead-form-mapping"
 
 
 // requireStaffUser() aus src/lib/auth-guards.ts (Security-Review 08./09.09.2026) -
@@ -217,9 +219,24 @@ export async function updateCampaignSettingsAction(
 
   const { data: before } = await supabase
     .from("campaigns")
-    .select("berufsbild, plz, radius_km, title, extra_plz")
+    .select("berufsbild, plz, radius_km, title, extra_plz, kind, meta_form_id, agency_id, client_id")
     .eq("id", campaignId)
     .single()
+
+  // Eigene Meta-Kampagne einer Kanzlei (Paket 80): ein Formular nur an einer Kanzlei-
+  // Kampagne, sonst wüsste der Import nicht, wohin die Leads gehören.
+  const newFormId = formData.has("meta_form_id") ? (meta_form_id || null) : undefined
+  if (before?.kind === "kanzlei" && newFormId && newFormId !== before.meta_form_id) {
+    const { data: other } = await supabase
+      .from("campaigns")
+      .select("title")
+      .eq("meta_form_id", newFormId)
+      .eq("kind", "kanzlei")
+      .neq("id", campaignId)
+      .limit(1)
+      .maybeSingle()
+    if (other) return { error: `Dieses Formular ist schon mit der Kampagne „${other.title}“ verknüpft.` }
+  }
 
   // Meta-Formular nur bei Lead-Kampagnen (Kanzlei-Kampagnen schicken stattdessen die
   // Feld-Vorlage, Paket 8).
@@ -228,6 +245,9 @@ export async function updateCampaignSettingsAction(
     : {}
   if (formData.has("field_template_id")) {
     update.field_template_id = (formData.get("field_template_id") as string) || null
+  }
+  if (formData.has("skip_lead_confirmation")) {
+    update.skip_lead_confirmation = formData.get("skip_lead_confirmation") === "1"
   }
 
   let matchingRelevantChanged = false
@@ -270,6 +290,25 @@ export async function updateCampaignSettingsAction(
 
   if (error) return { error: error.message }
 
+  // Neu verknüpftes Formular: Fragen gleich einlesen, damit schon der erste Lead richtig
+  // auf die Zusatzfelder verteilt wird (sonst erst beim nächsten Abgleich).
+  if (newFormId && newFormId !== before?.meta_form_id) {
+    try {
+      let agencyId = before?.agency_id ?? null
+      if (!agencyId && before?.client_id) {
+        const { data: client } = await supabase.from("clients").select("agency_id").eq("id", before.client_id).maybeSingle()
+        agencyId = client?.agency_id ?? null
+      }
+      if (agencyId) {
+        const db = createSupabaseAdminClient()
+        const { data: fieldRows } = await db.from("custom_field_definitions").select("key").eq("agency_id", agencyId).eq("active", true)
+        await syncMetaLeadForms(db as never, agencyId, [newFormId], new Set((fieldRows ?? []).map((r) => r.key)))
+      }
+    } catch (formError) {
+      console.error("Formularfragen konnten nicht eingelesen werden", newFormId, formError)
+    }
+  }
+
   if (matchingRelevantChanged) {
     try {
       await matchCampaignToCandidates(supabase, campaignId)
@@ -282,6 +321,19 @@ export async function updateCampaignSettingsAction(
   return null
 }
 
+
+// Eigene Meta-Kampagnen von Kanzleien (Paket 80): laufende Kampagnen ohne "KS24" im Namen
+// mit ihren Lead-Formularen - zur Auswahl unter "Einrichtung" einer Kanzlei-Kampagne.
+export async function listOwnMetaCampaignsAction(): Promise<{ success: true; campaigns: OwnMetaCampaign[] } | { success: false; error: string }> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return { success: false, error: staffError.error }
+  try {
+    return { success: true, campaigns: await listOwnMetaCampaigns(supabase as never) }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
 
 export async function listMetaPagesAction(): Promise<
   { success: true; pages: MetaPage[] } | { success: false; error: string }

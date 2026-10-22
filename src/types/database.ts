@@ -1063,6 +1063,7 @@ export type Database = {
           leadtable_campaign_id: string | null
           location_id: string | null
           meta_webhook_last_test_at: string | null
+          skip_lead_confirmation: boolean
           meta_form_name: string | null
           kind: string
           agency_id: string | null
@@ -1089,6 +1090,7 @@ export type Database = {
           leadtable_campaign_id?: string | null
           location_id?: string | null
           meta_webhook_last_test_at?: string | null
+          skip_lead_confirmation?: boolean
           meta_form_name?: string | null
           kind?: string
           agency_id?: string | null
@@ -1115,6 +1117,7 @@ export type Database = {
           leadtable_campaign_id?: string | null
           location_id?: string | null
           meta_webhook_last_test_at?: string | null
+          skip_lead_confirmation?: boolean
           meta_form_name?: string | null
           kind?: string
           agency_id?: string | null

@@ -123,3 +123,9 @@ export const LEAD_OBJECTIVES = new Set(["OUTCOME_LEADS", "LEAD_GENERATION"])
 export function isKs24Campaign(name: string | null | undefined): boolean {
   return /^\s*ks[\s-]?24\b/i.test(name ?? "")
 }
+
+// Lead-Formular einer eigenen Meta-Kampagne wählbar (Paket 80): aktiv - ohne Zugriff auf
+// die Seite kennen wir den Status nicht, dann unter Vorbehalt.
+export function isSelectableForm(f: { accessible: boolean; formStatus: string | null }): boolean {
+  return !f.accessible || !f.formStatus || f.formStatus === "ACTIVE"
+}
