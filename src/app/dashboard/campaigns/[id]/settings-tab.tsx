@@ -4,8 +4,10 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
-import { updateCampaignSettingsAction, listMetaPagesAction, listMetaLeadFormsAction, requestMetaTestLeadAction } from "./actions"
+import { updateCampaignSettingsAction, listMetaPagesAction, listMetaLeadFormsAction, listOwnMetaCampaignsAction, requestMetaTestLeadAction } from "./actions"
 import type { MetaPage, MetaLeadForm } from "@/lib/meta-ads-client"
+import type { OwnMetaCampaign } from "@/lib/meta-own-campaigns"
+import { isSelectableForm } from "@/lib/meta-campaigns-parse"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { RadiusControl } from "@/components/ui/radius-control"
 
@@ -67,6 +69,12 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
   const [forms, setForms] = useState<MetaLeadForm[] | null>(null)
   const [formsPending, startFormsTransition] = useTransition()
   const [formsError, setFormsError] = useState<string | null>(null)
+  // Kanzlei-Kampagnen (Paket 80): Formular einer eigenen Meta-Kampagne der Kanzlei.
+  const [ownCampaigns, setOwnCampaigns] = useState<OwnMetaCampaign[] | null>(null)
+  const [ownOpen, setOwnOpen] = useState(false)
+  const [ownPending, startOwnTransition] = useTransition()
+  const [ownError, setOwnError] = useState<string | null>(null)
+  const [ownQuery, setOwnQuery] = useState("")
   const [testLeadPending, startTestLeadTransition] = useTransition()
   const [testLeadMessage, setTestLeadMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
@@ -93,6 +101,24 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
       if (result.success) setForms(result.forms)
       else setFormsError(result.error)
     })
+  }
+
+  function openOwnPicker() {
+    setOwnOpen(true)
+    if (ownCampaigns !== null) return
+    setOwnError(null)
+    startOwnTransition(async () => {
+      const result = await listOwnMetaCampaignsAction()
+      if (result.success) setOwnCampaigns(result.campaigns)
+      else setOwnError(result.error)
+    })
+  }
+
+  function handleOwnFormSelect(campaignName: string, formId: string, formName: string | null) {
+    setLocalFormId(formId)
+    setSelectedFormLabel(`${formName ?? `Formular ${formId}`} · ${campaignName}`)
+    setOwnOpen(false)
+    setTestLeadMessage(null)
   }
 
   function handleFormSelect(form: MetaLeadForm) {
@@ -124,6 +150,8 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
     const fd = new FormData()
     if (isKanzlei) {
       fd.append("field_template_id", localTemplateId)
+      fd.append("meta_form_id", localFormId)
+      fd.append("meta_form_name", localFormId ? selectedFormLabel ?? "" : "")
     } else {
       fd.append("meta_form_id", localFormId)
       fd.append("meta_form_name", selectedFormLabel ?? "")
@@ -246,6 +274,127 @@ export function SettingsTab({ campaignId, metaFormId, metaFormName, berufsbild, 
               </option>
             ))}
           </select>
+        </section>
+      )}
+
+      {/* Eigene Meta-Kampagne der Kanzlei (Paket 80): Kampagnen ohne "KS24" im Namen laufen
+          für eine Kanzlei - ihr Formular hier verknüpfen, dann kommen die Leads direkt in
+          diese Kampagne (Herkunft), werden im Team vorqualifiziert und dann zugeordnet. */}
+      {isKanzlei && (
+        <section>
+          <h3 className="mb-1 text-sm font-semibold text-gray-700">Lead-Formular aus eigener Meta-Kampagne</h3>
+          <p className="mb-3 text-xs text-gray-400">
+            Für Kanzleien mit eigener Meta-Kampagne (ohne „KS24“ im Kampagnennamen): Formular verknüpfen, dann kommen die Leads
+            automatisch in diese Kampagne. Die Kanzlei sieht sie erst, wenn ihr sie vorqualifiziert und zuordnet.
+          </p>
+          <div className="flex max-w-xl flex-col gap-2">
+            {localFormId ? (
+              <div className="flex flex-col gap-1 rounded-lg border px-3 py-2" style={{ borderColor: "#dde3ea" }}>
+                <span className="text-xs font-medium text-gray-500">Verknüpftes Formular</span>
+                <span className="text-sm text-gray-700">{selectedFormLabel || "Name unbekannt"}</span>
+                <code className="text-xs text-gray-400">{localFormId}</code>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">Kein Formular verknüpft.</p>
+            )}
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="button" onClick={openOwnPicker} className="w-fit text-xs font-medium hover:underline" style={{ color: "#1e56a0" }}>
+                {localFormId ? "Anderes Formular wählen" : "Formular verknüpfen"}
+              </button>
+              {localFormId && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleRequestTestLead}
+                    disabled={testLeadPending}
+                    className="w-fit text-xs font-medium hover:underline disabled:opacity-50"
+                    style={{ color: "#1e56a0" }}
+                  >
+                    {testLeadPending ? "Wird angefordert…" : "Testlead anfordern"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLocalFormId("")
+                      setSelectedFormLabel(null)
+                    }}
+                    className="w-fit text-xs text-gray-400 hover:text-red-600 hover:underline"
+                  >
+                    Verknüpfung lösen
+                  </button>
+                </>
+              )}
+            </div>
+            {testLeadMessage && (
+              <p className="text-xs" style={{ color: testLeadMessage.type === "success" ? "#1a9a6a" : "#dc2626" }}>
+                {testLeadMessage.text}
+              </p>
+            )}
+            {metaWebhookLastTestAt && localFormId === (metaFormId ?? "") && (
+              <p className="text-xs" style={{ color: "#1a9a6a" }}>
+                ✓ Verbindung zuletzt per Webhook bestätigt: {new Date(metaWebhookLastTestAt).toLocaleString("de-DE")}
+              </p>
+            )}
+            {localFormId !== (metaFormId ?? "") && <p className="text-xs text-amber-700">Noch nicht gespeichert – unten „Einstellungen speichern“.</p>}
+
+            {ownOpen && (
+              <div className="flex flex-col gap-2 rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={ownQuery}
+                    onChange={(e) => setOwnQuery(e.target.value)}
+                    placeholder="Meta-Kampagne suchen…"
+                    className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
+                    style={{ borderColor: "#dde3ea" }}
+                  />
+                  <button type="button" onClick={() => setOwnOpen(false)} className="shrink-0 text-xs text-gray-400 hover:underline">
+                    Schließen
+                  </button>
+                </div>
+                {ownPending && <p className="text-xs text-gray-400">Laufende Meta-Kampagnen werden geladen…</p>}
+                {ownError && <p className="text-xs text-red-600">{ownError}</p>}
+                {ownCampaigns?.length === 0 && <p className="text-xs text-gray-400">Keine laufende Meta-Kampagne ohne „KS24“ gefunden.</p>}
+                <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto">
+                  {(ownCampaigns ?? [])
+                    .filter((c) => !ownQuery.trim() || c.name.toLowerCase().includes(ownQuery.trim().toLowerCase()))
+                    .map((c) => (
+                      <li key={c.id} className="rounded-md border px-3 py-2" style={{ borderColor: "#eef2f6" }}>
+                        <p className="text-sm font-medium text-gray-800">{c.name}</p>
+                        {c.forms.length === 0 && <p className="text-xs text-gray-400">Kein Lead-Formular in den Anzeigen gefunden.</p>}
+                        <ul className="mt-1 flex flex-col gap-1">
+                          {c.forms.map((f) => {
+                            const linkedElsewhere = f.linkedTo && f.linkedTo.id !== campaignId
+                            const inactive = !isSelectableForm(f)
+                            return (
+                              <li key={f.formId} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <span className="min-w-0 text-gray-600">
+                                  {f.formName ?? `Formular ${f.formId}`}
+                                  {f.pageName ? <span className="text-gray-400"> · Seite {f.pageName}</span> : null}
+                                  {!f.accessible && (
+                                    <span className="ml-1 text-amber-700">· Seite nicht freigegeben – Leads kommen erst nach Freigabe im Business Manager</span>
+                                  )}
+                                  {inactive && <span className="ml-1 text-gray-400">· nicht aktiv</span>}
+                                  {linkedElsewhere && <span className="ml-1 text-gray-400">· verknüpft mit „{f.linkedTo!.title}“</span>}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={inactive || f.formId === localFormId}
+                                  onClick={() => handleOwnFormSelect(c.name, f.formId, f.formName)}
+                                  className="shrink-0 rounded-md border px-2 py-0.5 font-medium disabled:opacity-40"
+                                  style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+                                >
+                                  {f.formId === localFormId ? "Ausgewählt" : "Auswählen"}
+                                </button>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </section>
       )}
 
