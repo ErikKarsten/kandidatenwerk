@@ -917,6 +917,7 @@ export type Database = {
           offene_fragen: string | null
           cv_werdegang: string | null
           cv_werdegang_input: string | null
+          campaign_only: boolean
           bewerbung: string | null
         }
         Insert: {
@@ -946,6 +947,7 @@ export type Database = {
           offene_fragen?: string | null
           cv_werdegang?: string | null
           cv_werdegang_input?: string | null
+          campaign_only?: boolean
           bewerbung?: string | null
         }
         Update: {
@@ -975,6 +977,7 @@ export type Database = {
           offene_fragen?: string | null
           cv_werdegang?: string | null
           cv_werdegang_input?: string | null
+          campaign_only?: boolean
           bewerbung?: string | null
         }
         Relationships: [

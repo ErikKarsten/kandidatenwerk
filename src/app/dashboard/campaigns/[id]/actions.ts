@@ -680,6 +680,8 @@ export async function searchAvailableCandidatesAction(
     // Kanzleien bekommen nur vorqualifizierte Kandidaten (Paket 19, T-86).
     .eq("status", ASSIGNABLE_STATUS)
     .eq("is_demo", false)
+    // Leads aus der eigenen Meta-Kampagne einer Kanzlei nur dort (Paket 83).
+    .eq("campaign_only", false)
     // Musterdatensätze sind keiner Kanzlei zuordenbar (Paket 62).
     .not("tags", "cs", `{${SAMPLE_TAG}}`)
     .eq("berufsbild", campaign.berufsbild)

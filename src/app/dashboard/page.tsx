@@ -52,7 +52,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   ] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "active"),
     supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("kind", "lead").eq("status", "active"),
-    supabase.from("candidates").select("*", { count: "exact", head: true }).eq("is_demo", false).not("tags", "cs", "{Musterdatensatz}"),
+    supabase.from("candidates").select("*", { count: "exact", head: true }).eq("is_demo", false).eq("campaign_only", false).not("tags", "cs", "{Musterdatensatz}"),
     countAssignedCandidates(supabase),
     getApplicationStats(supabase, range),
     getMetaAdStats(range),

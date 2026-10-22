@@ -30,6 +30,7 @@ const MAX_AGE_MINUTES: Record<string, number> = {
   "sync-kanzleistelle": 180, // stündlich
   "meta-campaigns-sync": 180, // stündlich
   "sample-feed": 180, // stündlich (Paket 76)
+  "cv-werdegang": 30, // alle 5 Min. (Paket 83)
   "task-reminders": 1800, // täglich 06:00 UTC, Wächter läuft ebenfalls täglich (mit GitHub-Verzögerung)
 }
 

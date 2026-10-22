@@ -30,7 +30,8 @@ export interface MetaSyncCampaign {
   meta_form_id?: string | null
   // "kanzlei": eigene Meta-Kampagne einer Kanzlei (Paket 80) - der Lead kommt mit dieser
   // Kampagne als Herkunft ins Team, die Kanzlei sieht ihn erst nach Vorqualifizierung
-  // und Zuordnung (deshalb ohne candidates.client_id).
+  // und Zuordnung (deshalb ohne candidates.client_id). Er steht nur in dieser Kampagne,
+  // nicht in "Alle Kandidaten" (campaign_only, Paket 83).
   kind?: string | null
 }
 
@@ -101,19 +102,16 @@ export async function processMetaLead(
   // diesen Lead direkt per ID erkennen statt jedes Mal erneut per E-Mail zu suchen.
   const { data: existingByEmail, error: emailLookupError } = await supabase
     .from("candidates")
-    .select("id, meta_lead_id, campaign_id")
+    .select("id, meta_lead_id")
     .eq("email", email)
     .maybeSingle()
   if (emailLookupError) throw new Error(emailLookupError.message)
 
   if (existingByEmail) {
-    // Eigene Meta-Kampagne einer Kanzlei (Paket 81): Kandidaten ohne Herkunft (z. B. aus
-    // Leadtable) bekommen diese Kampagne als Herkunft - dann stehen sie dort unter "Neue Leads".
-    const adoptCampaign = campaign.kind === "kanzlei" && !existingByEmail.campaign_id
-    if (!existingByEmail.meta_lead_id || adoptCampaign) {
+    if (!existingByEmail.meta_lead_id) {
       const { error: linkError } = await supabase
         .from("candidates")
-        .update({ ...(!existingByEmail.meta_lead_id ? { meta_lead_id: lead.id } : {}), ...(adoptCampaign ? { campaign_id: campaign.id } : {}) })
+        .update({ meta_lead_id: lead.id })
         .eq("id", existingByEmail.id)
       if (linkError) throw new Error(linkError.message)
     }
@@ -203,6 +201,7 @@ export async function processMetaLead(
       source: "meta_ads",
       campaign_id: campaign.id,
       client_id: campaign.kind === "kanzlei" ? null : campaign.client_id,
+      campaign_only: campaign.kind === "kanzlei",
       meta_lead_id: lead.id,
       custom_fields: customFields as Json,
     })
