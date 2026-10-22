@@ -93,3 +93,38 @@ export function splitMentions(text: string, names: string[]): MentionPart[] {
   if (last < text.length) parts.push({ type: "text", value: text.slice(last) })
   return parts
 }
+
+// Notizen im Verlauf eines Kandidaten (Paket 78): "@Vorname Nachname" für Kollegen und
+// "#Aufgabentitel" für Aufgaben des Kandidaten. Erkannt wird nur, was es wirklich gibt;
+// längere Treffer zuerst (siehe splitMentions).
+export type ReferencePart = { type: "text"; value: string } | { type: "mention"; value: string } | { type: "task"; value: string }
+
+export function splitReferences(text: string, names: string[], taskTitles: string[]): ReferencePart[] {
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const tokens = [
+    ...[...new Set(names.filter(Boolean))].map((v) => ({ token: `@${v}`, type: "mention" as const, value: v })),
+    ...[...new Set(taskTitles.filter(Boolean))].map((v) => ({ token: `#${v}`, type: "task" as const, value: v })),
+  ].sort((a, b) => b.token.length - a.token.length)
+  if (tokens.length === 0) return [{ type: "text", value: text }]
+  const byToken = new Map(tokens.map((t) => [t.token, t]))
+  const re = new RegExp(tokens.map((t) => escape(t.token)).join("|"), "g")
+  const parts: ReferencePart[] = []
+  let last = 0
+  for (const m of text.matchAll(re)) {
+    const hit = byToken.get(m[0])!
+    if (m.index! > last) parts.push({ type: "text", value: text.slice(last, m.index) })
+    parts.push({ type: hit.type, value: hit.value })
+    last = m.index! + m[0].length
+  }
+  if (last < text.length) parts.push({ type: "text", value: text.slice(last) })
+  return parts
+}
+
+// "@" oder "#" plus Suchtext direkt vor dem Cursor - öffnet die Vorschlagsliste.
+export function referenceQueryAt(value: string, caret: number): { trigger: "@" | "#"; query: string } | null {
+  const match = value.slice(0, caret).match(/(?:^|\s)([@#])([\p{L}\p{N}.\- ]{0,40})$/u)
+  if (!match) return null
+  // Bei Aufgaben sind Leerzeichen im Suchtext erlaubt, bei Namen höchstens zwei (z. B. "Anna Maria Schulz").
+  if (match[1] === "@" && (match[2].match(/ /g) ?? []).length > 2) return null
+  return { trigger: match[1] as "@" | "#", query: match[2] }
+}

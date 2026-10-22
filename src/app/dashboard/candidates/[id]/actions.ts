@@ -13,6 +13,7 @@ import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { normalizeTags } from "@/lib/candidate-tags"
 import { ASSIGNMENT_STATUS_OPTIONS, assignmentStatusLabel } from "@/lib/assignment-status"
 import { friendlyAiError } from "@/lib/llm"
+import { notifyHistoryNoteReferences } from "@/lib/history-mentions"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -175,6 +176,9 @@ export async function addNoteAction(
   })
 
   if (error) return { error: error.message }
+
+  // @Kollegen und Zuständige von #Aufgaben per Mail benachrichtigen (Paket 78).
+  if (user && /[@#]/.test(content)) await notifyHistoryNoteReferences(supabase, { candidateId, authorId: user.id, content })
 
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   return null

@@ -1,10 +1,66 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowRightLeft, StickyNote, Circle, Trash2, Mail } from "lucide-react"
+import { ArrowRightLeft, StickyNote, Circle, Trash2, Mail, CheckSquare } from "lucide-react"
 import { addNoteAction, deleteNoteAction } from "./actions"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
+import { referenceQueryAt, splitReferences } from "@/lib/comment-text"
+
+// Für @Erwähnungen und #Aufgaben in Notizen (Paket 78).
+export interface HistoryPerson {
+  id: string
+  full_name: string | null
+}
+
+export interface HistoryTask {
+  id: string
+  title: string
+  status: string
+  assigneeName: string | null
+}
+
+type Suggestion = { key: string; insert: string; label: string; hint?: string | null }
+
+// Notiztext mit hervorgehobenen @Kollegen und anklickbaren #Aufgaben.
+function NoteText({ text, names, tasks, onOpenTask }: { text: string; names: string[]; tasks: HistoryTask[]; onOpenTask?: (id: string) => void }) {
+  const parts = splitReferences(
+    text,
+    names,
+    tasks.map((t) => t.title)
+  )
+  return (
+    <p className="text-sm text-gray-700 whitespace-pre-wrap">
+      {parts.map((part, i) => {
+        if (part.type === "mention") {
+          return (
+            <span key={i} className="rounded px-1 font-medium" style={{ backgroundColor: "#1e56a018", color: "#1e56a0" }}>
+              @{part.value}
+            </span>
+          )
+        }
+        if (part.type === "task") {
+          const task = tasks.find((t) => t.title === part.value)
+          const done = task?.status === "erledigt"
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => task && onOpenTask?.(task.id)}
+              className="inline-flex items-center gap-1 rounded border px-1 align-baseline text-xs font-medium hover:bg-amber-50"
+              style={{ borderColor: "#fcd34d", backgroundColor: "#fffbeb", color: "#92400e" }}
+              title={task ? `Aufgabe${task.assigneeName ? ` · ${task.assigneeName}` : ""}${done ? " · erledigt" : ""} – im Reiter „Aufgaben“ öffnen` : undefined}
+            >
+              <CheckSquare size={11} />
+              <span className={done ? "line-through" : undefined}>{part.value}</span>
+            </button>
+          )
+        }
+        return <span key={i}>{part.value}</span>
+      })}
+    </p>
+  )
+}
 
 // Schnellbausteine für die eigene Notiz im Verlauf (Paket 77): ein Klick übernimmt den Text,
 // Details lassen sich vor dem Speichern ergänzen.
@@ -91,11 +147,19 @@ export function HistorySection({
   history,
   leadtableDescription,
   weitereAntworten,
+  team = [],
+  tasks = [],
+  onOpenTask,
+  currentUserId,
 }: {
   candidateId: string
   history: HistoryEntry[]
   leadtableDescription?: string | null
   weitereAntworten?: string | null
+  team?: HistoryPerson[]
+  tasks?: HistoryTask[]
+  onOpenTask?: (taskId: string) => void
+  currentUserId?: string
 }) {
   const router = useRouter()
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -104,6 +168,53 @@ export function HistorySection({
   const [note, setNote] = useState("")
   const [notePending, startNoteTransition] = useTransition()
   const [noteError, setNoteError] = useState<string | null>(null)
+  const [noteInfo, setNoteInfo] = useState<string | null>(null)
+  // "@" bzw. "#" vor dem Cursor öffnet Vorschläge: Kollegen bzw. offene Aufgaben.
+  const [ref, setRef] = useState<{ trigger: "@" | "#"; query: string } | null>(null)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const field = useRef<HTMLTextAreaElement | null>(null)
+  const names = useMemo(() => team.map((p) => p.full_name ?? "").filter(Boolean), [team])
+
+  const suggestions: Suggestion[] = useMemo(() => {
+    if (!ref) return []
+    const q = ref.query.trimStart().toLowerCase()
+    if (ref.trigger === "@") {
+      return names.filter((n) => n.toLowerCase().includes(q)).slice(0, 6).map((n) => ({ key: n, insert: n, label: `@${n}` }))
+    }
+    return tasks
+      .filter((t) => t.status !== "erledigt" && t.title.toLowerCase().includes(q))
+      .slice(0, 6)
+      .map((t) => ({ key: t.id, insert: t.title, label: t.title, hint: t.assigneeName }))
+  }, [ref, names, tasks])
+
+  const mentioned = splitReferences(note, names, tasks.map((t) => t.title))
+  const notifyNames = [
+    ...new Set([
+      ...mentioned.filter((p) => p.type === "mention").map((p) => p.value),
+      ...mentioned.filter((p) => p.type === "task").map((p) => tasks.find((t) => t.title === p.value)?.assigneeName ?? ""),
+    ]),
+  ].filter((n) => n && n !== team.find((p) => p.id === currentUserId)?.full_name)
+
+  function trackCaret(el: HTMLTextAreaElement) {
+    field.current = el
+    setRef(referenceQueryAt(el.value, el.selectionStart ?? el.value.length))
+    setActiveIndex(0)
+  }
+
+  function insertReference(s: Suggestion) {
+    const el = field.current
+    if (!el || !ref) return
+    const caret = el.selectionStart ?? note.length
+    const start = caret - ref.query.length - 1
+    const next = `${note.slice(0, start)}${ref.trigger}${s.insert} ${note.slice(caret)}`
+    const pos = start + s.insert.length + 2
+    setNote(next)
+    setRef(null)
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(pos, pos)
+    })
+  }
 
   function handleAddNote() {
     const text = note.trim()
@@ -116,6 +227,7 @@ export function HistorySection({
         return
       }
       setNote("")
+      setNoteInfo(notifyNames.length ? `Benachrichtigt: ${notifyNames.join(", ")}` : null)
       router.refresh()
     })
   }
@@ -167,23 +279,73 @@ export function HistorySection({
             </button>
           ))}
         </div>
-        <AutoTextarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault()
-              handleAddNote()
-            }
-          }}
-          placeholder="Notiz oder kurzer Stand, z. B. „Rückruf am Donnerstag vereinbart“"
-          className="min-h-9 w-full rounded-md border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1"
-          style={{ borderColor: "#dde3ea" }}
-          disabled={notePending}
-        />
+        <div className="relative">
+          <AutoTextarea
+            value={note}
+            onChange={(e) => {
+              setNote(e.target.value)
+              setNoteInfo(null)
+              trackCaret(e.currentTarget)
+            }}
+            onClick={(e) => trackCaret(e.currentTarget)}
+            onKeyDown={(e) => {
+              if (suggestions.length > 0) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault()
+                  setActiveIndex((i) => (i + (e.key === "ArrowDown" ? 1 : suggestions.length - 1)) % suggestions.length)
+                  return
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault()
+                  insertReference(suggestions[Math.min(activeIndex, suggestions.length - 1)])
+                  return
+                }
+                if (e.key === "Escape") {
+                  setRef(null)
+                  return
+                }
+              }
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                handleAddNote()
+              }
+            }}
+            onBlur={() => setTimeout(() => setRef(null), 150)}
+            placeholder="Notiz oder kurzer Stand … Kollegen mit @Name erwähnen, Aufgaben mit # verknüpfen"
+            className="min-h-9 w-full rounded-md border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1"
+            style={{ borderColor: "#dde3ea" }}
+            disabled={notePending}
+          />
+          {suggestions.length > 0 && (
+            <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border bg-white py-1 text-sm shadow-lg" style={{ borderColor: "#dde3ea" }}>
+              <li className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">{ref?.trigger === "@" ? "Kollegen erwähnen" : "Offene Aufgabe verknüpfen"}</li>
+              {suggestions.map((s, i) => (
+                <li key={s.key}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      insertReference(s)
+                    }}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-gray-50"
+                    style={i === activeIndex ? { backgroundColor: "#f0f4f8" } : undefined}
+                  >
+                    <span className="min-w-0 truncate">{s.label}</span>
+                    {s.hint && <span className="shrink-0 text-xs text-gray-400">{s.hint}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {ref?.trigger === "#" && suggestions.length === 0 && !tasks.some((t) => t.status !== "erledigt") && (
+            <p className="mt-1 text-xs text-gray-400">Keine offenen Aufgaben bei diesem Kandidaten.</p>
+          )}
+        </div>
         {noteError && <p className="text-xs text-red-600">{noteError}</p>}
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-gray-400">Nur intern sichtbar · Strg/Cmd + Enter</span>
+          <span className="text-xs text-gray-400">
+            {notifyNames.length ? `Benachrichtigt: ${notifyNames.join(", ")}` : noteInfo ?? "Nur intern sichtbar · @ erwähnt, # verknüpft Aufgaben · Strg/Cmd + Enter"}
+          </span>
           <button
             type="button"
             onClick={handleAddNote}
@@ -266,9 +428,12 @@ export function HistorySection({
                             )}
                           </div>
                         </div>
-                        {entry.content && (
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{entry.content}</p>
-                        )}
+                        {entry.content &&
+                          (isNote ? (
+                            <NoteText text={entry.content} names={names} tasks={tasks} onOpenTask={onOpenTask} />
+                          ) : (
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{entry.content}</p>
+                          ))}
                       </div>
                     </li>
                   )

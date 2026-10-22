@@ -101,6 +101,8 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
   const goBack = useGoBack("/dashboard/candidates")
   const [statusPending, startStatusTransition] = useTransition()
   const [tab, setTab] = useState<"profil" | "dateien" | "zuordnung" | "kommunikation" | "aufgaben">(initialTab ?? "profil")
+  // Klick auf eine #Aufgabe im Verlauf springt zum Reiter "Aufgaben" (Paket 78).
+  const tabsRef = useRef<HTMLDivElement>(null)
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [modalError, setModalError] = useState<string | null>(null)
   const [archivePending, startArchiveTransition] = useTransition()
@@ -318,7 +320,7 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
         <div className="flex flex-col gap-4">
           {/* Tab-Bar */}
           {/* Ohne sichtbare Scrollleiste (Paket 69); bei schmalem Fenster weiter wischbar. */}
-          <div className="flex gap-0 overflow-x-auto overflow-y-hidden border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: "#dde3ea" }}>
+          <div ref={tabsRef} className="flex gap-0 overflow-x-auto overflow-y-hidden border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: "#dde3ea" }}>
             <TabButton
               active={tab === "profil"}
               onClick={() => setTab("profil")}
@@ -416,6 +418,13 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
             history={history}
             leadtableDescription={candidate.description}
             weitereAntworten={candidate.custom_fields?.[WEITERE_ANTWORTEN_KEY]}
+            team={profiles}
+            currentUserId={currentUserId}
+            tasks={tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, assigneeName: t.assigneeName }))}
+            onOpenTask={() => {
+              setTab("aufgaben")
+              tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }}
           />
         </div>
       </div>
