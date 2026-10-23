@@ -5,11 +5,26 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Printer, Sparkles } from "lucide-react"
 import { enrichCvWerdegangAction } from "@/app/dashboard/candidates/[id]/actions"
+import { enrichPortalCvAction } from "@/app/portal/actions"
 
 // Leiste über dem Lebenslauf (nicht gedruckt): Variante wechseln, Werdegang per KI
 // (neu) erstellen (Paket 43; fehlt er oder haben sich die Angaben geändert, automatisch
 // beim Öffnen - Paket 82) und als PDF sichern.
-export function CvToolbar({ candidateId, anonym, hasWerdegang, outdated = false }: { candidateId: string; anonym: boolean; hasWerdegang: boolean; outdated?: boolean }) {
+// portal (Paket 87): Kanzlei im Kundenportal - ohne Varianten-Wechsel und ohne
+// "Werdegang neu erstellen", nur PDF; der Werdegang entsteht bei Bedarf automatisch.
+export function CvToolbar({
+  candidateId,
+  anonym,
+  hasWerdegang,
+  outdated = false,
+  portal = false,
+}: {
+  candidateId: string
+  anonym: boolean
+  hasWerdegang: boolean
+  outdated?: boolean
+  portal?: boolean
+}) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -18,7 +33,7 @@ export function CvToolbar({ candidateId, anonym, hasWerdegang, outdated = false 
   function enrich() {
     startTransition(async () => {
       setError(null)
-      const res = await enrichCvWerdegangAction(candidateId)
+      const res = portal ? await enrichPortalCvAction(candidateId) : await enrichCvWerdegangAction(candidateId)
       if ("error" in res) setError(res.error)
       else router.refresh()
     })
@@ -36,24 +51,30 @@ export function CvToolbar({ candidateId, anonym, hasWerdegang, outdated = false 
   return (
     <div className="mx-auto mb-4 flex max-w-[210mm] flex-col gap-2 px-4 print:hidden sm:px-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-2">
-          <Link href={`/lebenslauf/${candidateId}`} className="rounded-full border px-3 py-1 text-xs font-medium" style={tab(!anonym)}>
-            Vollständig
-          </Link>
-          <Link href={`/lebenslauf/${candidateId}?variante=anonym`} className="rounded-full border px-3 py-1 text-xs font-medium" style={tab(anonym)}>
-            Anonymisiert
-          </Link>
-        </div>
+        {portal ? (
+          <span className="text-xs text-gray-500">Lebenslauf zum Speichern als PDF oder zum Drucken</span>
+        ) : (
+          <div className="flex gap-2">
+            <Link href={`/lebenslauf/${candidateId}`} className="rounded-full border px-3 py-1 text-xs font-medium" style={tab(!anonym)}>
+              Vollständig
+            </Link>
+            <Link href={`/lebenslauf/${candidateId}?variante=anonym`} className="rounded-full border px-3 py-1 text-xs font-medium" style={tab(anonym)}>
+              Anonymisiert
+            </Link>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={enrich}
-            disabled={pending}
-            className="inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-            style={{ borderColor: "#1e56a0", color: "#1e56a0" }}
-          >
-            <Sparkles size={14} /> {hasWerdegang ? "Werdegang neu erstellen" : "Werdegang ergänzen"}
-          </button>
+          {!portal && (
+            <button
+              type="button"
+              onClick={enrich}
+              disabled={pending}
+              className="inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+              style={{ borderColor: "#1e56a0", color: "#1e56a0" }}
+            >
+              <Sparkles size={14} /> {hasWerdegang ? "Werdegang neu erstellen" : "Werdegang ergänzen"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => window.print()}
