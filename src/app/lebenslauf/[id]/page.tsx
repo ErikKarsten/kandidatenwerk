@@ -72,7 +72,25 @@ export default async function LebenslaufPage({
   return (
     <div className="min-h-screen bg-[#f0f4f8] py-6 print:bg-white print:py-0">
       <style>{`@page { size: A4; margin: 14mm; } @media print { .cv-sheet { box-shadow: none !important; border: none !important; padding: 0 !important; } }`}</style>
-      <CvToolbar candidateId={candidate.id} anonym={anonymView} hasWerdegang={werdegang.length > 0} outdated={outdated} portal={!!portal} />
+      <CvToolbar
+        candidateId={candidate.id}
+        anonym={anonymView}
+        hasWerdegang={werdegang.length > 0}
+        outdated={outdated}
+        portal={!!portal}
+        pdfData={{
+          fileName: `Lebenslauf ${cv.title}`.replace(/[^\p{L}\p{N} _-]+/gu, "").trim().replace(/\s+/g, "_") + ".pdf",
+          label: `Kandidatenprofil${anonymView ? " · anonymisiert" : ""}`,
+          title: cv.title,
+          subtitle: cv.subtitle,
+          logoUrl: settings?.logo_url ?? null,
+          agencyName: agency?.name ?? "Kandidatenwerk",
+          facts: cv.facts,
+          werdegang,
+          sections: cv.sections,
+          footer: `Vorgestellt von ${agency?.name ?? "Endlich Mitarbeiter"}${contact ? ` · Ihr Ansprechpartner: ${contact}` : ""} · Stand ${today}`,
+        }}
+      />
       <div className="cv-sheet mx-auto max-w-[210mm] rounded-xl border bg-white p-10 shadow-sm" style={{ borderColor: "#dde3ea" }}>
         <header className="flex items-start justify-between gap-6 border-b pb-6" style={{ borderColor: "#dde3ea" }}>
           <div>

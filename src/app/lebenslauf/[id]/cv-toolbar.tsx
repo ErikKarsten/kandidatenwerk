@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Printer, Sparkles } from "lucide-react"
+import { Download, Printer, Sparkles } from "lucide-react"
+import type { CvPdfData } from "./cv-pdf"
 import { enrichCvWerdegangAction } from "@/app/dashboard/candidates/[id]/actions"
 import { enrichPortalCvAction } from "@/app/portal/actions"
 
@@ -18,17 +19,36 @@ export function CvToolbar({
   hasWerdegang,
   outdated = false,
   portal = false,
+  pdfData,
 }: {
   candidateId: string
   anonym: boolean
   hasWerdegang: boolean
   outdated?: boolean
   portal?: boolean
+  // Inhalt für "PDF herunterladen" (Paket 88).
+  pdfData: CvPdfData
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const started = useRef(false)
+  const [pdfPending, setPdfPending] = useState(false)
+  const [pdfError, setPdfError] = useState<string | null>(null)
+
+  async function downloadPdf() {
+    setPdfPending(true)
+    setPdfError(null)
+    try {
+      const { downloadCvPdf } = await import("./cv-pdf")
+      await downloadCvPdf(pdfData)
+    } catch (err) {
+      console.error("PDF fehlgeschlagen:", err)
+      setPdfError("Die PDF konnte nicht erstellt werden. Bitte erneut versuchen oder über „Drucken“ speichern.")
+    } finally {
+      setPdfPending(false)
+    }
+  }
 
   function enrich() {
     startTransition(async () => {
@@ -52,7 +72,7 @@ export function CvToolbar({
     <div className="mx-auto mb-4 flex max-w-[210mm] flex-col gap-2 px-4 print:hidden sm:px-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {portal ? (
-          <span className="text-xs text-gray-500">Lebenslauf zum Speichern als PDF oder zum Drucken</span>
+          <span className="text-xs text-gray-500">Lebenslauf als PDF herunterladen oder drucken</span>
         ) : (
           <div className="flex gap-2">
             <Link href={`/lebenslauf/${candidateId}`} className="rounded-full border px-3 py-1 text-xs font-medium" style={tab(!anonym)}>
@@ -79,10 +99,19 @@ export function CvToolbar({
             type="button"
             onClick={() => window.print()}
             disabled={pending}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+            style={{ borderColor: "#dde3ea", color: "#374151" }}
+          >
+            <Printer size={14} /> Drucken
+          </button>
+          <button
+            type="button"
+            onClick={downloadPdf}
+            disabled={pending || pdfPending}
             className="inline-flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             style={{ backgroundColor: "#1e56a0" }}
           >
-            <Printer size={14} /> Als PDF speichern / drucken
+            <Download size={14} /> {pdfPending ? "PDF wird erstellt…" : "PDF herunterladen"}
           </button>
         </div>
       </div>
@@ -94,6 +123,7 @@ export function CvToolbar({
         </p>
       )}
       {error && <p className="text-xs text-red-600">Werdegang konnte nicht ergänzt werden: {error}</p>}
+      {pdfError && <p className="text-xs text-red-600">{pdfError}</p>}
     </div>
   )
 }
