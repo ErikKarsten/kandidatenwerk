@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { PORTAL_ASSIGNMENT_STATUS_VALUES, assignmentStatusLabel } from "@/lib/assignment-status"
+import { loadPortalCvContext } from "@/lib/portal-cv"
+import { generateWerdegang } from "@/lib/cv-werdegang"
+import { friendlyAiError } from "@/lib/llm"
 
 // Nutzt bewusst createSupabaseServerClient() (nicht den Admin-Client) - der Insert
 // laeuft ueber die normale Session des eingeloggten Kunden, RLS
@@ -139,4 +142,20 @@ export async function removePortalAssignmentAction(clientAssignmentId: string): 
   revalidatePath("/portal", "layout")
   revalidatePath(`/dashboard/candidates/${assignment.candidate_id}`)
   return null
+}
+
+// Lebenslauf im Portal (Paket 87): fehlt der Werdegang oder ist er veraltet, erstellt ihn
+// die Lebenslauf-Ansicht per KI - nur für Kandidaten, die die Kanzlei im Portal sieht.
+export async function enrichPortalCvAction(candidateId: string): Promise<{ error: string } | { text: string }> {
+  const supabase = await createSupabaseServerClient()
+  const access = await loadPortalCvContext(supabase, candidateId)
+  if (!access) return { error: "Kein Zugriff auf diesen Kandidaten." }
+  try {
+    const text = await generateWerdegang(createSupabaseAdminClient(), candidateId)
+    revalidatePath(`/lebenslauf/${candidateId}`)
+    return { text }
+  } catch (err) {
+    console.error("Werdegang im Portal fehlgeschlagen:", err)
+    return { error: friendlyAiError(err, "Werdegang konnte nicht erstellt werden.") }
+  }
 }

@@ -77,14 +77,17 @@ export function cvReference(id: string): string {
   return `K-${id.replace(/-/g, "").slice(0, 6).toUpperCase()}`
 }
 
+// allowedKeys (Paket 87, Kundenportal): nur diese Zusatzfelder - die Kanzlei sieht im
+// Lebenslauf nicht mehr als im Portal (Feld-Vorlage der Kampagne).
 export function buildCv(
   c: CvCandidate,
   definitions: { key: string; label: string; active: boolean }[],
   anonym: boolean,
-  berufsbilder: BerufsbildOption[] = BERUFSBILD_OPTIONS
+  berufsbilder: BerufsbildOption[] = BERUFSBILD_OPTIONS,
+  allowedKeys: Set<string> | null = null
 ): Cv {
   const fields = c.custom_fields ?? {}
-  const value = (key: string) => text(fields[key])
+  const value = (key: string) => (allowedKeys && !allowedKeys.has(key) ? "" : text(fields[key]))
   const berufsbild = berufsbildLabel(c.berufsbild, berufsbilder)
   const used = new Set<string>()
 
@@ -113,7 +116,8 @@ export function buildCv(
 
   // Weitere aktive Zusatzfelder mit Wert (eigene Felder der Agentur).
   const extra = definitions
-    .filter((d) => d.active && !used.has(d.key) && !EXCLUDED.has(d.key) && !(anonym && PERSONAL.has(d.key)))
+    // Persönliches (Erreichbarkeit) steht unter "Kontakt" bzw. entfällt anonymisiert - nicht doppelt.
+    .filter((d) => d.active && !used.has(d.key) && !EXCLUDED.has(d.key) && !PERSONAL.has(d.key))
     .map((d) => ({ label: LABELS[d.key] ?? d.label, value: value(d.key) }))
     .filter((i) => i.value)
   if (extra.length) sections.push({ title: "Weitere Angaben", items: extra })

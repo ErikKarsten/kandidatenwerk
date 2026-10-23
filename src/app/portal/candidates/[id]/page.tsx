@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, FileText } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { NotesSection, type Note } from "./notes-section"
@@ -135,7 +135,19 @@ export default async function PortalCandidateDetailPage({
         <h1 className="text-xl font-bold text-gray-900">
           {candidate.first_name} {candidate.last_name}
         </h1>
-        <PortalStatusSelector clientAssignmentId={assignment.id} currentStatus={assignment.status} />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Lebenslauf zum Herunterladen (Paket 87) - druckfertige Seite, "Als PDF speichern". */}
+          <a
+            href={`/lebenslauf/${candidate.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+            style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+          >
+            <FileText size={14} /> Lebenslauf
+          </a>
+          <PortalStatusSelector clientAssignmentId={assignment.id} currentStatus={assignment.status} />
+        </div>
       </div>
 
       {/* Zweispaltig ab lg: rechts die Beschreibung (Paket 15, T-72) - unsere Einschätzung
