@@ -8,6 +8,7 @@ import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
+import { RECALL_STATUS, RECALL_TASK_TITLE, recallDueDate } from "@/lib/candidate-status"
 import { ASSIGNABLE_STATUS, clientNotLiveError, ensureCampaignAssignment } from "@/lib/client-assignment"
 import { createSampleCandidates } from "@/lib/sample-candidates"
 import { friendlyAiError } from "@/lib/llm"
@@ -146,6 +147,40 @@ export async function updateCandidateStatusAction(
       content: `Status geändert: ${existing.status} → ${status}`,
       created_by: user.id,
     })
+  }
+
+  // "Derzeit nicht auf Suche" (Paket 85): in 6 Monaten erneut anrufen. Gibt es die Aufgabe
+  // schon offen, rückt nur ihr Termin nach hinten.
+  if (existing && existing.status !== status && status === RECALL_STATUS) {
+    const due = recallDueDate()
+    const { data: open } = await supabase
+      .from("tasks")
+      .select("id")
+      .eq("candidate_id", candidateId)
+      .eq("title", RECALL_TASK_TITLE)
+      .neq("status", "erledigt")
+      .limit(1)
+      .maybeSingle()
+    const { error: taskError } = open
+      ? await supabase.from("tasks").update({ due_date: due }).eq("id", open.id)
+      : await supabase.from("tasks").insert({
+          title: RECALL_TASK_TITLE,
+          description: `Status am ${new Date().toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} auf „Derzeit nicht auf Suche“ gesetzt. Nachfragen, ob sich die Lage geändert hat und ein Wechsel jetzt in Frage kommt.`,
+          assigned_to: user.id,
+          created_by: user.id,
+          candidate_id: candidateId,
+          due_date: due,
+        })
+    if (taskError) console.error("Aufgabe erneut anrufen fehlgeschlagen:", taskError.message)
+    else {
+      await supabase.from("candidate_history").insert({
+        candidate_id: candidateId,
+        type: "note",
+        content: `Aufgabe „Kandidat erneut anrufen“ zum ${new Date(`${due}T12:00:00Z`).toLocaleDateString("de-DE", { timeZone: "UTC" })} angelegt.`,
+        created_by: user.id,
+      })
+      revalidatePath("/dashboard/tasks")
+    }
   }
 
   // Die frühere automatische Kunden-Benachrichtigung bei "vorqualifiziert" (Haken in den

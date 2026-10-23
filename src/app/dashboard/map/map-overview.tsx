@@ -112,6 +112,9 @@ export function MapOverview({
           label: a.campaignTitle,
           sublabel: `${a.label} · ${a.radiusKm} km`,
           color: AD_AREA_COLOR,
+          // Bewerber dieser Kampagne (wie die Kachel in "Kandidaten nach Kampagnen", Paket 85).
+          href: `/dashboard/candidates?campaign=${a.campaignId}`,
+          hrefLabel: "Bewerber dieser Kampagne ansehen",
         })),
     [adAreas]
   )

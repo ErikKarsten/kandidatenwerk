@@ -41,6 +41,9 @@ export interface MapCircle {
   // false: nur Anzeige (kein Popup, Klicks gehen an die Karte bzw. Punkte darunter).
   interactive?: boolean
   dashed?: boolean
+  // Name im Popup als Link, z. B. Werbegebiet -> Bewerber der Kampagne (Paket 85).
+  href?: string
+  hrefLabel?: string
 }
 
 // Einfache farbige Punkt-Icons statt Leaflets Standard-Marker-Bildern - vermeidet das
@@ -293,8 +296,19 @@ export const MatchesMap = forwardRef<MatchesMapHandle, {
           >
             {(c.interactive ?? true) && (
               <Popup>
-                <p className="text-sm font-semibold text-gray-900">{c.label}</p>
+                {c.href ? (
+                  <Link href={c.href} className="text-sm font-semibold hover:underline" style={{ color: "#1e56a0" }}>
+                    {c.label}
+                  </Link>
+                ) : (
+                  <p className="text-sm font-semibold text-gray-900">{c.label}</p>
+                )}
                 {c.sublabel && <p className="text-xs text-gray-500">{c.sublabel}</p>}
+                {c.href && c.hrefLabel && (
+                  <Link href={c.href} className="mt-1 block text-xs font-medium hover:underline" style={{ color: "#1e56a0" }}>
+                    {c.hrefLabel} →
+                  </Link>
+                )}
               </Popup>
             )}
           </Circle>
