@@ -12,6 +12,10 @@ import { anonymousName, useShowMode } from "@/lib/show-mode"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { RadiusControl } from "@/components/ui/radius-control"
 import { haversineDistanceKm } from "@/lib/geo-distance"
+import { MultiSelect } from "@/components/ui/multi-select"
+
+// Kandidaten ohne Berufsbild im Berufsbild-Filter (Paket 86).
+const NO_BERUFSBILD = "__ohne__"
 
 // Leaflet greift beim Modul-Import auf Browser-Globals zu - muss deshalb clientseitig-only
 // geladen werden (ssr:false), sonst schlägt das Server-Rendering fehl (gleiches Muster
@@ -98,6 +102,22 @@ export function MapOverview({
 }) {
   const bb = useBerufsbilder()
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all")
+  // Berufsbilder der Kandidaten (Paket 86), Mehrfachauswahl - leer = alle.
+  const [berufsbildFilter, setBerufsbildFilter] = useState<string[]>([])
+  const berufsbildOptions = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const c of candidates) counts.set(c.berufsbild || NO_BERUFSBILD, (counts.get(c.berufsbild || NO_BERUFSBILD) ?? 0) + 1)
+    const known = bb.all.filter((o) => counts.has(o.value)).map((o) => ({ value: o.value, label: o.label, count: counts.get(o.value) }))
+    // Berufsbilder, die es nicht (mehr) in der Liste gibt, mit ihrem gespeicherten Wert.
+    const unknown = [...counts.keys()]
+      .filter((v) => v !== NO_BERUFSBILD && !bb.all.some((o) => o.value === v))
+      .map((v) => ({ value: v, label: bb.label(v) ?? v, count: counts.get(v) }))
+    return [...known, ...unknown, ...(counts.has(NO_BERUFSBILD) ? [{ value: NO_BERUFSBILD, label: "Ohne Berufsbild", count: counts.get(NO_BERUFSBILD) }] : [])]
+  }, [candidates, bb])
+  const shownCandidates = useMemo(
+    () => (berufsbildFilter.length === 0 ? candidates : candidates.filter((c) => berufsbildFilter.includes(c.berufsbild || NO_BERUFSBILD))),
+    [candidates, berufsbildFilter]
+  )
   // Ebene "Werbegebiete" (Atlas T-38): Radius jeder aktiven Anzeigengruppe laufender
   // Meta-Kampagnen, ein-/ausblendbar.
   const [showAdAreas, setShowAdAreas] = useState(false)
@@ -172,12 +192,12 @@ export function MapOverview({
       seen.add(key)
       out.push({ key, kind: "Kanzlei", label: c.name, sublabel: c.place, lat: c.lat, lng: c.lng })
     }
-    for (const c of candidates) {
+    for (const c of shownCandidates) {
       if (!c.name.toLowerCase().includes(q)) continue
       out.push({ key: `c:${c.id}`, kind: "Kandidat", label: c.name, sublabel: bb.label(c.berufsbild), lat: c.lat, lng: c.lng })
     }
     return out.slice(0, MAX_SUGGESTIONS)
-  }, [locationQuery, clients, candidates, showMode, bb])
+  }, [locationQuery, clients, shownCandidates, showMode, bb])
 
   function pickSuggestion(s: Suggestion) {
     setLocationQuery(s.label)
@@ -238,7 +258,7 @@ export function MapOverview({
         }))
       : []
 
-    const filteredCandidates = includeCandidates ? candidates : []
+    const filteredCandidates = includeCandidates ? shownCandidates : []
 
     const candidatePoints: MapPoint[] = filteredCandidates.map((c) => ({
       lat: c.lat,
@@ -254,7 +274,7 @@ export function MapOverview({
     }))
 
     return [...clientPoints, ...candidatePoints]
-  }, [clients, candidates, includeClients, includeCandidates, showMode, bb, lockedPin])
+  }, [clients, shownCandidates, includeClients, includeCandidates, showMode, bb, lockedPin])
 
   const selectedCandidate = selectedCandidateId ? candidates.find((c) => c.id === selectedCandidateId) : undefined
   const selectedDistance = lockedPin && selectedCandidate ? distanceText(selectedCandidate, lockedPin, selectedCandidate.approximate) : null
@@ -376,21 +396,37 @@ export function MapOverview({
       <div className="flex flex-wrap items-start justify-between gap-3">
         {/* Filterleisten */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: "#dde3ea" }}>
-            {TYPE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setTypeFilter(opt.value)}
-                className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-                style={{
-                  backgroundColor: typeFilter === opt.value ? "#1e56a0" : "transparent",
-                  color: typeFilter === opt.value ? "white" : "#6b7280",
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: "#dde3ea" }}>
+              {TYPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setTypeFilter(opt.value)}
+                  className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: typeFilter === opt.value ? "#1e56a0" : "transparent",
+                    color: typeFilter === opt.value ? "white" : "#6b7280",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {/* Berufsbilder der Kandidaten (Paket 86) - Kanzleien bleiben unberührt. */}
+            <MultiSelect
+              options={berufsbildOptions}
+              value={berufsbildFilter}
+              onChange={setBerufsbildFilter}
+              allLabel="Alle Berufsbilder"
+              pluralLabel="Berufsbilder"
+              disabled={!includeCandidates}
+            />
+            {berufsbildFilter.length > 0 && includeCandidates && (
+              <span className="text-xs text-gray-500">
+                {shownCandidates.length} von {candidates.length} Kandidaten
+              </span>
+            )}
           </div>
 
           <label className="flex items-center gap-1.5 text-xs text-gray-600">
