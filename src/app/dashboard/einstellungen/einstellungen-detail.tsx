@@ -11,7 +11,7 @@ import type { AutomationTemplate, AutomationTemplateSet } from "./automation-tem
 import type { LeadCampaignOverview } from "@/lib/meta-campaigns-queries"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronDown, Clock, RefreshCw as SyncIcon, Send, Plus, Pencil } from "lucide-react"
+import { BookOpen, ChevronDown, Clock, RefreshCw as SyncIcon, Send, Plus, Pencil } from "lucide-react"
 import {
   teamPasswordLinkAction,
   updateOwnProfileAction,
@@ -76,8 +76,18 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
 
   return (
     <div className="flex min-w-0 flex-col gap-6 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
-      <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Einstellungen</h1>
+        {/* Benutzerhandbuch (Paket 90) - eigene Seite, öffnet in neuem Tab. */}
+        <a
+          href="/handbuch"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+          style={{ borderColor: "#dde3ea", color: "#1e56a0" }}
+        >
+          <BookOpen size={15} /> Benutzerhandbuch
+        </a>
       </div>
 
       <div>
