@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { BerufsbildProvider } from "@/components/berufsbild-context"
 import { NavigationTracker } from "@/components/navigation-tracker"
+import { memberOfTeam } from "@/lib/teams"
 import { Suspense } from "react"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -46,7 +47,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         supabase.from("profiles").select("full_name, email, role, agency_id, team").eq("id", user.id).single(),
       ])
     : [{ count: 0 }, { data: [] }, { data: null }]
-  const myOpenTasksCount = (ownOpenTasks ?? 0) + (openTeamTasks ?? []).filter((t) => profile?.team && t.assigned_team === profile.team).length
+  const myOpenTasksCount = (ownOpenTasks ?? 0) + (openTeamTasks ?? []).filter((t) => memberOfTeam(profile?.team, t.assigned_team)).length
 
   // Offene Fehlermeldungen nur für Admins zählen - bug_reports ist ohne RLS-Policy für
   // Logins (siehe 20261002000001_bug_reports.sql), daher per Admin-Client, aber streng

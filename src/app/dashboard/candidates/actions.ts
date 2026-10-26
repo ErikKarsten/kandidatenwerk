@@ -9,6 +9,7 @@ import { matchCandidateToCampaigns } from "@/lib/matching"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { RECALL_STATUS, RECALL_TASK_TITLE, recallDueDate } from "@/lib/candidate-status"
+import { ACTIVE_SOURCING_SOURCE, ACTIVE_SOURCING_TAG, canUseActiveSourcing } from "@/lib/teams"
 import { ASSIGNABLE_STATUS, clientNotLiveError, ensureCampaignAssignment } from "@/lib/client-assignment"
 import { createSampleCandidates } from "@/lib/sample-candidates"
 import { friendlyAiError } from "@/lib/llm"
@@ -26,7 +27,10 @@ export async function createCandidateAction(
   const email = formData.get("email") as string
   const phone = formData.get("phone") as string
   const status = (formData.get("status") as string) || "neu"
-  const source = "manual"
+  // Active Sourcing (Paket 89): Herkunft statt einer Kampagne, mit Tag - nur Admins und das
+  // Team "Sales Recruiting + Active Sourcing" (die Datenbank prüft das zusätzlich).
+  const activeSourcing = formData.get("active_sourcing") === "1"
+  const source = activeSourcing ? ACTIVE_SOURCING_SOURCE : "manual"
   const notes = formData.get("notes") as string
   const campaign_id = formData.get("campaign_id") as string
   const berufsbild = formData.get("berufsbild") as string
@@ -43,6 +47,10 @@ export async function createCandidateAction(
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
+  if (activeSourcing) {
+    const { data: me } = await supabase.from("profiles").select("role, team").eq("id", user.id).maybeSingle()
+    if (!canUseActiveSourcing(me)) return { error: "Active-Sourcing-Kandidaten können nur Admins und das Team „Sales Recruiting + Active Sourcing“ anlegen." }
+  }
 
   const coords = plz ? geocodePlz(plz) : null
 
@@ -71,7 +79,9 @@ export async function createCandidateAction(
       status,
       source,
       notes: notes || null,
-      campaign_id: kanzleiCampaign ? null : campaign_id || null,
+      // Active Sourcing: Herkunft ist das Active Sourcing, keine Lead-Kampagne.
+      campaign_id: kanzleiCampaign || activeSourcing ? null : campaign_id || null,
+      ...(activeSourcing ? { tags: [ACTIVE_SOURCING_TAG] } : {}),
       berufsbild: berufsbild || null,
       plz: plz || null,
       lat: coords?.lat ?? null,

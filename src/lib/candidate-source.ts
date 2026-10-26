@@ -10,4 +10,6 @@ export const SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: "leadtable", label: "Leadtable" },
   { value: "kanzleistelle24", label: "Kanzleistelle24" },
   { value: "manual", label: "Manuell" },
+  // Paket 89 - nur für Admins und das Team "Sales Recruiting + Active Sourcing" sichtbar.
+  { value: "active_sourcing", label: "Active Sourcing" },
 ]

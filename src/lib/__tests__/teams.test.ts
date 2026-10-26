@@ -37,3 +37,22 @@ describe("canCreateSamples", () => {
     expect(canCreateSamples(null)).toBe(false)
   })
 })
+
+describe("Active Sourcing (Paket 89)", () => {
+  it("nur Admins und das Team dürfen Active Sourcing", async () => {
+    const { canUseActiveSourcing } = await import("@/lib/teams")
+    expect(canUseActiveSourcing({ role: "agency_admin", team: null })).toBe(true)
+    expect(canUseActiveSourcing({ role: "agency_member", team: "sales_recruiting_active_sourcing" })).toBe(true)
+    expect(canUseActiveSourcing({ role: "agency_member", team: "sales_recruiting" })).toBe(false)
+    expect(canUseActiveSourcing({ role: "agency_member", team: "vertrieb" })).toBe(false)
+    expect(canUseActiveSourcing(null)).toBe(false)
+  })
+
+  it("das neue Team zählt bei Team-Aufgaben auch als Sales Recruiting", async () => {
+    const { isAssignedTo, memberOfTeam, teamsCovering } = await import("@/lib/teams")
+    expect(teamsCovering("sales_recruiting")).toEqual(["sales_recruiting", "sales_recruiting_active_sourcing"])
+    expect(memberOfTeam("sales_recruiting_active_sourcing", "sales_recruiting")).toBe(true)
+    expect(memberOfTeam("sales_recruiting", "sales_recruiting_active_sourcing")).toBe(false)
+    expect(isAssignedTo({ assigned_to: null, assigned_team: "sales_recruiting" }, "u1", "sales_recruiting_active_sourcing")).toBe(true)
+  })
+})

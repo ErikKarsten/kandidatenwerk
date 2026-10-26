@@ -2,7 +2,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { sendEmail } from "@/lib/brevo-mail"
-import { teamLabel } from "@/lib/teams"
+import { teamLabel, teamsCovering } from "@/lib/teams"
 
 // Neu zugewiesene Person sofort per Mail informieren (Paket 14, T-69) - nicht erst am
 // Fälligkeitstag über die Erinnerung. Team-Aufgaben (Paket 44): jedes Team-Mitglied außer
@@ -16,7 +16,7 @@ export async function notifyTaskAssigned(supabase: SupabaseClient<Database>, tas
       .single()
     if (!task) return
     const recipientsQuery = task.assigned_team
-      ? supabase.from("profiles").select("email").eq("team", task.assigned_team).in("role", ["agency_admin", "agency_member"]).neq("id", byUserId)
+      ? supabase.from("profiles").select("email").in("team", teamsCovering(task.assigned_team)).in("role", ["agency_admin", "agency_member"]).neq("id", byUserId)
       : supabase.from("profiles").select("email").eq("id", task.assigned_to ?? "")
     const [{ data: recipients }, { data: by }] = await Promise.all([
       recipientsQuery,

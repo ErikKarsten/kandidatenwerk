@@ -29,6 +29,7 @@ import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-f
 import { CommunicationTab, type CandidateMessage, type MessageTemplate } from "./communication-tab"
 import type { TemplateVars } from "@/lib/automation-engine"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
+import { ACTIVE_SOURCING_SOURCE } from "@/lib/teams"
 import { TagEditor } from "@/components/dashboard/tag-editor"
 import { useShowMode } from "@/lib/show-mode"
 import { CandidateShowView } from "./show-view"
@@ -283,7 +284,7 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
               <MoreActionsMenu onDelete={() => { setModalStep("choice"); setModalError(null) }} />
             </div>
           </div>
-          {(candidate.phone || candidate.email || candidate.plz || candidate.bewerbung || candidate.campaigns?.title) && (
+          {(candidate.phone || candidate.email || candidate.plz || candidate.bewerbung || candidate.campaigns?.title || candidate.source === ACTIVE_SOURCING_SOURCE) && (
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t px-4 py-3 sm:px-5" style={{ borderColor: "#eef2f6" }}>
               {candidate.phone && (
                 <MetaItem icon={Phone} title="Anrufen">
@@ -300,6 +301,12 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
               {candidate.bewerbung && (
                 <MetaItem icon={Briefcase} title={`Bewerbung: ${candidate.bewerbung}`}>
                   <span className="text-gray-400">Bewerbung</span> {candidate.bewerbung}
+                </MetaItem>
+              )}
+              {/* Herkunft Active Sourcing statt Kampagne (Paket 89). */}
+              {candidate.source === ACTIVE_SOURCING_SOURCE && !candidate.campaign_id && (
+                <MetaItem icon={Megaphone} title="Herkunft: Active Sourcing">
+                  <span className="text-gray-400">Herkunft</span> <span style={{ color: "#4338ca" }}>Active Sourcing</span>
                 </MetaItem>
               )}
               {candidate.campaigns?.title && candidate.campaign_id && (
@@ -381,6 +388,7 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
                   kind: candidate.campaigns?.kind ?? null,
                   clientId: candidate.campaigns?.clients?.id ?? null,
                   clientName: candidate.campaigns?.clients?.name ?? null,
+                  source: candidate.source,
                 }}
                 activeAssignments={activeAssignments}
                 clients={clients}
