@@ -109,8 +109,15 @@ export async function runDuplicateDetection(db: SupabaseClient): Promise<{ newCa
       db.from("clients").select("id, name, plz").neq("status", "Archiviert").range(from, to)
     ),
     fetchAll<{ id: string; first_name: string; last_name: string; email: string | null; plz: string | null }>((from, to) =>
-      // Beispiel-Leads und Musterdatensätze (Paket 58) nie als Dublette melden.
-      db.from("candidates").select("id, first_name, last_name, email, plz").eq("is_demo", false).not("tags", "cs", `{${SAMPLE_TAG}}`).range(from, to)
+      // Beispiel-Leads und Musterdatensätze (Paket 58) nie als Dublette melden; Active Sourcing
+      // auch nicht (Paket 89) - die Fälle sähe sonst jeder im Team mit Namen.
+      db
+        .from("candidates")
+        .select("id, first_name, last_name, email, plz")
+        .eq("is_demo", false)
+        .not("tags", "cs", `{${SAMPLE_TAG}}`)
+        .neq("source", "active_sourcing")
+        .range(from, to)
     ),
   ])
   const findings = [...findClientDuplicates(clients), ...findCandidateDuplicates(candidates)]

@@ -5,6 +5,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getStaffContext } from "@/lib/auth-guards"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
+import { ACTIVE_SOURCING_SOURCE } from "@/lib/teams"
 
 export interface CandidatePanelData {
   id: string
@@ -34,7 +35,7 @@ export async function getCandidatePanelDataAction(candidateId: string): Promise<
   const [{ data: c }, { data: assignments }, { data: definitions }, { data: templates }, { data: tagRows }] = await Promise.all([
     supabase
       .from("candidates")
-      .select("id, first_name, last_name, status, berufsbild, email, phone, plz, notes, offene_fragen, created_at, custom_fields, tags, campaigns(title)")
+      .select("id, first_name, last_name, status, berufsbild, email, phone, plz, notes, offene_fragen, created_at, custom_fields, tags, source, campaigns(title)")
       .eq("id", candidateId)
       .maybeSingle(),
     supabase
@@ -73,7 +74,7 @@ export async function getCandidatePanelDataAction(candidateId: string): Promise<
       notes: c.notes,
       offeneFragen: c.offene_fragen,
       createdAt: c.created_at,
-      origin: one(c.campaigns as { title: string } | null)?.title ?? null,
+      origin: one(c.campaigns as { title: string } | null)?.title ?? (c.source === ACTIVE_SOURCING_SOURCE ? "Active Sourcing" : null),
       stammdaten: withValue(defs.filter((d) => d.section === "stammdaten")),
       zusatzfelder: withValue(shown),
       tags: c.tags ?? [],

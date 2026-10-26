@@ -3,8 +3,30 @@
 // zugewiesen werden - im Auswahlfeld als "team:<wert>" neben den Personen-IDs.
 export const TEAM_OPTIONS = [
   { value: "sales_recruiting", label: "Sales Recruiting" },
+  // Paket 89: Sales Recruiting mit Zugriff auf Active-Sourcing-Kandidaten.
+  { value: "sales_recruiting_active_sourcing", label: "Sales Recruiting + Active Sourcing" },
   { value: "vertrieb", label: "Vertrieb" },
 ] as const
+
+export const ACTIVE_SOURCING_TEAM = "sales_recruiting_active_sourcing"
+export const ACTIVE_SOURCING_SOURCE = "active_sourcing"
+export const ACTIVE_SOURCING_TAG = "Active Sourcing"
+
+// Active-Sourcing-Kandidaten sehen und anlegen: nur Admins und das Team (Paket 89; in der
+// Datenbank zusätzlich per Policy abgesichert).
+export function canUseActiveSourcing(profile: { role: string | null; team: string | null } | null): boolean {
+  return !!profile && (profile.role === "agency_admin" || profile.team === ACTIVE_SOURCING_TEAM)
+}
+
+// Wer zu einem Team gehört: "Sales Recruiting + Active Sourcing" zählt auch als Sales
+// Recruiting (Team-Aufgaben, "Mir zugewiesen").
+export function teamsCovering(team: string): string[] {
+  return team === "sales_recruiting" ? ["sales_recruiting", ACTIVE_SOURCING_TEAM] : [team]
+}
+
+export function memberOfTeam(userTeam: string | null | undefined, team: string | null | undefined): boolean {
+  return !!userTeam && !!team && teamsCovering(team).includes(userTeam)
+}
 
 export type Team = (typeof TEAM_OPTIONS)[number]["value"]
 
@@ -33,7 +55,7 @@ export function parseAssignee(value: string): { assigned_to: string | null; assi
 
 // "Mir zugewiesen": direkt oder über das eigene Team.
 export function isAssignedTo(task: { assigned_to: string | null; assigned_team?: string | null }, userId: string, userTeam: string | null): boolean {
-  return task.assigned_to === userId || (!!userTeam && task.assigned_team === userTeam)
+  return task.assigned_to === userId || memberOfTeam(userTeam, task.assigned_team)
 }
 
 // Anzeige "Zugewiesen": Team oder Personenname.

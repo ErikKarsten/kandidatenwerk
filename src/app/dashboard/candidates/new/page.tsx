@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { BackButton } from "@/components/ui/back-button"
 import { CandidateForm } from "./candidate-form"
 import { LIVE_PHASE } from "@/lib/client-assignment"
+import { canUseActiveSourcing } from "@/lib/teams"
 
 export default async function NewCandidatePage({
   searchParams,
@@ -22,6 +23,11 @@ export default async function NewCandidatePage({
   const clientOf = (c: { clients: unknown }) =>
     (Array.isArray(c.clients) ? c.clients[0] ?? null : c.clients) as { name: string; project_phase: string | null } | null
   const selectable = (campaigns ?? []).filter((c) => c.kind !== "kanzlei" || clientOf(c)?.project_phase === LIVE_PHASE || c.id === campaign_id)
+  // Haken "Active Sourcing" nur für Admins und das Team (Paket 89).
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const { data: me } = user ? await supabase.from("profiles").select("role, team").eq("id", user.id).maybeSingle() : { data: null }
 
   return (
     <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
@@ -53,6 +59,7 @@ export default async function NewCandidatePage({
             clients: clientOf(c),
           }))}
           defaultCampaignId={campaign_id}
+          canActiveSource={canUseActiveSourcing(me)}
         />
       </div>
     </div>

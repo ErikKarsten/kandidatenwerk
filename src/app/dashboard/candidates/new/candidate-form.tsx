@@ -22,6 +22,7 @@ const schema = z.object({
   campaign_id: z.string().optional(),
   berufsbild: z.string().optional(),
   plz: z.string().regex(/^\d{5}$/, "PLZ muss 5-stellig sein").optional().or(z.literal("")),
+  active_sourcing: z.boolean().optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -37,9 +38,12 @@ interface Campaign {
 export function CandidateForm({
   campaigns,
   defaultCampaignId,
+  canActiveSource = false,
 }: {
   campaigns: Campaign[]
   defaultCampaignId?: string
+  // Haken "Active Sourcing" (Paket 89): nur Admins und Team "Sales Recruiting + Active Sourcing".
+  canActiveSource?: boolean
 }) {
   const bb = useBerufsbilder()
   const [state, formAction] = useActionState<CreateCandidateState, FormData>(
@@ -64,7 +68,7 @@ export function CandidateForm({
       berufsbild: defaultCampaign?.berufsbild ?? "",
     },
   })
-  const [campaignId, status] = useWatch({ control, name: ["campaign_id", "status"] })
+  const [campaignId, status, activeSourcing] = useWatch({ control, name: ["campaign_id", "status", "active_sourcing"] })
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
   const isKanzlei = selectedCampaign?.kind === "kanzlei"
   const statusIsAssignable = status === "vorqualifiziert"
@@ -84,6 +88,7 @@ export function CandidateForm({
     if (values.campaign_id) fd.append("campaign_id", values.campaign_id)
     if (values.berufsbild) fd.append("berufsbild", values.berufsbild)
     if (values.plz) fd.append("plz", values.plz)
+    if (canActiveSource && values.active_sourcing) fd.append("active_sourcing", "1")
     fd.append(
       "redirect_to",
       values.campaign_id
@@ -103,6 +108,19 @@ export function CandidateForm({
           <Input id="last_name" {...register("last_name")} placeholder="Mustermann" />
         </Field>
       </div>
+
+      {canActiveSource && (
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2.5" style={{ borderColor: activeSourcing ? "#c7d2fe" : "#dde3ea", backgroundColor: activeSourcing ? "#eef2ff" : "white" }}>
+          <input type="checkbox" className="mt-0.5 h-4 w-4" {...register("active_sourcing")} />
+          <span className="text-sm text-gray-800">
+            Kandidat aus Active Sourcing
+            <span className="block text-xs text-gray-500">
+              Herkunft „Active Sourcing“ mit Tag. Sichtbar nur für Admins und das Team „Sales Recruiting + Active Sourcing“.
+              {activeSourcing && !isKanzlei && campaignId ? " Eine Lead-Kampagne wird dann nicht als Herkunft gespeichert." : ""}
+            </span>
+          </span>
+        </label>
+      )}
 
       <Field label="Kampagne" error={errors.campaign_id?.message}>
         <select

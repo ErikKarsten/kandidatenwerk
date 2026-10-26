@@ -9,6 +9,7 @@ import { AssignmentControl, assignmentStatusLabel, type ActiveAssignment } from 
 import type { ClientOption } from "./client-assignment-section"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
+import { ACTIVE_SOURCING_SOURCE } from "@/lib/teams"
 import { assignCandidateToCampaignAction } from "../../campaigns/[id]/actions"
 import { assignCandidateToClientAction } from "./actions"
 import { kanzleiDistanceKm, type KanzleiOption } from "@/lib/kanzlei-umkreis"
@@ -43,6 +44,8 @@ interface Origin {
   kind: string | null
   clientId: string | null
   clientName: string | null
+  // Herkunft ohne Kampagne, z. B. "active_sourcing" (Paket 89).
+  source?: string | null
 }
 
 // Reiter "Zuordnung" im Kandidatenprofil (Atlas T-35, Zielbild T-31): Herkunft des
@@ -154,6 +157,10 @@ export function AssignmentTab({
               {origin.title}
             </Link>
             {origin.kind === "lead" ? " (Lead-Kampagne)" : origin.clientName ? ` (${origin.clientName})` : ""}
+          </p>
+        ) : origin.source === ACTIVE_SOURCING_SOURCE ? (
+          <p className="text-sm text-gray-700">
+            Aus dem <span className="font-medium" style={{ color: "#4338ca" }}>Active Sourcing</span>
           </p>
         ) : (
           <p className="text-sm text-gray-400">Keine Kampagne hinterlegt (manuell angelegt oder Altbestand).</p>
