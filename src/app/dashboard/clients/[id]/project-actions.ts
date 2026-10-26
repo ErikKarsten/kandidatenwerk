@@ -57,6 +57,7 @@ export async function updateProjectMetaAction(
     contract_term_months: number | null
     key_account_manager_id: string | null
     close_lead_id: string | null
+    campaign_via_client_brand: boolean
   }
 ): Promise<Result> {
   const ctx = await staff()
@@ -65,7 +66,7 @@ export async function updateProjectMetaAction(
   if (meta.contract_term_months !== null && (!Number.isInteger(meta.contract_term_months) || meta.contract_term_months <= 0)) {
     return { error: "Laufzeit bitte als ganze Zahl Monate angeben." }
   }
-  const { data: before } = await ctx.supabase.from("clients").select("project_phase").eq("id", clientId).single()
+  const { data: before } = await ctx.supabase.from("clients").select("project_phase, campaign_via_client_brand").eq("id", clientId).single()
   const { error } = await ctx.supabase
     .from("clients")
     .update({
@@ -76,12 +77,22 @@ export async function updateProjectMetaAction(
       // Close-ID von Hand (bestehende Kunden verknüpfen); Link folgt der ID.
       close_lead_id: clean(meta.close_lead_id),
       close_url: clean(meta.close_lead_id) ? closeLeadUrl(clean(meta.close_lead_id)!) : null,
+      // Kampagne über die Kundenmarke (Paket 88).
+      campaign_via_client_brand: !!meta.campaign_via_client_brand,
     })
     .eq("id", clientId)
   if (error?.code === "23505") return { error: "Diese Close-ID ist schon einem anderen Kunden zugeordnet." }
   if (error) return { error: error.message }
 
   if (before && before.project_phase !== meta.project_phase) await phaseChanged(ctx.supabase, ctx.userId, clientId, before.project_phase, meta.project_phase)
+  if (before && !!before.campaign_via_client_brand !== !!meta.campaign_via_client_brand) {
+    await ctx.supabase.from("client_comments").insert({
+      client_id: clientId,
+      author_id: ctx.userId,
+      kind: "system",
+      content: meta.campaign_via_client_brand ? "Kampagne läuft jetzt über die Kundenmarke." : "Kampagne läuft nicht mehr über die Kundenmarke.",
+    })
+  }
   revalidateClient(clientId)
   return null
 }
@@ -126,6 +137,21 @@ async function createCampaignCheckTask(supabase: Supabase, userId: string, clien
 }
 
 // ── Kanzleiprofil ───────────────────────────────────────────────────────────
+
+// Kundennamen aus dem Kanzleiprofil ändern (Paket 88) - wie in den Stammdaten.
+export async function renameClientAction(clientId: string, name: string): Promise<Result> {
+  const ctx = await staff()
+  if ("error" in ctx) return ctx
+  const trimmed = name.trim()
+  if (!trimmed) return { error: "Der Kundenname darf nicht leer sein." }
+  const { error } = await ctx.supabase.from("clients").update({ name: trimmed }).eq("id", clientId)
+  if (error) return { error: error.message }
+  scheduleKanzleistelleSync(clientId)
+  revalidateClient(clientId)
+  revalidatePath("/dashboard/clients")
+  revalidatePath("/dashboard/campaigns")
+  return null
+}
 
 export async function saveClientProfileAction(clientId: string, values: ClientProfileValues): Promise<Result> {
   const ctx = await staff()

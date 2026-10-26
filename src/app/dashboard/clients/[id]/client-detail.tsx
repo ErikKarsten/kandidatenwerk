@@ -6,7 +6,7 @@ import { useState, useTransition, useEffect } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { useGoBack } from "@/components/navigation-tracker"
 import Link from "next/link"
-import { Send, ClipboardCheck, Search, UserCheck } from "lucide-react"
+import { Send, ClipboardCheck, Search, UserCheck, Megaphone } from "lucide-react"
 import { useMeetingMode } from "@/lib/meeting-mode"
 import { MeetingModeToggle } from "@/components/dashboard/meeting-mode-toggle"
 import {
@@ -439,6 +439,15 @@ export function ClientDetail({
           )}
           <MeetingModeToggle on={meetingMode} onChange={setMeetingMode} className={meetingMode ? "ml-auto" : ""} />
         </div>
+        {/* Haken "Kampagne über Kundenmarke" im Reiter Projekt (Paket 88) - gut sichtbar unter dem Namen. */}
+        {project.meta.campaign_via_client_brand && (
+          <p
+            className="mt-2 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium"
+            style={{ borderColor: "#c7d2fe", backgroundColor: "#eef2ff", color: "#4338ca" }}
+          >
+            <Megaphone size={13} /> Kampagne läuft über die Kundenmarke
+          </p>
+        )}
       </div>
 
       {/* ── KPIs ── */}
@@ -494,6 +503,7 @@ export function ClientDetail({
           {tab === "projekt" && (
             <ProjectTab
               clientId={client.id}
+              clientName={client.name}
               meta={project.meta}
               profile={project.profile}
               positions={project.positions}

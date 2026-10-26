@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, AlertTriangle, Plus, X } from "lucide-react"
 import { PROFILE_GROUPS, PROJECT_PHASES, contractEnd, missingProfileItems, type ClientProfileValues } from "@/lib/client-project"
-import { finalizeClientProfileAction, saveClientProfileAction, updateProjectMetaAction } from "./project-actions"
+import { finalizeClientProfileAction, renameClientAction, saveClientProfileAction, updateProjectMetaAction } from "./project-actions"
 import { ProjectPositions, type ClientPosition } from "./project-positions"
 import { LocationsCard } from "./locations-card"
 import type { ClientLocation } from "@/lib/client-locations"
@@ -20,6 +20,8 @@ export interface ProjectMeta {
   contract_term_months: number | null
   key_account_manager_id: string | null
   close_lead_id: string | null
+  // Kampagne läuft über die Marke des Kunden (Paket 88).
+  campaign_via_client_brand: boolean
   // Nur Anzeige (kommen aus Close über den Webhook).
   close_url?: string | null
   close_status?: string | null
@@ -35,6 +37,7 @@ export interface ClientProfileData extends ClientProfileValues {
 // mit Onboarding-Hinweis, gesuchte Stellen und Kommentare. Nur für das Team.
 export function ProjectTab({
   clientId,
+  clientName,
   meta,
   profile,
   positions,
@@ -46,6 +49,7 @@ export function ProjectTab({
   team,
 }: {
   clientId: string
+  clientName: string
   meta: ProjectMeta
   profile: ClientProfileData | null
   positions: ClientPosition[]
@@ -65,7 +69,7 @@ export function ProjectTab({
       <OnboardingBanner clientId={clientId} profile={profile} missing={missing} />
       <KanzleistelleCard clientId={clientId} status={kanzleistelle} />
       <ProjectMetaCard clientId={clientId} meta={meta} team={team} />
-      <ProfileCard clientId={clientId} profile={profile} missing={missing} fields={kanzleiFields} />
+      <ProfileCard clientId={clientId} clientName={clientName} profile={profile} missing={missing} fields={kanzleiFields} />
       {/* Standorte als eigene Liste (Paket 16, T-75) - gleiche Liste wie in den Stammdaten. */}
       <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#dde3ea" }}>
         <LocationsCard clientId={clientId} locations={locations} closeHint={profile?.standorte} />
@@ -163,6 +167,7 @@ function ProjectMetaCard({ clientId, meta, team }: { clientId: string; meta: Pro
         contract_term_months: v.contract_term_months,
         key_account_manager_id: v.key_account_manager_id,
         close_lead_id: v.close_lead_id,
+        campaign_via_client_brand: v.campaign_via_client_brand,
       })
       if (result?.error) return setError(result.error)
       setSaved(true)
@@ -222,6 +227,16 @@ function ProjectMetaCard({ clientId, meta, team }: { clientId: string; meta: Pro
           />
         </label>
       </div>
+      <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={v.campaign_via_client_brand}
+          onChange={(e) => (setV({ ...v, campaign_via_client_brand: e.target.checked }), setSaved(false))}
+          className="h-4 w-4"
+        />
+        Kampagne über Kundenmarke
+        <span className="text-xs text-gray-400">(Anzeigen laufen unter Namen und Seite der Kanzlei, nicht über KS24)</span>
+      </label>
       <details className="mt-3 text-xs text-gray-500">
         <summary className="cursor-pointer select-none">Close-Verknüpfung{meta.close_status ? ` · ${meta.close_status}` : ""}</summary>
       <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -268,11 +283,13 @@ const MISSING_STYLE = { borderColor: "#f59e0b", backgroundColor: "#fffbeb" }
 
 function ProfileCard({
   clientId,
+  clientName,
   profile,
   missing,
   fields,
 }: {
   clientId: string
+  clientName: string
   profile: ClientProfileData | null
   missing: string[]
   fields: ResolvedField[]
@@ -281,6 +298,8 @@ function ProfileCard({
   const [editing, setEditing] = useState(false)
   const [v, setV] = useState<ClientProfileValues>({})
   const [newBenefit, setNewBenefit] = useState("")
+  // Kundenname (Paket 88) - gespeichert mit dem Profil, ändert den Namen des Kunden überall.
+  const [name, setName] = useState(clientName)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   // Einheitliche Höhe für Auswahl-, Datums- und Zahlenfelder (Paket 32).
@@ -288,6 +307,7 @@ function ProfileCard({
   const textarea = "w-full rounded-md border bg-white px-2 py-1.5 text-sm"
 
   function startEdit() {
+    setName(clientName)
     setV({ ...(profile ?? {}), benefits: [...(profile?.benefits ?? [])], extra: { ...(profile?.extra ?? {}) } })
     setEditing(true)
   }
@@ -303,6 +323,11 @@ function ProfileCard({
     setError(null)
     const values = { ...v, benefits: newBenefit.trim() ? [...(v.benefits ?? []), newBenefit.trim()] : v.benefits }
     startTransition(async () => {
+      if (!name.trim()) return setError("Der Kundenname darf nicht leer sein.")
+      if (name.trim() !== clientName) {
+        const renamed = await renameClientAction(clientId, name)
+        if (renamed?.error) return setError(renamed.error)
+      }
       const result = await saveClientProfileAction(clientId, values)
       if (result?.error) return setError(result.error)
       setNewBenefit("")
@@ -324,6 +349,16 @@ function ProfileCard({
 
       {editing ? (
         <div className="flex flex-col gap-5">
+          <label className="flex flex-col gap-1 sm:max-w-md">
+            <span className="text-xs font-medium text-gray-500">Kundenname *</span>
+            <input
+              className={input}
+              style={name.trim() ? { borderColor: "#dde3ea" } : MISSING_STYLE}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <span className="text-xs text-gray-400">Ändert den Namen des Kunden überall in Kandidatenwerk (auch im Portal und auf Kanzleistelle24).</span>
+          </label>
           {PROFILE_GROUPS.map((g) => (
             <section key={g.value} className="flex flex-col gap-3">
               <h4 className="border-b pb-1 text-xs font-semibold uppercase tracking-wide text-gray-400" style={{ borderColor: "#eef2f6" }}>

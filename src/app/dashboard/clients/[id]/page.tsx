@@ -167,6 +167,7 @@ export default async function ClientDetailPage({
       contract_term_months: client.contract_term_months ?? null,
       key_account_manager_id: client.key_account_manager_id ?? null,
       close_lead_id: client.close_lead_id ?? null,
+      campaign_via_client_brand: client.campaign_via_client_brand ?? false,
       close_url: client.close_url ?? null,
       close_status: client.close_status ?? null,
       close_status_at: client.close_status_at ?? null,
