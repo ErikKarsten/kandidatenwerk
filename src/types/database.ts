@@ -548,6 +548,7 @@ export type Database = {
           contract_start: string | null
           contract_term_months: number | null
           key_account_manager_id: string | null
+          campaign_via_client_brand: boolean
           close_lead_id: string | null
           close_url: string | null
           close_status: string | null
@@ -579,6 +580,7 @@ export type Database = {
           contract_start?: string | null
           contract_term_months?: number | null
           key_account_manager_id?: string | null
+          campaign_via_client_brand?: boolean
           close_lead_id?: string | null
           close_url?: string | null
           close_status?: string | null
@@ -610,6 +612,7 @@ export type Database = {
           contract_start?: string | null
           contract_term_months?: number | null
           key_account_manager_id?: string | null
+          campaign_via_client_brand?: boolean
           close_lead_id?: string | null
           close_url?: string | null
           close_status?: string | null
