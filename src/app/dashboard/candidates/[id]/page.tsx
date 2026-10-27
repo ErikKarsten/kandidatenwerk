@@ -11,6 +11,7 @@ import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
 import { revealsSample } from "@/lib/candidate-tags"
+import { canSeeSamples as profileSeesSamples } from "@/lib/teams"
 import { LIVE_PHASE } from "@/lib/client-assignment"
 import { bodyWithoutSavedNote, filesOfMessage } from "@/lib/inbound-replies"
 
@@ -112,9 +113,9 @@ export default async function CandidateDetailPage({
       : { data: [] }
   const creatorNameById = new Map((creatorProfiles ?? []).map((p) => [p.id, p.full_name]))
 
-  // Dass es ein Musterdatensatz ist, sehen nur Admins (Paket 76).
-  const { data: me } = user ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle() : { data: null }
-  const canSeeSamples = me?.role === "agency_admin"
+  // Dass es ein Musterdatensatz ist, sehen nur Admins und der Vertrieb (Paket 76/91).
+  const { data: me } = user ? await supabase.from("profiles").select("role, team").eq("id", user.id).maybeSingle() : { data: null }
+  const canSeeSamples = profileSeesSamples(me)
   const historyWithCreatorNames = (history ?? []).filter((h) => canSeeSamples || !revealsSample(h.content)).map((h) => ({
     id: h.id,
     type: h.type,

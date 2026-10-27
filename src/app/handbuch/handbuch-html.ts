@@ -131,7 +131,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
     <span class="eyebrow">Kandidatenwerk · Benutzerhandbuch</span>
     <h1>Kandidatenwerk Handbuch</h1>
     <p class="lede">Wie Bewerber ins System kommen, wie ihr sie vorqualifiziert und Kanzleien zuordnet, und warum Kandidatenwerk an einigen Stellen genau so funktioniert. Für das Team von Endlich Mitarbeiter, mit einem eigenen Kapitel zum Kundenportal der Kanzleien.</p>
-    <div class="meta"><span>Stand: 26.10.2026</span><span>Gilt für alle Rollen; was nur Admins oder bestimmte Teams sehen, ist jeweils vermerkt.</span></div>
+    <div class="meta"><span>Stand: 27.10.2026</span><span>Gilt für alle Rollen; was nur Admins oder bestimmte Teams sehen, ist jeweils vermerkt.</span></div>
   </header>
 
   <nav class="toc" aria-label="Inhalt">
@@ -167,7 +167,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <div class="flow" aria-label="Ablauf">
         <span>Bewerbung kommt herein</span><i>→</i><span>Team ruft an und qualifiziert</span><i>→</i><span>Status „Vorqualifiziert“</span><i>→</i><span>Zuordnung zu einer Live-Kanzlei</span><i>→</i><span>Kanzlei sieht den Kandidaten im Portal</span>
       </div>
-      <p>Die Seitenleiste führt zu den Bereichen <span class="ui">Dashboard</span>, <span class="ui">Kunden</span>, <span class="ui">Alle Kandidaten</span>, <span class="ui">Kandidaten nach Kampagnen</span>, <span class="ui">Aufgaben</span>, <span class="ui">Karte</span> und <span class="ui">Einstellungen</span>. Unten in der Seitenleiste liegen der <span class="ui">Anonymisierte Modus</span> und der Knopf <span class="ui">Fehler melden</span>.</p>
+      <p>Die Seitenleiste führt zu den Bereichen <span class="ui">Dashboard</span>, <span class="ui">Kunden</span>, <span class="ui">Alle Kandidaten</span>, <span class="ui">Kandidaten nach Kampagnen</span>, <span class="ui">Aufgaben</span>, <span class="ui">Karte</span> und <span class="ui">Einstellungen</span>. Unten in der Seitenleiste liegen der <span class="ui">Anonymisierte Modus</span>, der Knopf <span class="ui">Fehler melden</span> und dieses <span class="ui">Handbuch</span>.</p>
       <div class="why"><b>Warum</b><p>Kanzleien sollen nur Kandidaten sehen, mit denen wir schon gesprochen haben. Deshalb gilt überall dieselbe Regel: Eine Kanzlei bekommt einen Kandidaten erst, wenn er vorqualifiziert und ihr zugeordnet ist. Alles davor ist interne Arbeit des Teams.</p></div>
     </section>
 
@@ -177,11 +177,11 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <div class="table"><table>
         <thead><tr><th>Wer</th><th>Was er sieht und darf</th></tr></thead>
         <tbody>
-          <tr><td><span class="ui">Admin</span></td><td>Alles. Sieht als Einzige, welche Kandidaten Beispielkandidaten sind, verwaltet Team, Felder und Vorlagen.</td></tr>
-          <tr><td><span class="ui">Mitarbeiter</span></td><td>Alle Kandidaten und Kunden außer Active Sourcing. Beispielkandidaten erscheinen nur, wenn sie einer Kanzlei zugeordnet sind, und zwar ohne Kennzeichnung.</td></tr>
+          <tr><td><span class="ui">Admin</span></td><td>Alles. Verwaltet Team, Felder und Vorlagen. Sieht Musterdatensätze mit Kennzeichnung.</td></tr>
+          <tr><td><span class="ui">Mitarbeiter</span></td><td>Alle Kandidaten und Kunden außer Active Sourcing. Musterdatensätze erscheinen weder in „Alle Kandidaten“ noch auf der Karte.</td></tr>
           <tr><td>Team <span class="ui">Sales Recruiting</span></td><td>Bekommt Team-Aufgaben für Sales Recruiting.</td></tr>
           <tr><td>Team <span class="ui">Sales Recruiting + Active Sourcing</span></td><td>Wie Sales Recruiting, zusätzlich: Active-Sourcing-Kandidaten sehen und anlegen.</td></tr>
-          <tr><td>Team <span class="ui">Vertrieb</span></td><td>Darf zusätzlich Musterdatensätze anlegen.</td></tr>
+          <tr><td>Team <span class="ui">Vertrieb</span></td><td>Sieht Musterdatensätze wie die Admins, in der Liste und auf der Karte, und darf sie anlegen.</td></tr>
           <tr><td>Kanzlei im <span class="ui">Kundenportal</span></td><td>Nur die eigenen, zugeordneten und vorqualifizierten Kandidaten. Mehr dazu im Kapitel <a href="#portal">Kundenportal</a>.</td></tr>
         </tbody>
       </table></div>
@@ -239,7 +239,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <h3>Kommunikation und Antworten</h3>
       <p>Mails aus dem Reiter Kommunikation gehen in eurem Namen raus. Antwortet der Kandidat, landet die Antwort im Kandidatenwerk, und ihr bekommt eine Kopie. Anhänge, etwa ein Lebenslauf, liegen danach automatisch unter <span class="ui">Dateien</span>.</p>
       <h3>Tags</h3>
-      <p>Tags helfen beim Sortieren und Filtern. „Musterdatensatz“ sehen nur Admins.</p>
+      <p>Tags helfen beim Sortieren und Filtern. „Musterdatensatz“ sehen nur Admins und das Team Vertrieb.</p>
     </section>
 
     <section class="chap" id="status">
@@ -424,7 +424,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <ul>
         <li>Zuerst nimmt Kandidatenwerk einen freien Musterdatensatz mit passendem Berufsbild im Umkreis von 30 km, sonst erzeugt es einen neuen. Danach gehört er nur dieser Kanzlei.</li>
         <li>Jeder hat einen Werdegang über zehn Jahre. Steuerberater, Steuerfachwirte und Bilanzbuchhalter sind wirklich qualifiziert.</li>
-        <li>Ob ein Kandidat ein Beispiel ist, sehen nur Admins.</li>
+        <li>Musterdatensätze sehen nur Admins und das Team Vertrieb, in „Alle Kandidaten“ und auf der Karte. Alle anderen sehen sie dort nicht.</li>
         <li>An die Mailadressen der Beispielkandidaten verschickt Kandidatenwerk nie etwas.</li>
       </ul>
       <div class="warn"><b>Aktuell pausiert</b><p>Die automatische Verteilung ist pausiert und startet erst, wenn ein Admin sie freigibt.</p></div>

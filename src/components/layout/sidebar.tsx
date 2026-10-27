@@ -14,6 +14,7 @@ import {
   PanelLeftOpen,
   Bug,
   LayoutGrid,
+  BookOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLocalStorageValue } from "@/lib/use-local-storage"
@@ -59,12 +60,16 @@ interface NavItemProps {
   badge?: string
   active: boolean
   collapsed: boolean
+  // Eigene Seite außerhalb des Dashboards (Handbuch, Paket 91): normaler Link in neuem Tab.
+  external?: boolean
 }
 
-function NavItem({ href, label, icon: Icon, badge, active, collapsed }: NavItemProps) {
+function NavItem({ href, label, icon: Icon, badge, active, collapsed, external = false }: NavItemProps) {
+  const Anchor = external ? "a" : Link
   const link = (
-    <Link
+    <Anchor
       href={href}
+      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
         collapsed && "justify-center px-0",
@@ -93,7 +98,7 @@ function NavItem({ href, label, icon: Icon, badge, active, collapsed }: NavItemP
           )}
         </>
       )}
-    </Link>
+    </Anchor>
   )
 
   // Im eingeklappten Zustand ersetzt ein Tooltip das ausgeblendete Label - ohne
@@ -220,6 +225,7 @@ export function Sidebar({
             active={pathname === BUG_REPORTS_HREF || pathname.startsWith(BUG_REPORTS_HREF + "/")}
           />
         )}
+        <NavItem href="/handbuch" label="Handbuch" icon={BookOpen} collapsed={collapsed} active={false} external />
         <NavItem
           {...SETTINGS_ITEM}
           collapsed={collapsed}

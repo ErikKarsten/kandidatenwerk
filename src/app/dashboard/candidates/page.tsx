@@ -8,7 +8,7 @@ import { SOURCE_OPTIONS } from "@/lib/candidate-source"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { CandidatesList, type CandidateListItem, type CandidatesSortOption } from "./candidates-list"
 import { SampleCandidatesButton } from "./sample-candidates-button"
-import { canCreateSamples } from "@/lib/teams"
+import { canCreateSamples, canSeeSamples as profileSeesSamples } from "@/lib/teams"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
 
 const ARCHIVED_STATUS = "Archiviert"
@@ -68,10 +68,10 @@ export default async function CandidatesPage({
   const page = Math.max(1, Number(sp.page) || 1)
 
   const supabase = await createSupabaseServerClient()
-  // Musterdatensätze nur für Admins und den Vertrieb (Paket 44).
+  // Musterdatensätze nur für Admins und den Vertrieb (Paket 44/91).
   const { data: { user } } = await supabase.auth.getUser()
   const { data: me } = user ? await supabase.from("profiles").select("role, team").eq("id", user.id).maybeSingle() : { data: null }
-  const canSeeSamples = me?.role === "agency_admin"
+  const canSeeSamples = profileSeesSamples(me)
   const tagFilter = !canSeeSamples && tagFilterRaw === SAMPLE_TAG ? "alle" : tagFilterRaw
 
   let query = supabase
@@ -88,9 +88,9 @@ export default async function CandidatesPage({
   if (sourceFilter !== "alle") query = query.eq("source", sourceFilter)
   if (tagFilter !== "alle") query = query.contains("tags", [tagFilter])
   if (!canSeeSamples) {
-    // Für alle anderen sind zugeordnete Beispielkandidaten ganz normale Kandidaten; freie
-    // Musterdatensätze erscheinen nicht.
-    query = query.or(`tags.not.cs.{${SAMPLE_TAG}},assignment_status.not.is.null`)
+    // Alle anderen sehen in "Alle Kandidaten" gar keine Musterdatensätze (Paket 91), auch
+    // keine einer Kanzlei zugeordneten.
+    query = query.not("tags", "cs", `{${SAMPLE_TAG}}`)
   } else if (showSamples) query = query.contains("tags", [SAMPLE_TAG])
   else if (tagFilter !== SAMPLE_TAG) query = query.not("tags", "cs", `{${SAMPLE_TAG}}`)
   if (campaignFilter) query = query.eq("campaign_id", campaignFilter)

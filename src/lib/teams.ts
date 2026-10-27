@@ -68,3 +68,9 @@ export function assigneeLabel(task: { assigned_team?: string | null }, personNam
 export function canCreateSamples(profile: { role: string | null; team: string | null } | null): boolean {
   return !!profile && (profile.role === "agency_admin" || profile.team === "vertrieb")
 }
+
+// Musterdatensätze sehen (Liste, Karte, Kennzeichnung): ebenfalls nur Admins und der
+// Vertrieb (Paket 91) - für alle anderen gibt es sie in "Alle Kandidaten" und auf der Karte nicht.
+export function canSeeSamples(profile: { role: string | null; team: string | null } | null): boolean {
+  return canCreateSamples(profile)
+}
