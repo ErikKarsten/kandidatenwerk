@@ -3,7 +3,6 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getAutomationTemplates } from "../../einstellungen/automation-template-actions"
 import { CampaignDetail } from "./campaign-detail"
 import { campaignPoints } from "@/lib/campaign-locations"
-import type { OwnLead } from "./own-leads-section"
 
 export default async function CampaignDetailPage({
   params,
@@ -26,7 +25,7 @@ export default async function CampaignDetailPage({
     // Herkunft: Kandidaten, deren Bewerbung über diese Kampagne kam (Lead-Kampagnen).
     supabase
       .from("candidates")
-      .select("id, first_name, last_name, email, phone, status, berufsbild, plz, created_at, source, campaign_only")
+      .select("id, first_name, last_name, email, phone, status, berufsbild, plz, created_at, source, campaign_only, custom_fields")
       .eq("campaign_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -45,26 +44,28 @@ export default async function CampaignDetailPage({
   // ZUGEORDNETEN Kandidaten, nicht die Herkunft. Alt-Kandidaten aus dem Leadtable-
   // Import (candidates.campaign_id) werden bewusst nicht mehr gezeigt - sie stehen in
   // "Alle Kandidaten" und werden über "Passende Kandidaten" neu zugeordnet.
-  let shownCandidates = candidates ?? []
-  // Leads aus der eigenen Meta-Kampagne der Kanzlei (Paket 80), noch nicht zugeordnet.
-  let ownLeads: OwnLead[] = []
+  // Leads aus der eigenen Meta-Kampagne der Kanzlei (Paket 80) stehen mit in der Liste
+  // (Paket 93), vor der Zuordnung mit ihrem internen Status - mit "vorqualifiziert" gehen
+  // sie automatisch an die Kanzlei.
+  let shownCandidates: (NonNullable<typeof candidates>[number] & { assignmentId?: string; assignmentStatus?: string; ownLead?: boolean })[] = candidates ?? []
   if (campaign.kind === "kanzlei") {
     const { data: assignmentRows } = await supabase
       .from("client_assignments")
-      .select("id, status, created_at, candidates(id, first_name, last_name, email, phone, status, berufsbild, plz, created_at)")
+      .select("id, status, created_at, candidates(id, first_name, last_name, email, phone, status, berufsbild, plz, created_at, source, campaign_only, custom_fields)")
       .eq("campaign_id", id)
       .is("removed_at", null)
       .order("created_at", { ascending: false })
     type AssignedCandidateJoin = NonNullable<typeof candidates>[number]
     // Mit der Zuordnung: dort gilt der Status beim Kunden (Paket 35).
-    shownCandidates = (assignmentRows ?? [])
+    const assigned = (assignmentRows ?? [])
       .map((a) => {
         const c = (Array.isArray(a.candidates) ? a.candidates[0] : a.candidates) as AssignedCandidateJoin | null
         return c ? { ...c, assignmentId: a.id as string, assignmentStatus: a.status as string } : null
       })
       .filter((c): c is AssignedCandidateJoin & { assignmentId: string; assignmentStatus: string } => c !== null)
-    const assignedIds = new Set(shownCandidates.map((c) => c.id))
-    ownLeads = (candidates ?? []).filter((c) => c.campaign_only && !assignedIds.has(c.id))
+    const assignedIds = new Set(assigned.map((c) => c.id))
+    const ownLeads = (candidates ?? []).filter((c) => c.campaign_only && !assignedIds.has(c.id)).map((c) => ({ ...c, ownLead: true }))
+    shownCandidates = [...assigned, ...ownLeads].sort((a, b) => b.created_at.localeCompare(a.created_at))
   }
 
   const client = Array.isArray(campaign.clients)
@@ -98,8 +99,8 @@ export default async function CampaignDetailPage({
         skip_lead_confirmation: campaign.skip_lead_confirmation ?? false,
         client,
       }}
-      candidates={shownCandidates}
-      ownLeads={ownLeads}
+      // Von den Zusatzfeldern nur die Ausbildung an die Liste geben.
+      candidates={shownCandidates.map(({ custom_fields: fields, ...c }) => ({ ...c, ausbildung: ausbildungOf(fields) }))}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       automations={(automations ?? []) as any}
       automationTemplates={automationTemplates}
@@ -107,4 +108,9 @@ export default async function CampaignDetailPage({
       fieldTemplates={templateRows ?? []}
     />
   )
+}
+
+function ausbildungOf(fields: unknown): string | null {
+  const value = fields && typeof fields === "object" ? (fields as Record<string, unknown>).ausbildung : null
+  return typeof value === "string" && value.trim() ? value.trim() : null
 }
