@@ -4,13 +4,18 @@ import { getActiveAdAreas } from "@/lib/meta-campaigns-queries"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { ASSIGNABLE_STATUS } from "@/lib/client-assignment"
 import { LIVE_PHASE } from "@/lib/client-project"
+import { canSeeSamples } from "@/lib/teams"
+import { SAMPLE_TAG } from "@/lib/candidate-tags"
 
 type MapCandidateRow = { id: string; first_name: string; last_name: string; lat: number | null; lng: number | null; campaign_id: string | null; berufsbild: string | null }
 
-async function fetchAllCandidates(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>): Promise<{ data: MapCandidateRow[] }> {
+async function fetchAllCandidates(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  withSamples: boolean
+): Promise<{ data: MapCandidateRow[] }> {
   const rows: MapCandidateRow[] = []
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("candidates")
       .select("id, first_name, last_name, lat, lng, campaign_id, berufsbild")
       .eq("is_demo", false)
@@ -18,8 +23,9 @@ async function fetchAllCandidates(supabase: Awaited<ReturnType<typeof createSupa
       .eq("campaign_only", false)
       // Nur vorqualifizierte Kandidaten auf der Karte (Paket 73) - keine abgelehnten oder neuen.
       .eq("status", ASSIGNABLE_STATUS)
-      .order("id")
-      .range(from, from + 999)
+    // Musterdatensätze nur für Admins und den Vertrieb (Paket 91).
+    if (!withSamples) query = query.not("tags", "cs", `{${SAMPLE_TAG}}`)
+    const { data, error } = await query.order("id").range(from, from + 999)
     if (error) throw new Error(error.message)
     rows.push(...(data ?? []))
     if (!data || data.length < 1000) break
@@ -29,6 +35,10 @@ async function fetchAllCandidates(supabase: Awaited<ReturnType<typeof createSupa
 
 export default async function MapPage() {
   const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const { data: me } = user ? await supabase.from("profiles").select("role, team").eq("id", user.id).maybeSingle() : { data: null }
 
   // Drei getrennte, schlanke Abfragen statt eines verschachtelten Selects
   // (candidates -> campaigns -> clients): vermeidet die bekannte Array/Objekt-
@@ -45,7 +55,7 @@ export default async function MapPage() {
       .not("lng", "is", null),
     // Seitenweise: mit den Musterdatensätzen (Paket 62) sind es mehr als die 1.000 Zeilen,
     // die eine einzelne Abfrage liefert.
-    fetchAllCandidates(supabase),
+    fetchAllCandidates(supabase, canSeeSamples(me)),
     supabase.from("campaigns").select("id, client_id"),
     // Werbegebiete laufender Meta-Kampagnen (Atlas T-38) für die Ebene "Werbegebiete".
     getActiveAdAreas(supabase as unknown as SupabaseClient),

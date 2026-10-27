@@ -56,3 +56,14 @@ describe("Active Sourcing (Paket 89)", () => {
     expect(isAssignedTo({ assigned_to: null, assigned_team: "sales_recruiting" }, "u1", "sales_recruiting_active_sourcing")).toBe(true)
   })
 })
+
+describe("Musterdatensätze sehen (Paket 91)", () => {
+  it("nur Admins und der Vertrieb", async () => {
+    const { canSeeSamples } = await import("@/lib/teams")
+    expect(canSeeSamples({ role: "agency_admin", team: null })).toBe(true)
+    expect(canSeeSamples({ role: "agency_member", team: "vertrieb" })).toBe(true)
+    expect(canSeeSamples({ role: "agency_member", team: "sales_recruiting" })).toBe(false)
+    expect(canSeeSamples({ role: "agency_member", team: "sales_recruiting_active_sourcing" })).toBe(false)
+    expect(canSeeSamples({ role: "agency_member", team: null })).toBe(false)
+  })
+})
