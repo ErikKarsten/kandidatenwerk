@@ -29,6 +29,7 @@ import { TaskFormModal, type ProfileOption } from "@/components/dashboard/task-f
 import { CommunicationTab, type CandidateMessage, type MessageTemplate } from "./communication-tab"
 import type { TemplateVars } from "@/lib/automation-engine"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
+import { CallButton } from "@/components/dashboard/call-button"
 import { ACTIVE_SOURCING_SOURCE } from "@/lib/teams"
 import { TagEditor } from "@/components/dashboard/tag-editor"
 import { useShowMode } from "@/lib/show-mode"
@@ -272,6 +273,7 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {candidate.phone && <CallButton candidateId={candidate.id} />}
               <CvExportMenu candidateId={candidate.id} />
               <button
                 type="button"

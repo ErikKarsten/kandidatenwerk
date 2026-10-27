@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowRightLeft, StickyNote, Circle, Trash2, Mail, CheckSquare } from "lucide-react"
+import { ArrowRightLeft, StickyNote, Circle, Trash2, Mail, CheckSquare, PhoneCall } from "lucide-react"
 import { addNoteAction, deleteNoteAction } from "./actions"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { referenceQueryAt, splitReferences } from "@/lib/comment-text"
@@ -97,6 +97,7 @@ const TYPE_ICON: Record<string, typeof ArrowRightLeft> = {
   note: StickyNote,
   automation: Mail,
   email: Mail,
+  call: PhoneCall,
 }
 
 const TYPE_COLOR: Record<string, { bg: string; text: string }> = {
@@ -104,6 +105,8 @@ const TYPE_COLOR: Record<string, { bg: string; text: string }> = {
   note: { bg: "#9ca3af18", text: "#6b7280" },
   automation: { bg: "#1a9a6a18", text: "#1a9a6a" },
   email: { bg: "#8b5cf618", text: "#7c3aed" },
+  // Anrufe über sipgate (Paket 92).
+  call: { bg: "#1a9a6a18", text: "#1a9a6a" },
 }
 const FALLBACK_COLOR = { bg: "#9ca3af18", text: "#6b7280" }
 

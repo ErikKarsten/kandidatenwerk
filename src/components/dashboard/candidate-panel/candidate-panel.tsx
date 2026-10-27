@@ -11,6 +11,7 @@ import { updateCandidateBerufsbildAction } from "@/app/dashboard/candidates/[id]
 import { assignCandidateToCampaignAction } from "@/app/dashboard/campaigns/[id]/actions"
 import { getCandidatePanelDataAction, type CandidatePanelData } from "./actions"
 import { CvExportMenu } from "@/components/dashboard/cv-export-menu"
+import { CallButton } from "@/components/dashboard/call-button"
 import { TagChip, TagEditor } from "@/components/dashboard/tag-editor"
 import { AssignmentStatusSelect } from "@/components/dashboard/assignment-status-select"
 import { visibleTags } from "@/lib/candidate-tags"
@@ -179,9 +180,12 @@ export function CandidatePanel({
               {!anonymize && (
               <div className="flex flex-col gap-1.5 text-sm">
                 {current.phone && (
-                  <a href={`tel:${current.phone}`} className="inline-flex items-center gap-2 hover:underline" style={{ color: "#1e56a0" }}>
-                    <Phone size={14} /> {current.phone}
-                  </a>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <a href={`tel:${current.phone}`} className="inline-flex items-center gap-2 hover:underline" style={{ color: "#1e56a0" }}>
+                      <Phone size={14} /> {current.phone}
+                    </a>
+                    <CallButton candidateId={current.id} compact />
+                  </span>
                 )}
                 {current.email && (
                   <a href={`mailto:${current.email}`} className="inline-flex items-center gap-2 break-all hover:underline" style={{ color: "#1e56a0" }}>

@@ -763,6 +763,8 @@ export type Database = {
           client_id: string | null
           role: string
           team: string | null
+          sipgate_user_id: string | null
+          sipgate_device_id: string | null
           full_name: string | null
           created_at: string
           email: string | null
@@ -776,6 +778,8 @@ export type Database = {
           client_id?: string | null
           role: string
           team?: string | null
+          sipgate_user_id?: string | null
+          sipgate_device_id?: string | null
           full_name?: string | null
           created_at?: string
           email?: string | null
@@ -789,6 +793,8 @@ export type Database = {
           client_id?: string | null
           role?: string
           team?: string | null
+          sipgate_user_id?: string | null
+          sipgate_device_id?: string | null
           full_name?: string | null
           created_at?: string
           email?: string | null
@@ -921,6 +927,7 @@ export type Database = {
           cv_werdegang: string | null
           cv_werdegang_input: string | null
           campaign_only: boolean
+          phone_normalized: string | null
           bewerbung: string | null
         }
         Insert: {

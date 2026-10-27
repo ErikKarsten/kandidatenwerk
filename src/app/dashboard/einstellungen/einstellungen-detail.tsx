@@ -35,6 +35,7 @@ import { BerufsbilderEditor } from "./berufsbilder-tab"
 import type { ProfileFieldConfig } from "@/lib/profile-field-config"
 import { AgencyLogoCard, ConfirmationSettings } from "./agency-settings-ui"
 import type { AgencySettings } from "./agency-settings-actions"
+import { TelefonieCard } from "./telefonie-card"
 
 const MIN_PASSWORD_LENGTH = 8
 
@@ -104,6 +105,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
           {tab === "konto" && (
             <div className="flex flex-col gap-4">
               <KontoTab ownProfile={ownProfile} ownMember={team.find((m) => m.id === ownProfile.id) ?? null} />
+              <TelefonieCard isAdmin={isAdmin} />
               <AgenturTab agencyName={agencyName} />
               <AgencyLogoCard logoUrl={agencySettings.logoUrl} isAdmin={isAdmin} />
             </div>

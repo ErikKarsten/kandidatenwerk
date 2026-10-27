@@ -236,6 +236,9 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <h3>Verlauf und Notizen</h3>
       <p>Oben im Verlauf schreibt ihr eigene Notizen, mit Schnellbausteinen wie „Angerufen – nicht erreicht“. Mit <span class="path">@Name</span> erwähnt ihr Kollegen, mit <span class="path">#</span> verknüpft ihr eine offene Aufgabe des Kandidaten. Erwähnte und Zuständige der Aufgabe bekommen eine Mail mit Link.</p>
       <div class="why"><b>Warum</b><p>So stimmt ihr euch direkt am Kandidaten ab, und alles bleibt nachvollziehbar an einer Stelle.</p></div>
+      <h3>Anrufen über sipgate</h3>
+      <p>Mit <span class="ui">Anrufen</span> auf der Kandidatenseite oder im Kandidaten-Fenster klingelt zuerst euer eigenes sipgate-Telefon. Sobald ihr abnehmt, wählt sipgate den Kandidaten an, er sieht eure Firmennummer. Nach dem Auflegen steht der Anruf im Verlauf, zum Beispiel „Ausgehender Anruf · Christina Hohler · 6:12 Min · erreicht“ oder „nicht erreicht (besetzt)“. Auch Anrufe, die ihr direkt am Telefon führt, und Rückrufe von Kandidaten landen dort, erkannt an der Telefonnummer.</p>
+      <p>Welches Telefon klingelt, stellt ihr unter <span class="path">Einstellungen → Mein Konto → Telefonie</span> ein. Ohne Auswahl nimmt Kandidatenwerk euer sipgate-Standardgerät.</p>
       <h3>Kommunikation und Antworten</h3>
       <p>Mails aus dem Reiter Kommunikation gehen in eurem Namen raus. Antwortet der Kandidat, landet die Antwort im Kandidatenwerk, und ihr bekommt eine Kopie. Anhänge, etwa ein Lebenslauf, liegen danach automatisch unter <span class="ui">Dateien</span>.</p>
       <h3>Tags</h3>
@@ -435,7 +438,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <div class="table"><table>
         <thead><tr><th>Reiter</th><th>Inhalt</th></tr></thead>
         <tbody>
-          <tr><td>Mein Konto</td><td>Eigener Name, Telefon und Foto, dazu Agenturname und Logo für Mails und Lebensläufe.</td></tr>
+          <tr><td>Mein Konto</td><td>Eigener Name, Telefon und Foto, euer sipgate-Telefon für „Anrufen“, dazu Agenturname und Logo für Mails und Lebensläufe.</td></tr>
           <tr><td>Team</td><td>Zugänge, Rolle und Team jeder Person.</td></tr>
           <tr><td>E-Mail-Vorlagen</td><td>Vorlagen für Automatisierungen und Kommunikation, Vorlagensets für neue Kampagnen, die Eingangsbestätigung und wer bei neuen Leads benachrichtigt wird.</td></tr>
           <tr><td>Felder</td><td>Zusatzfelder der Kandidaten, Feld-Vorlagen, Felder des Kanzleiprofils und der Stellen.</td></tr>
@@ -450,7 +453,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <div class="table"><table>
         <thead><tr><th>Wie oft</th><th>Was</th></tr></thead>
         <tbody>
-          <tr><td>sofort</td><td>Neue Meta-Leads über den Webhook, Eingangsbestätigung, Antworten von Kandidaten.</td></tr>
+          <tr><td>sofort</td><td>Neue Meta-Leads über den Webhook, Eingangsbestätigung, Antworten von Kandidaten, Anrufe über sipgate.</td></tr>
           <tr><td>alle 5 Minuten</td><td>Automatisierungen, Gespräche aus Close, Werdegänge für geänderte Beschreibungen.</td></tr>
           <tr><td>alle 30 Minuten</td><td>Abgleich der Meta-Leads als Sicherheitsnetz.</td></tr>
           <tr><td>stündlich</td><td>Kanzleistelle24, Meta-Kampagnen und Werbegebiete, Beispielkandidaten.</td></tr>
