@@ -13,6 +13,7 @@ import { applyFormMapping, loadFormQuestions, rememberFormKeys, resolvePlzFromAn
 import { nearestPlz } from "@/lib/geocode-plz"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
+import { enrichCandidateFromLeadtable, leadtableConfigured } from "@/lib/leadtable-enrich"
 
 export type SupabaseClient = GenericSupabaseClient<Database>
 
@@ -77,7 +78,7 @@ export async function processMetaLead(
   }
   const db = supabase as unknown as GenericSupabaseClient
   const { data: fieldRows } = agencyId
-    ? await supabase.from("custom_field_definitions").select("key").eq("agency_id", agencyId).eq("active", true)
+    ? await supabase.from("custom_field_definitions").select("key, label").eq("agency_id", agencyId).eq("active", true)
     : { data: [] }
   const fieldKeys = new Set((fieldRows ?? []).map((f) => f.key))
   const questions = campaign.meta_form_id ? await loadFormQuestions(db, campaign.meta_form_id) : null
@@ -102,7 +103,7 @@ export async function processMetaLead(
   // diesen Lead direkt per ID erkennen statt jedes Mal erneut per E-Mail zu suchen.
   const { data: existingByEmail, error: emailLookupError } = await supabase
     .from("candidates")
-    .select("id, meta_lead_id")
+    .select("id, meta_lead_id, campaign_id")
     .eq("email", email)
     .maybeSingle()
   if (emailLookupError) throw new Error(emailLookupError.message)
@@ -127,7 +128,24 @@ export async function processMetaLead(
     // Notiz braucht also ebenfalls die vorherige Existenzprüfung, um nicht bei jedem Lauf
     // erneut zu schreiben.
     // Keine automatische Kanzlei-Zuordnung mehr (Paket 19, T-86): Kanzleien bekommen nur
-    // vorqualifizierte Kandidaten, und die ordnet das Team von Hand zu.
+    // vorqualifizierte Kandidaten - bei eigenen Kampagnen der Kanzlei automatisch, sobald
+    // das Team den Lead vorqualifiziert (Paket 93, own-campaign-leads.ts).
+
+    // Eigenes Formular einer Kanzlei (Paket 93): Kandidaten ohne Herkunftskampagne (z. B.
+    // früher aus Leadtable importiert) gehören damit zu dieser Kampagne und stehen dort in
+    // der Liste. Eine bestehende andere Herkunft bleibt unverändert.
+    if (campaign.kind === "kanzlei" && !existingByEmail.campaign_id) {
+      const { error: adoptError } = await supabase
+        .from("candidates")
+        .update({ campaign_id: campaign.id, campaign_only: true })
+        .eq("id", existingByEmail.id)
+      if (adoptError) throw new Error(adoptError.message)
+      await supabase.from("candidate_history").insert({
+        candidate_id: existingByEmail.id,
+        type: "note",
+        content: `Über das Formular der eigenen Meta-Kampagne „${campaign.title}“ beworben – steht jetzt in dieser Kampagne.`,
+      })
+    }
 
     return { status: "linked_existing", candidateId: existingByEmail.id }
   }
@@ -212,13 +230,24 @@ export async function processMetaLead(
     candidate_id: inserted.id,
     type: "note",
     content: [
-      `${notePrefix}Import direkt aus Meta, Kampagne „${campaign.title}“${campaign.kind === "kanzlei" ? " (eigene Meta-Kampagne der Kanzlei – nach der Vorqualifizierung zuordnen)" : ""}.`,
+      `${notePrefix}Import direkt aus Meta, Kampagne „${campaign.title}“${campaign.kind === "kanzlei" ? " (eigene Meta-Kampagne der Kanzlei – geht mit der Vorqualifizierung an die Kanzlei)" : ""}.`,
       locationNote,
     ]
       .filter(Boolean)
       .join(" "),
   })
 
+  // Eigene Kampagne einer Kanzlei (Paket 93): Stand aus Leadtable übernehmen, falls das
+  // Team den Lead dort schon bearbeitet hat. Fehler hier verhindern die Anlage nicht.
+  if (campaign.kind === "kanzlei" && leadtableConfigured()) {
+    try {
+      await enrichCandidateFromLeadtable(supabase, inserted.id, {
+        fieldLabels: Object.fromEntries((fieldRows ?? []).map((f) => [f.key, f.label])),
+      })
+    } catch (enrichError) {
+      console.error(`Leadtable-Abgleich fehlgeschlagen für Kandidat ${inserted.id}:`, enrichError)
+    }
+  }
 
   // Nur frische Leads melden: Wird ein Formular neu verknüpft (z.B. durch den
   // Meta-Kampagnen-Abgleich, Atlas T-38), holt der Sync auch dessen alte Leads - dafür

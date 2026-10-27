@@ -31,7 +31,7 @@ import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 import { SettingsTab } from "./settings-tab"
 import { AutomationsTab, type Automation } from "./automations-tab"
 import { AvailableCandidatesPanel } from "./available-candidates-panel"
-import { OwnLeadsSection, type OwnLead } from "./own-leads-section"
+import { OwnLeadHint } from "./own-lead-hint"
 import { LIVE_PHASE } from "@/lib/client-project"
 import { useMeetingMode } from "@/lib/meeting-mode"
 import { MeetingModeToggle } from "@/components/dashboard/meeting-mode-toggle"
@@ -73,6 +73,9 @@ interface Candidate {
   // Kanzlei-Kampagne: Zuordnung mit Status beim Kunden (Paket 35).
   assignmentId?: string
   assignmentStatus?: string
+  // Lead aus der eigenen Meta-Kampagne der Kanzlei, noch nicht zugeordnet (Paket 93).
+  ownLead?: boolean
+  ausbildung?: string | null
 }
 
 interface Campaign {
@@ -112,7 +115,6 @@ interface CampaignDetailProps {
   automationTemplates: { templates: AutomationTemplate[]; sets: AutomationTemplateSet[] }
   clients: ClientOption[]
   fieldTemplates: { id: string; name: string; is_default: boolean }[]
-  ownLeads?: OwnLead[]
 }
 
 type ModalStep = null | "choice" | "delete_options"
@@ -142,7 +144,7 @@ function triggerCSVDownload(csv: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function CampaignDetail({ campaign, candidates, automations, automationTemplates, clients, fieldTemplates, ownLeads = [] }: CampaignDetailProps) {
+export function CampaignDetail({ campaign, candidates: allCandidates, automations, automationTemplates, clients, fieldTemplates }: CampaignDetailProps) {
   const bb = useBerufsbilder()
   const isKanzleiCampaign = campaign.kind === "kanzlei"
   const berufsbildLabel = (value: string | null) => bb.label(value) ?? "—"
@@ -151,6 +153,12 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
   // Verwaltungs-Aktionen.
   const [meetingMode, setMeetingMode] = useMeetingMode()
   const tab = meetingMode ? "kandidaten" : selectedTab
+  // Im Terminmodus sieht die Kanzlei nur die ihr zugeordneten Kandidaten, nicht die
+  // eigenen Leads vor der Vorqualifizierung.
+  const candidates = useMemo(() => (meetingMode ? allCandidates.filter((c) => !c.ownLead) : allCandidates), [allCandidates, meetingMode])
+  const hasOwnLeads = candidates.some((c) => c.ownLead)
+  const hasAusbildung = candidates.some((c) => c.ausbildung)
+  const clientLive = campaign.client?.project_phase === LIVE_PHASE
   const [modalStep, setModalStep] = useState<ModalStep>(null)
   const [selectedOption, setSelectedOption] = useState<CandidateOption | null>(null)
   const [modalError, setModalError] = useState<string | null>(null)
@@ -697,9 +705,6 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
       {/* Kandidaten-Tab */}
       {tab === "kandidaten" && (
         <div className="flex flex-col gap-4">
-          {isKanzleiCampaign && !meetingMode && ownLeads.length > 0 && (
-            <OwnLeadsSection campaignId={campaign.id} leads={ownLeads} clientLive={campaign.client?.project_phase === LIVE_PHASE} />
-          )}
           {/* Tab-header: count + view toggle */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-gray-500">
@@ -758,11 +763,31 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                 style={{ borderColor: "#dde3ea" }}
               >
                 <option value="alle">Alle Status</option>
-                {(campaign.kind === "kanzlei" ? ASSIGNMENT_STATUS_OPTIONS.map((o) => [o.value, o.label] as const) : Object.entries(CANDIDATE_STATUS_LABEL)).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
+                {campaign.kind === "kanzlei" && hasOwnLeads ? (
+                  // Eigene Leads haben bis zur Zuordnung den internen Status (Paket 93).
+                  <>
+                    <optgroup label="Bei der Kanzlei">
+                      {ASSIGNMENT_STATUS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Noch nicht bei der Kanzlei">
+                      {Object.entries(CANDIDATE_STATUS_LABEL).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </>
+                ) : (
+                  (campaign.kind === "kanzlei" ? ASSIGNMENT_STATUS_OPTIONS.map((o) => [o.value, o.label] as const) : Object.entries(CANDIDATE_STATUS_LABEL)).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))
+                )}
               </select>
               <select
                 value={berufsbildFilter}
@@ -808,6 +833,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                         <TableHead className="text-gray-600">Name</TableHead>
                         <TableHead className="text-gray-600">Status</TableHead>
                         <TableHead className="text-gray-600">Berufsbild</TableHead>
+                        {hasAusbildung && <TableHead className="text-gray-600">Ausbildung</TableHead>}
                         <TableHead className="text-gray-600">PLZ</TableHead>
                         <TableHead className="text-gray-600">E-Mail</TableHead>
                         <TableHead className="text-gray-600">Telefon</TableHead>
@@ -827,10 +853,18 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                             {c.assignmentId && c.assignmentStatus ? (
                               <AssignmentStatusSelect assignmentId={c.assignmentId} status={c.assignmentStatus} size="md" />
                             ) : (
-                              <CandidateStatusSelect candidateId={c.id} campaignId={campaign.id} currentStatus={c.status} />
+                              <CandidateStatusSelect key={c.status} candidateId={c.id} campaignId={campaign.id} currentStatus={c.status} />
                             )}
+                            {c.ownLead && <OwnLeadHint campaignId={campaign.id} candidateId={c.id} status={c.status} clientLive={clientLive} />}
                           </TableCell>
                           <TableCell className="text-gray-600">{berufsbildLabel(c.berufsbild)}</TableCell>
+                          {hasAusbildung && (
+                            <TableCell className="max-w-[220px] text-gray-600">
+                              <span className="line-clamp-2" title={c.ausbildung ?? undefined}>
+                                {c.ausbildung ?? "—"}
+                              </span>
+                            </TableCell>
+                          )}
                           <TableCell className="text-gray-600">{c.plz ?? "—"}</TableCell>
                           <TableCell className="text-gray-600">
                             {c.email ? <a href={`mailto:${c.email}`} className="hover:underline" style={{ color: "#1e56a0" }}>{c.email}</a> : "—"}
@@ -884,6 +918,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                             </span>
                           )}
                         </div>
+                        {c.ownLead && <OwnLeadHint campaignId={campaign.id} candidateId={c.id} status={c.status} clientLive={clientLive} />}
                         {(c.berufsbild || c.plz) && (
                           <p className="text-xs text-gray-500">
                             {[berufsbildLabel(c.berufsbild) !== "—" ? berufsbildLabel(c.berufsbild) : null, c.plz]
@@ -891,6 +926,7 @@ export function CampaignDetail({ campaign, candidates, automations, automationTe
                               .join(" · ")}
                           </p>
                         )}
+                        {c.ausbildung && <p className="line-clamp-2 text-xs text-gray-500">Ausbildung: {c.ausbildung}</p>}
                         <div className="flex flex-col gap-1 text-xs text-gray-500">
                           {c.email ? (
                             <a href={`mailto:${c.email}`} className="truncate hover:underline" style={{ color: "#1e56a0" }}>{c.email}</a>

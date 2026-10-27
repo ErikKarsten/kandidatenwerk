@@ -201,8 +201,10 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <h3>2. Eigene Meta-Kampagne einer Kanzlei</h3>
       <p>Kampagnen ohne „KS24“ im Namen laufen für eine bestimmte Kanzlei. Ihr Formular verknüpft ihr in der Kanzlei-Kampagne unter <span class="path">Einrichtung → Lead-Formular aus eigener Meta-Kampagne</span>.</p>
       <ul>
-        <li>Die Leads stehen nur in dieser Kampagne, im gelben Kasten <span class="ui">Neue Leads aus der eigenen Meta-Kampagne</span>. In „Alle Kandidaten“, auf der Karte und bei anderen Kanzleien tauchen sie nicht auf.</li>
-        <li>Nach der Vorqualifizierung ordnet ihr sie dort mit einem Klick der Kanzlei zu.</li>
+        <li>Die Leads stehen nur in dieser Kampagne, direkt in der Liste im Reiter <span class="ui">Kandidaten</span>, mit Status, E-Mail, Ausbildung und Eingangsdatum. Darunter steht „Noch nicht bei der Kanzlei“. In „Alle Kandidaten“, auf der Karte und bei anderen Kanzleien tauchen sie nicht auf.</li>
+        <li>Ihr ruft sie im Namen der Kanzlei an und setzt den Status direkt in der Liste. Mit <span class="ui">Vorqualifiziert</span> gehen sie automatisch an die Kanzlei, ein Klick auf „Zuordnen“ ist nicht nötig. Ist die Kanzlei noch nicht live, steht das am Lead. Sobald sie live ist, gebt ihr ihn mit <span class="ui">An die Kanzlei geben</span> weiter.</li>
+        <li>Steht der Lead schon in Leadtable, übernimmt Kandidatenwerk beim Eingang den Stand von dort: Status (nur wenn er noch „Neu“ ist), Notizen und leere Zusatzfelder. Im Verlauf steht dann „Aus Leadtable übernommen …“. An die Kanzlei geht er dadurch nicht automatisch.</li>
+        <li>Bewirbt sich über das Formular jemand, der schon ohne Kampagne in Kandidatenwerk steht, holt Kandidatenwerk ihn in diese Kampagne.</li>
         <li>Beim Verknüpfen ist <span class="ui">Keine Eingangsbestätigung an Leads dieser Kampagne</span> vorausgewählt.</li>
         <li>Mit <span class="ui">Testlead anfordern</span> prüft ihr die Verbindung. Kurz danach erscheint „Verbindung zuletzt per Webhook bestätigt“.</li>
       </ul>
@@ -292,7 +294,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <ul>
         <li>Am Kandidaten im Reiter <span class="ui">Zuordnung</span>: Live-Kanzleien im Umkreis, passende Berufsbilder zuerst.</li>
         <li>In einer Kanzlei-Kampagne im Reiter <span class="ui">Passende Kandidaten</span>.</li>
-        <li>Im gelben Kasten der eigenen Meta-Leads einer Kanzlei-Kampagne.</li>
+        <li>Eigene Meta-Leads einer Kanzlei-Kampagne gehen von selbst an die Kanzlei, sobald ihr sie auf „Vorqualifiziert“ setzt.</li>
       </ul>
       <p>Nach dem Zuordnen schickt die Automatisierung „Neuer Kandidat für die Kanzlei“ eine Mail an die Portal-Zugänge der Kanzlei, sofern sie in der Kampagne eingeschaltet ist.</p>
     </section>
@@ -333,7 +335,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
         <thead><tr><th></th><th>Lead-Kampagne</th><th>Kanzlei-Kampagne</th></tr></thead>
         <tbody>
           <tr><td>Entsteht</td><td>automatisch aus KS24-Kampagnen bei Meta</td><td>beim Kunden, von Hand</td></tr>
-          <tr><td>Reiter Kandidaten</td><td>alle, die sich darüber beworben haben</td><td>alle, die ihr zugeordnet sind, dazu ggf. der gelbe Kasten mit eigenen Meta-Leads</td></tr>
+          <tr><td>Reiter Kandidaten</td><td>alle, die sich darüber beworben haben</td><td>alle, die ihr zugeordnet sind, dazu die eigenen Meta-Leads vor der Zuordnung</td></tr>
           <tr><td>Passende Kandidaten</td><td>–</td><td>vorqualifizierte Kandidaten mit gleichem Berufsbild im Umkreis</td></tr>
         </tbody>
       </table></div>
@@ -467,7 +469,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
         <dt>Ich kann einen Kandidaten keiner Kanzlei zuordnen.</dt>
         <dd>Prüft den Status (muss „Vorqualifiziert“ sein) und die Projektphase der Kanzlei (muss „Live“ sein). Beispielkandidaten lassen sich nie von Hand zuordnen.</dd>
         <dt>Ein Lead aus der eigenen Kampagne einer Kanzlei fehlt in „Alle Kandidaten“.</dt>
-        <dd>Das ist so gewollt. Er steht nur in der Kanzlei-Kampagne im gelben Kasten.</dd>
+        <dd>Das ist so gewollt. Er steht nur in der Liste der Kanzlei-Kampagne.</dd>
         <dt>Der Lebenslauf zeigt alte Stationen.</dt>
         <dd>Nach einer Änderung der Beschreibung dauert es bis zu 5 Minuten. Sonst „Werdegang neu erstellen“ klicken.</dd>
         <dt>Leads einer eigenen Kanzlei-Kampagne kommen nicht an.</dt>

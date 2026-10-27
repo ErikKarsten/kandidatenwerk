@@ -12,6 +12,7 @@ import { RECALL_STATUS, RECALL_TASK_TITLE, recallDueDate } from "@/lib/candidate
 import { ACTIVE_SOURCING_SOURCE, ACTIVE_SOURCING_TAG, canUseActiveSourcing } from "@/lib/teams"
 import { ASSIGNABLE_STATUS, clientNotLiveError, ensureCampaignAssignment } from "@/lib/client-assignment"
 import { createSampleCandidates } from "@/lib/sample-candidates"
+import { assignOwnCampaignLead } from "@/lib/own-campaign-leads"
 import { friendlyAiError } from "@/lib/llm"
 import { cleanExtra, cleanFocus, cleanSoftware } from "@/lib/sample-focus"
 import { canCreateSamples } from "@/lib/teams"
@@ -190,6 +191,17 @@ export async function updateCandidateStatusAction(
         created_by: user.id,
       })
       revalidatePath("/dashboard/tasks")
+    }
+  }
+
+  // Lead aus der eigenen Meta-Kampagne einer Kanzlei (Paket 93): mit "vorqualifiziert" der
+  // Kampagne zuordnen, die Mail an die Kanzlei kommt dann von der Automatisierung unten.
+  if (existing && existing.status !== status && status === ASSIGNABLE_STATUS) {
+    try {
+      const own = await assignOwnCampaignLead(supabase, candidateId, user.id)
+      if (own?.kind === "assigned") revalidatePath(`/dashboard/clients/${own.clientId}`)
+    } catch (err) {
+      console.error("Automatische Zuordnung fehlgeschlagen:", err)
     }
   }
 
