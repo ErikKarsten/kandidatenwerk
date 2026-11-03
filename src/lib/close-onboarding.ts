@@ -18,6 +18,9 @@ const MAX_ATTEMPTS = 3
 // Höchstens so viele Zeichen je Quelle bzw. insgesamt an die KI.
 const MAX_SOURCE_CHARS = 40_000
 const MAX_TOTAL_CHARS = 250_000
+// Ab so viel Text aus Gesprächen und Formularen muss die KI etwas finden - sonst ist die
+// Antwort kaputt (Paket 95).
+const MIN_SOURCE_CHARS_FOR_PROFILE = 3_000
 
 // Status-Texte in Close, die die Übernahme auslösen (Close schreibt "Folgebescprechung").
 export function isOnboardingStatus(label: string | null | undefined): boolean {
@@ -123,6 +126,7 @@ REGELN
 6. Nur Inhalte, die für die Betreuung der Kanzlei und die Kandidatensuche relevant sind. Weglassen: Abläufe aus dem Vertrieb und Organisatorisches wie Termine (z.B. Portaleinweisung, Folgetermine), Zahlungen, Karriereseite, Referenzen, Marketingmaterial, Vertragsdetails.
 7. Die Website ist eine Selbstdarstellung: gut für kurzbeschreibung, intro, mitarbeiterzahl, standorte, mandantenstruktur, software und benefits. painpoints und ziele_zusammenarbeit nur aus Close und ClickUp. Bei Widersprüchen gelten Close und ClickUp.
 8. Interne Wünsche und Ausschlüsse der Kanzlei (z.B. "keine Berufsanfänger", Gehaltsgrenzen, Gründe für die Suche) gehören in painpoints oder ziele_zusammenarbeit - nie in aufgaben oder anforderungen einer Stelle.
+9. Wünsche zu Geschlecht, Alter, Herkunft, Religion, Familienplanung, Behinderung oder sexueller Identität von Bewerbern nie übernehmen, auch nicht intern - solche Auswahlkriterien sind nach dem AGG unzulässig.
 
 FELDER FÜR "profil"
 #FELDER#
@@ -151,20 +155,66 @@ interface ProfileAnswer {
   stellen?: unknown
 }
 
+// Erstes vollständiges JSON-Objekt aus der KI-Antwort (Paket 95): Codeblöcke und Text davor
+// oder danach stören nicht (vorher nahm ein gieriger Ausdruck alles bis zur letzten
+// Klammer), rohe Zeilenumbrüche in Texten werden repariert. null = nicht lesbar - vorher
+// wurde daraus still ein leeres Profil und die Übernahme galt trotzdem als erledigt.
+export function parseProfileJson(raw: string): ProfileAnswer | null {
+  for (let start = raw.indexOf("{"), tries = 0; start >= 0 && tries < 20; start = raw.indexOf("{", start + 1), tries++) {
+    const parsed = parseObjectAt(raw, start)
+    if (parsed) return parsed
+  }
+  return null
+}
+
+function parseObjectAt(raw: string, start: number): ProfileAnswer | null {
+  let depth = 0
+  let inString = false
+  let escaped = false
+  let repaired = ""
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === "\\") escaped = true
+      else if (ch === '"') inString = false
+      else if (ch === "\n" || ch === "\r" || ch === "\t") {
+        repaired += ch === "\n" ? "\\n" : ch === "\t" ? "\\t" : ""
+        continue
+      }
+    } else if (ch === '"') inString = true
+    else if (ch === "{") depth++
+    else if (ch === "}" && --depth === 0) {
+      try {
+        const parsed = JSON.parse(repaired + ch)
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as ProfileAnswer) : null
+      } catch {
+        return null
+      }
+    }
+    repaired += ch
+  }
+  return null
+}
+
+// Text oder Liste (Gemini liefert Stichpunkte teils als Liste) als ein Feld.
+const fieldText = (value: unknown): string | undefined =>
+  Array.isArray(value) ? text(value.map((v) => text(v)).filter(Boolean).join("\n")) : text(value)
+
 // KI-Antwort in die Felder des bisherigen Zapier-POST übersetzen.
 export function payloadFromAnswer(raw: string): CloseWebhookPayload {
-  const match = raw.match(/\{[\s\S]*\}/)
-  if (!match) return {}
-  let answer: ProfileAnswer
-  try {
-    answer = JSON.parse(match[0]) as ProfileAnswer
-  } catch {
-    return {}
-  }
+  const answer = parseProfileJson(raw)
+  return answer ? payloadFromParsed(answer) : {}
+}
+
+function payloadFromParsed(answer: ProfileAnswer): CloseWebhookPayload {
   const out: Record<string, unknown> = {}
   const allowed = new Set(Object.keys(PROFILE_FIELD_GUIDE))
-  for (const [key, value] of Object.entries(answer.profil ?? {})) {
-    if (allowed.has(key) && text(value)) out[key] = text(value)
+  // Profilfelder ohne Hülle "profil" auf oberster Ebene gelten auch.
+  const profil = answer.profil && typeof answer.profil === "object" ? answer.profil : (answer as Record<string, unknown>)
+  for (const [key, value] of Object.entries(profil)) {
+    const v = fieldText(value)
+    if (allowed.has(key) && v) out[key] = v
   }
   if (Array.isArray(answer.benefits)) out.benefits = answer.benefits.map((b) => text(b)).filter(Boolean)
   if (Array.isArray(answer.stellen)) {
@@ -213,8 +263,18 @@ export async function extractProfileFromSources(name: string, sources: ProfileSo
   const parts = [`Kanzlei: ${name}`, ...sources.filter((x) => x.text.trim()).map((x) => `### ${x.label}${x.at ? ` (${x.at.slice(0, 10)})` : ""}\n${x.text.slice(0, MAX_SOURCE_CHARS)}`)]
   let prompt = parts.join("\n\n")
   if (prompt.length > MAX_TOTAL_CHARS) prompt = prompt.slice(prompt.length - MAX_TOTAL_CHARS)
-  const raw = await generateText({ tier: "smart", system: SYSTEM, prompt, maxTokens: 4000, timeoutMs: 180_000 })
-  return payloadFromAnswer(raw)
+  const raw = await generateText({ tier: "smart", system: SYSTEM, prompt, maxTokens: 16_000, timeoutMs: 180_000 })
+  const answer = parseProfileJson(raw)
+  // Als Fehler melden statt still ein leeres Profil zu übernehmen (Paket 95): dann versucht
+  // der Cronjob es erneut und meldet sich nach drei Fehlversuchen.
+  if (!answer) throw new Error(`KI-Antwort nicht lesbar: ${raw.slice(0, 160)}`)
+  const payload = payloadFromParsed(answer)
+  const sourceChars = sources.reduce((n, x) => n + x.text.trim().length, 0)
+  const found = Object.values(payload).filter((v) => (Array.isArray(v) ? v.length > 0 : !!v)).length
+  if (found === 0 && sourceChars >= MIN_SOURCE_CHARS_FOR_PROFILE) {
+    throw new Error(`KI-Antwort ohne Angaben, obwohl ${sourceChars} Zeichen Quellen vorliegen: ${raw.slice(0, 160)}`)
+  }
+  return payload
 }
 
 interface OnboardingRow {
