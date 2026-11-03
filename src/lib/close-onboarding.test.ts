@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isOnboardingStatus, payloadFromAnswer, payloadFromLead, positionOf } from "./close-onboarding"
+import { isOnboardingStatus, parseProfileJson, payloadFromAnswer, payloadFromLead, positionOf } from "./close-onboarding"
 import { activityTypeOf, customActivityText } from "./close-sync"
 
 describe("Übernahme aus Close", () => {
@@ -56,6 +56,28 @@ describe("Übernahme aus Close", () => {
     expect(p.vertriebsnotizen).toBeUndefined()
     expect(p.stellen_json).toEqual([{ titel: "StFA (m/w/d)", berufsbild: "steuerfachangestellte", aufgaben: "a\nb" }])
     expect(payloadFromAnswer("kein JSON")).toEqual({})
+  })
+
+  // Paket 95: Antworten, aus denen vorher still ein leeres Profil wurde.
+  it("liest JSON im Codeblock mit Text danach, der Klammern enthält", () => {
+    const p = payloadFromAnswer('```json\n{"profil": {"intro": "Kleine Kanzlei"}, "benefits": []}\n```\nHinweis: Feld {software} fehlt.') as Record<string, unknown>
+    expect(p.intro).toBe("Kleine Kanzlei")
+  })
+
+  it("überspringt Klammern vor dem JSON und repariert Zeilenumbrüche in Texten", () => {
+    const p = payloadFromAnswer('Vorlage {Feld}: {"profil": {"painpoints": "- Stelle lange offen\n- Überlastung"}}') as Record<string, unknown>
+    expect(p.painpoints).toBe("- Stelle lange offen\n- Überlastung")
+  })
+
+  it("nimmt Stichpunkte als Liste und Profilfelder ohne Hülle", () => {
+    const p = payloadFromAnswer('{"painpoints": ["- Überlastung", "- Ruhestand"], "software": "DATEV"}') as Record<string, unknown>
+    expect(p.painpoints).toBe("- Überlastung\n- Ruhestand")
+    expect(p.software).toBe("DATEV")
+  })
+
+  it("erkennt nicht lesbare Antworten", () => {
+    expect(parseProfileJson("kein JSON")).toBeNull()
+    expect(parseProfileJson('{"profil": {"intro": "abgebrochen')).toBeNull()
   })
 })
 
