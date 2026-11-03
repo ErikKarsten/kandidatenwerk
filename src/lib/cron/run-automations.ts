@@ -131,38 +131,115 @@ async function statusReachedAtMap(supabase: Supabase, candidates: CandidateRow[]
   return new Map(candidates.map((c) => [c.id, latest.get(c.id) ?? c.created_at]))
 }
 
+// Alles, was die Prüfung der Automatisierungen braucht, für alle Kampagnen auf einmal
+// (Paket 94): vorher je Automatisierung eigene Abfragen nacheinander - bei 57 aktiven
+// Automatisierungen rund 150 Abfragen und 20 Sekunden je Lauf, auch ohne Versand.
+export interface AutomationData {
+  // Herkunft: Kandidaten, die sich über die Kampagne beworben haben (ohne Demo).
+  own: Map<string, CandidateRow[]>
+  // Kanzlei-Kampagnen: zugeordnete Kandidaten mit Zeitpunkt der Zuordnung.
+  assigned: Map<string, Map<string, string>>
+  candidates: Map<string, CandidateRow>
+  // "automationId:candidateId" - schon ausgelöst oder vermerkt.
+  fired: Set<string>
+}
+
+const CANDIDATE_COLUMNS = "id, first_name, last_name, email, phone, status, client_id, created_at, berufsbild, tags"
+const CHUNK = 80
+
+async function pagedRows<T>(fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await fetchPage(from, from + 999)
+    if (error) throw new Error(error.message)
+    rows.push(...(data ?? []))
+    if (!data || data.length < 1000) return rows
+  }
+}
+
+function chunks<T>(items: T[]): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i += CHUNK) out.push(items.slice(i, i + CHUNK))
+  return out
+}
+
+export async function loadAutomationData(
+  supabase: Supabase,
+  automations: { id: string; trigger: string; campaign: CampaignJoin }[]
+): Promise<AutomationData> {
+  // Herkunfts-Kandidaten brauchen nur "Neuer Lead" und "Statusänderung"; "Kandidat
+  // zugeordnet" zählt allein über die Zuordnung.
+  const ownCampaignIds = [...new Set(automations.filter((a) => a.trigger !== "client_assigned").map((a) => a.campaign.id))]
+  const kanzleiCampaignIds = [...new Set(automations.filter((a) => a.campaign.kind === "kanzlei").map((a) => a.campaign.id))]
+  const automationIds = automations.map((a) => a.id)
+
+  const [ownRows, assignmentRows, runRows] = await Promise.all([
+    Promise.all(
+      chunks(ownCampaignIds).map((ids) =>
+        pagedRows<CandidateRow & { campaign_id: string | null }>((from, to) =>
+          supabase.from("candidates").select(`${CANDIDATE_COLUMNS}, campaign_id`).in("campaign_id", ids).eq("is_demo", false).order("id").range(from, to)
+        )
+      )
+    ).then((parts) => parts.flat()),
+    Promise.all(
+      chunks(kanzleiCampaignIds).map((ids) =>
+        pagedRows<{ campaign_id: string | null; candidate_id: string; created_at: string }>((from, to) =>
+          supabase.from("client_assignments").select("campaign_id, candidate_id, created_at").in("campaign_id", ids).is("removed_at", null).order("id").range(from, to)
+        )
+      )
+    ).then((parts) => parts.flat()),
+    Promise.all(
+      chunks(automationIds).map((ids) =>
+        pagedRows<{ automation_id: string; candidate_id: string }>((from, to) =>
+          supabase.from("campaign_automation_runs").select("automation_id, candidate_id").in("automation_id", ids).order("automation_id").order("candidate_id").range(from, to)
+        )
+      )
+    ).then((parts) => parts.flat()),
+  ])
+
+  const data: AutomationData = { own: new Map(), assigned: new Map(), candidates: new Map(), fired: new Set() }
+  for (const { campaign_id, ...c } of ownRows) {
+    if (!campaign_id) continue
+    data.own.set(campaign_id, [...(data.own.get(campaign_id) ?? []), c])
+    data.candidates.set(c.id, c)
+  }
+  for (const a of assignmentRows) {
+    if (!a.campaign_id) continue
+    if (!data.assigned.has(a.campaign_id)) data.assigned.set(a.campaign_id, new Map())
+    data.assigned.get(a.campaign_id)!.set(a.candidate_id, a.created_at)
+  }
+  for (const r of runRows) data.fired.add(`${r.automation_id}:${r.candidate_id}`)
+
+  const missing = [...new Set(assignmentRows.map((a) => a.candidate_id))].filter((id) => !data.candidates.has(id))
+  const assignedRows = await Promise.all(
+    chunks(missing).map(async (ids) => {
+      const { data: rows, error } = await supabase.from("candidates").select(CANDIDATE_COLUMNS).in("id", ids).eq("is_demo", false)
+      if (error) throw new Error(error.message)
+      return (rows ?? []) as CandidateRow[]
+    })
+  )
+  for (const c of assignedRows.flat()) data.candidates.set(c.id, c)
+  return data
+}
+
 // Kandidaten einer Kampagne: bei Lead-Kampagnen die darüber beworbenen, bei
 // Kanzlei-Kampagnen zusätzlich die ihr zugeordneten (client_assignments.campaign_id) -
 // vorher sahen Automatisierungen in Kanzlei-Kampagnen nie einen Kandidaten (Paket 21).
-async function loadCampaignCandidates(
-  supabase: Supabase,
+export function campaignCandidates(
+  data: AutomationData,
   campaign: CampaignJoin,
   trigger: string,
   triggerStatus: string | null,
   joinedAt: Map<string, string>
-): Promise<CandidateRow[]> {
-  const columns = "id, first_name, last_name, email, phone, status, client_id, created_at, berufsbild, tags"
-  let own = supabase.from("candidates").select(columns).eq("campaign_id", campaign.id).eq("is_demo", false)
-  if (trigger === "status_change") own = own.eq("status", triggerStatus!)
-  const { data: ownRows, error } = await own
-  if (error) throw new Error(error.message)
-  const byId = new Map((ownRows ?? []).map((c) => [c.id, c as CandidateRow]))
-
+): CandidateRow[] {
+  const matches = (c: CandidateRow) => trigger !== "status_change" || c.status === triggerStatus
+  const byId = new Map<string, CandidateRow>()
+  if (trigger !== "client_assigned") for (const c of data.own.get(campaign.id) ?? []) if (matches(c)) byId.set(c.id, c)
   if (campaign.kind === "kanzlei") {
-    const { data: assignments, error: aError } = await supabase
-      .from("client_assignments")
-      .select("candidate_id, created_at")
-      .eq("campaign_id", campaign.id)
-      .is("removed_at", null)
-    if (aError) throw new Error(aError.message)
-    for (const a of assignments ?? []) joinedAt.set(a.candidate_id, a.created_at)
-    const ids = [...joinedAt.keys()].filter((id) => !byId.has(id))
-    for (let i = 0; i < ids.length; i += 80) {
-      let q = supabase.from("candidates").select(columns).in("id", ids.slice(i, i + 80)).eq("is_demo", false)
-      if (trigger === "status_change") q = q.eq("status", triggerStatus!)
-      const { data, error: cError } = await q
-      if (cError) throw new Error(cError.message)
-      for (const c of data ?? []) byId.set(c.id, c as CandidateRow)
+    for (const [candidateId, at] of data.assigned.get(campaign.id) ?? []) joinedAt.set(candidateId, at)
+    for (const id of joinedAt.keys()) {
+      const c = data.candidates.get(id)
+      if (c && !byId.has(id) && matches(c)) byId.set(id, c)
     }
   }
   return [...byId.values()]
@@ -194,26 +271,27 @@ export async function runAutomations(
   let sent = 0
   let skipped = 0
   let errors = 0
-  const berufsbilder = await fetchBerufsbilder(supabase)
+  const runnable = (automations ?? [])
+    .map((automation) => ({ automation, campaign: unwrapOne(automation.campaigns as unknown as CampaignJoin | CampaignJoin[] | null) }))
+    .filter((x): x is { automation: (typeof x)["automation"]; campaign: CampaignJoin } => !!x.campaign)
+    .filter(({ automation }) => automation.trigger !== "status_change" || !!automation.trigger_status)
+  if (runnable.length === 0) return { sent, skipped, errors }
+  const [berufsbilder, data] = await Promise.all([
+    fetchBerufsbilder(supabase),
+    loadAutomationData(
+      supabase,
+      runnable.map(({ automation, campaign }) => ({ id: automation.id, trigger: automation.trigger, campaign }))
+    ),
+  ])
 
-  for (const automation of automations ?? []) {
-    const campaign = unwrapOne(automation.campaigns as unknown as CampaignJoin | CampaignJoin[] | null)
-    if (!campaign) continue
-    if (automation.trigger === "status_change" && !automation.trigger_status) continue
+  for (const { automation, campaign } of runnable) {
 
     const activeSince = automation.active_since ?? automation.created_at
     const delaySeconds = immediate && automation.delay_seconds <= 60 ? 0 : automation.delay_seconds
     const cutoff = new Date(Date.now() - delaySeconds * 1000).toISOString()
-    let candidates: CandidateRow[]
     // Seit wann ein Kandidat zur Kampagne gehört (Kanzlei-Kampagnen: Zeitpunkt der Zuordnung).
     const joinedAt = new Map<string, string>()
-    try {
-      candidates = await loadCampaignCandidates(supabase, campaign, automation.trigger, automation.trigger_status, joinedAt)
-    } catch (candError) {
-      console.error(`Automatisierung "${automation.name}": Kandidaten-Query fehlgeschlagen: ${candError instanceof Error ? candError.message : candError}`)
-      errors++
-      continue
-    }
+    let candidates = campaignCandidates(data, campaign, automation.trigger, automation.trigger_status, joinedAt)
     // Kandidat der Kanzlei-Kampagne zugeordnet (Paket 21): nur Zuordnungen nach dem Einschalten.
     if (automation.trigger === "client_assigned") {
       if (campaign.kind !== "kanzlei") continue
@@ -230,16 +308,7 @@ export async function runAutomations(
     }
     if (!candidates.length) continue
 
-    // In Paketen - lange ID-Listen sprengen sonst die URL.
-    const firedIds = new Set<string>()
-    for (let i = 0; i < candidates.length; i += 80) {
-      const { data: alreadyFired } = await supabase
-        .from("campaign_automation_runs")
-        .select("candidate_id")
-        .eq("automation_id", automation.id)
-        .in("candidate_id", candidates.slice(i, i + 80).map((c) => c.id))
-      for (const r of alreadyFired ?? []) firedIds.add(r.candidate_id)
-    }
+    const firedIds = new Set(candidates.filter((c) => data.fired.has(`${automation.id}:${c.id}`)).map((c) => c.id))
     const beforeActivation: string[] = []
     const pending = (candidates as CandidateRow[]).filter((c) => !firedIds.has(c.id))
     const reachedAt =
