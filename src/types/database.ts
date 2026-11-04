@@ -1929,6 +1929,7 @@ export type Database = {
       }
       matching_suggestions: {
         Row: {
+          id: string
           candidate_id: string
           campaign_id: string
           distance_km: number | null
@@ -1939,6 +1940,7 @@ export type Database = {
           dismiss_reason: string | null
         }
         Insert: {
+          id?: string
           candidate_id: string
           campaign_id: string
           distance_km?: number | null
@@ -1949,6 +1951,7 @@ export type Database = {
           dismiss_reason?: string | null
         }
         Update: {
+          id?: string
           candidate_id?: string
           campaign_id?: string
           distance_km?: number | null
