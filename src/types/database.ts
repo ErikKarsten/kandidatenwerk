@@ -1927,6 +1927,97 @@ export type Database = {
           }
         ]
       }
+      matching_suggestions: {
+        Row: {
+          candidate_id: string
+          campaign_id: string
+          distance_km: number | null
+          first_seen_at: string
+          notified_at: string | null
+          dismissed_at: string | null
+          dismissed_by: string | null
+          dismiss_reason: string | null
+        }
+        Insert: {
+          candidate_id: string
+          campaign_id: string
+          distance_km?: number | null
+          first_seen_at?: string
+          notified_at?: string | null
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          dismiss_reason?: string | null
+        }
+        Update: {
+          candidate_id?: string
+          campaign_id?: string
+          distance_km?: number | null
+          first_seen_at?: string
+          notified_at?: string | null
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          dismiss_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matching_suggestions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matching_suggestions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matching_suggestions_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      matching_mail_recipients: {
+        Row: {
+          id: string
+          agency_id: string
+          profile_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          profile_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          profile_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matching_mail_recipients_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matching_mail_recipients_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>

@@ -369,6 +369,35 @@ export async function updateLeadNotificationRecipientsAction(
   return null
 }
 
+// Wer die Sammel-Mail der Matching-Übersicht bekommt (Paket 96, Mo + Do) - gleiches
+// Muster wie die Lead-Benachrichtigung oben.
+export async function getMatchingMailRecipientIds(agencyId: string): Promise<string[]> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return []
+  const { data } = await supabase.from("matching_mail_recipients").select("profile_id").eq("agency_id", agencyId)
+  return (data ?? []).map((r) => r.profile_id)
+}
+
+export async function updateMatchingMailRecipientsAction(agencyId: string, profileIds: string[]): Promise<{ error: string } | null> {
+  const supabase = await createSupabaseServerClient()
+  const staffError = await requireStaffUser(supabase)
+  if (staffError) return staffError
+
+  const { error: deleteError } = await supabase.from("matching_mail_recipients").delete().eq("agency_id", agencyId)
+  if (deleteError) return { error: deleteError.message }
+
+  if (profileIds.length > 0) {
+    const { error: insertError } = await supabase
+      .from("matching_mail_recipients")
+      .insert(profileIds.map((profileId) => ({ agency_id: agencyId, profile_id: profileId })))
+    if (insertError) return { error: insertError.message }
+  }
+
+  revalidatePath("/dashboard/einstellungen")
+  return null
+}
+
 // ── custom_field_definitions (agenturweit gepflegte Zusatzfelder-Liste) ───────────
 // Umbau vom 25.09.2026, ersetzt FIXED_CUSTOM_FIELDS aus candidate-custom-fields.ts als
 // Quelle für UI-Anzeige UND Leadtable-/Meta-Extraktion (siehe
