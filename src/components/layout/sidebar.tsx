@@ -15,6 +15,7 @@ import {
   Bug,
   LayoutGrid,
   BookOpen,
+  Handshake,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLocalStorageValue } from "@/lib/use-local-storage"
@@ -29,13 +30,15 @@ const SIDEBAR_COLLAPSED_KEY = "sidebar_collapsed"
 function buildNavItems(
   candidatesCount: number,
   clientsCount: number,
-  myOpenTasksCount: number
+  myOpenTasksCount: number,
+  matchingCount: number
 ) {
   return [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/dashboard/clients", label: "Kunden", icon: Users, badge: String(clientsCount) },
     { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: String(candidatesCount) },
     { href: "/dashboard/leads", label: "Kandidaten nach Kampagnen", icon: LayoutGrid },
+    { href: "/dashboard/matching", label: "Matching", icon: Handshake, badge: String(matchingCount) },
     { href: "/dashboard/tasks", label: "Aufgaben", icon: ListTodo, badge: String(myOpenTasksCount) },
     { href: "/dashboard/map", label: "Karte", icon: MapPin },
   ] as const
@@ -117,6 +120,7 @@ export function Sidebar({
   candidatesCount = 0,
   clientsCount = 0,
   myOpenTasksCount = 0,
+  matchingCount = 0,
   userName,
   isAdmin,
   openBugReportsCount = 0,
@@ -125,6 +129,8 @@ export function Sidebar({
   candidatesCount?: number
   clientsCount?: number
   myOpenTasksCount?: number
+  // Offene Matching-Vorschläge (Paket 96).
+  matchingCount?: number
   userName: string
   isAdmin: boolean
   openBugReportsCount?: number
@@ -132,7 +138,7 @@ export function Sidebar({
   logoUrl?: string | null
 }) {
   const pathname = usePathname()
-  const navItems = buildNavItems(candidatesCount, clientsCount, myOpenTasksCount)
+  const navItems = buildNavItems(candidatesCount, clientsCount, myOpenTasksCount, matchingCount)
 
   // Start bewusst ausgeklappt (= Server-/Erstrender-Zustand), der localStorage-Wert wird
   // erst nach dem Mount übernommen - sonst Hydration-Mismatch, da localStorage auf dem

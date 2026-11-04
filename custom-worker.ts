@@ -35,7 +35,7 @@ interface ExecutionContext {
 const CRON_ROUTES: Record<string, string[]> = {
   "*/5 * * * *": ["/api/cron/run-automations", "/api/cron/close-meetings", "/api/cron/cv-werdegang"],
   "*/30 * * * *": ["/api/cron/meta-leads-sync"],
-  "0 * * * *": ["/api/cron/sync-kanzleistelle", "/api/cron/meta-campaigns-sync", "/api/cron/sample-feed"],
+  "0 * * * *": ["/api/cron/sync-kanzleistelle", "/api/cron/meta-campaigns-sync", "/api/cron/sample-feed", "/api/cron/matching"],
   "0 6 * * *": ["/api/cron/task-reminders"],
 }
 

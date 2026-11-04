@@ -26,12 +26,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { data: { user } },
     logoUrl,
     berufsbilder,
+    { count: matchingCount },
   ] = await Promise.all([
     supabase.from("candidates").select("id", { count: "exact", head: true }).eq("is_demo", false).eq("campaign_only", false).not("tags", "cs", "{Musterdatensatz}"),
     supabase.from("clients").select("id", { count: "exact", head: true }),
     supabase.auth.getUser(),
     getAgencyLogoUrl(),
     loadBerufsbilder(),
+    // Offene Matching-Vorschläge (Paket 96), stündlich abgeglichen. Über candidates!inner,
+    // damit nur Kandidaten zählen, die man auch sehen darf (Active Sourcing, Paket 89).
+    supabase.from("matching_suggestions").select("candidate_id, candidates!inner(id)", { count: "exact", head: true }).is("dismissed_at", null),
   ])
 
   // Offene Team-Aufgaben (Paket 44) werden in derselben Runde geladen und erst hier dem
@@ -72,6 +76,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           candidatesCount={candidatesCount ?? 0}
           clientsCount={clientsCount ?? 0}
           myOpenTasksCount={myOpenTasksCount}
+          matchingCount={matchingCount ?? 0}
           userName={profile?.full_name || profile?.email || "Unbekannt"}
           isAdmin={isAdmin}
           openBugReportsCount={openBugReportsCount}

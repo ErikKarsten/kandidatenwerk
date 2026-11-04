@@ -145,6 +145,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
         <li><a href="#status">Status und was sie auslösen</a></li>
         <li><a href="#lebenslauf">Lebenslauf</a></li>
         <li><a href="#zuordnen">Kandidaten zuordnen</a></li>
+        <li><a href="#matching">Matching</a></li>
         <li><a href="#kunden">Kunden und Projekt</a></li>
         <li><a href="#kampagnen">Kampagnen</a></li>
         <li><a href="#automatisierungen">Automatisierungen und Mails</a></li>
@@ -294,9 +295,32 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <ul>
         <li>Am Kandidaten im Reiter <span class="ui">Zuordnung</span>: Live-Kanzleien im Umkreis, passende Berufsbilder zuerst.</li>
         <li>In einer Kanzlei-Kampagne im Reiter <span class="ui">Passende Kandidaten</span>.</li>
+        <li>In der <span class="path">Matching</span>-Übersicht: alle offenen Vorschläge über alle Kampagnen.</li>
         <li>Eigene Meta-Leads einer Kanzlei-Kampagne gehen von selbst an die Kanzlei, sobald ihr sie auf „Vorqualifiziert“ setzt.</li>
       </ul>
       <p>Nach dem Zuordnen schickt die Automatisierung „Neuer Kandidat für die Kanzlei“ eine Mail an die Portal-Zugänge der Kanzlei, sofern sie in der Kampagne eingeschaltet ist.</p>
+    </section>
+
+    <section class="chap" id="matching">
+      <h2>Matching</h2>
+      <p class="kicker">Eine Liste, damit kein passender Kandidat liegen bleibt.</p>
+      <p>Unter <span class="path">Matching</span> stehen alle vorqualifizierten Kandidaten, die zu einer Kanzlei-Kampagne passen, gruppiert nach Kampagne. Die Zahl im Menü zeigt, wie viele Vorschläge offen sind.</p>
+      <h3>Wann ein Kandidat auftaucht</h3>
+      <ul>
+        <li>Er ist <span class="ui">vorqualifiziert</span> und hat dasselbe Berufsbild wie die Kampagne.</li>
+        <li>Er wohnt im Umkreis der Kampagne. Es zählt der nächste Standort. Ohne PLZ kann Kandidatenwerk den Abstand nicht berechnen, dann taucht er nicht auf.</li>
+        <li>Die Kanzlei ist <span class="ui">Live</span> und die Kampagne aktiv.</li>
+        <li>Er war dieser Kanzlei noch nie zugeordnet, auch nicht früher und wieder entfernt.</li>
+        <li>Läuft er schon bei einer anderen Kanzlei, taucht er trotzdem auf. Darunter steht „Läuft bei …“. Wer irgendwo eingestellt wurde, taucht nicht mehr auf.</li>
+      </ul>
+      <h3>Was ihr tun könnt</h3>
+      <ul>
+        <li><span class="ui">Zuordnen</span> funktioniert wie in der Kampagne. Die Kanzlei bekommt den Kandidaten, die Automatisierung schickt die Mail.</li>
+        <li><span class="ui">Nicht vorschlagen</span>, wahlweise mit Grund. Der Kandidat taucht bei dieser Kampagne nie wieder auf. Bei anderen Kampagnen bleibt er sichtbar. Im Verlauf steht ein Eintrag.</li>
+        <li>Im Reiter <span class="ui">Nicht vorgeschlagen</span> seht ihr, wer wann und warum aussortiert hat. Dort könnt ihr es rückgängig machen.</li>
+      </ul>
+      <h3>Die Sammel-Mail</h3>
+      <p>Montags und donnerstags um 8 Uhr bekommen die Empfänger aus <span class="path">Einstellungen → E-Mail-Vorlagen → Matching-Übersicht</span> eine Mail mit den neuen Vorschlägen, mit Link zur Übersicht. Gibt es nichts Neues, kommt keine Mail. „Neu“ heißt: stand noch in keiner Mail.</p>
     </section>
 
     <section class="chap" id="kunden">
@@ -439,7 +463,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
         <tbody>
           <tr><td>Mein Konto</td><td>Eigener Name, Telefon und Foto, dazu Agenturname und Logo für Mails und Lebensläufe.</td></tr>
           <tr><td>Team</td><td>Zugänge, Rolle und Team jeder Person.</td></tr>
-          <tr><td>E-Mail-Vorlagen</td><td>Vorlagen für Automatisierungen und Kommunikation, Vorlagensets für neue Kampagnen, die Eingangsbestätigung und wer bei neuen Leads benachrichtigt wird.</td></tr>
+          <tr><td>E-Mail-Vorlagen</td><td>Vorlagen für Automatisierungen und Kommunikation, Vorlagensets für neue Kampagnen, die Eingangsbestätigung, wer bei neuen Leads benachrichtigt wird und wer die Matching-Mail bekommt.</td></tr>
           <tr><td>Felder</td><td>Zusatzfelder der Kandidaten, Feld-Vorlagen, Felder des Kanzleiprofils und der Stellen.</td></tr>
           <tr><td>Lead-Anbindung</td><td>Meta-Kampagnen, Lead-Formulare und ihre Zuordnung zu Feldern.</td></tr>
         </tbody>
@@ -455,8 +479,9 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
           <tr><td>sofort</td><td>Neue Meta-Leads über den Webhook, Eingangsbestätigung, Antworten von Kandidaten.</td></tr>
           <tr><td>alle 5 Minuten</td><td>Automatisierungen, Gespräche aus Close, Werdegänge für geänderte Beschreibungen.</td></tr>
           <tr><td>alle 30 Minuten</td><td>Abgleich der Meta-Leads als Sicherheitsnetz.</td></tr>
-          <tr><td>stündlich</td><td>Kanzleistelle24, Meta-Kampagnen und Werbegebiete, Beispielkandidaten.</td></tr>
+          <tr><td>stündlich</td><td>Kanzleistelle24, Meta-Kampagnen und Werbegebiete, Beispielkandidaten, Abgleich der Matching-Vorschläge.</td></tr>
           <tr><td>morgens</td><td>Erinnerung an fällige Aufgaben.</td></tr>
+          <tr><td>Mo + Do, 8 Uhr</td><td>Sammel-Mail mit neuen Matching-Vorschlägen.</td></tr>
         </tbody>
       </table></div>
       <p>Die KI läuft über kie.ai. Ist Claude dort überlastet, antwortet ein Ausweichmodell. Schlägt ein Hintergrundlauf fehl, bekommen die Admins höchstens alle 12 Stunden eine Warnmail, und der Fehler steht unter <span class="path">Fehlermeldungen</span>.</p>

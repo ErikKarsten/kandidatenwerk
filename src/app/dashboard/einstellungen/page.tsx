@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import {
   getTeamMembers,
   getLeadNotificationRecipientIds,
+  getMatchingMailRecipientIds,
   getCustomFieldDefinitions,
   getPendingCustomFieldReviewQueue,
 } from "./actions"
@@ -42,6 +43,7 @@ export default async function EinstellungenPage() {
   const leadNotificationRecipientIds = ownProfile.agency_id
     ? await getLeadNotificationRecipientIds(ownProfile.agency_id)
     : []
+  const matchingRecipientIds = ownProfile.agency_id ? await getMatchingMailRecipientIds(ownProfile.agency_id) : []
   const customFieldDefinitions = ownProfile.agency_id ? await getCustomFieldDefinitions() : []
   const customFieldReviewQueue = ownProfile.agency_id ? await getPendingCustomFieldReviewQueue() : []
   const metaCampaigns = ownProfile.agency_id ? await getLeadCampaignsOverview(supabase as unknown as SupabaseClient) : []
@@ -71,6 +73,7 @@ export default async function EinstellungenPage() {
       profileFieldConfig={profileFieldConfig}
       agencySettings={agencySettings}
       leadNotificationRecipientIds={leadNotificationRecipientIds}
+      matchingRecipientIds={matchingRecipientIds}
       customFieldDefinitions={customFieldDefinitions}
       customFieldReviewQueue={customFieldReviewQueue}
       metaCampaigns={metaCampaigns}

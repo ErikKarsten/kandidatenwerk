@@ -21,6 +21,7 @@ import {
   updateTeamMemberAction,
   updateAgencyNameAction,
   updateLeadNotificationRecipientsAction,
+  updateMatchingMailRecipientsAction,
   createCustomFieldDefinitionAction,
   updateCustomFieldDefinitionLabelAction,
   setCustomFieldDefinitionActiveAction,
@@ -54,6 +55,7 @@ interface EinstellungenDetailProps {
   profileFieldConfig: ProfileFieldConfig
   agencySettings: AgencySettings
   leadNotificationRecipientIds: string[]
+  matchingRecipientIds: string[]
   customFieldDefinitions: CustomFieldDefinition[]
   customFieldReviewQueue: CustomFieldReviewQueueEntry[]
   metaCampaigns: LeadCampaignOverview[]
@@ -67,7 +69,7 @@ interface EinstellungenDetailProps {
 // Innerhalb eines Reiters sind die Bereiche aufklappbar.
 type Tab = "konto" | "team" | "automatisierung" | "felder" | "leadanbindung"
 
-export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, automationTemplates, profileFieldConfig, agencySettings, leadNotificationRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms, leadSyncWarnings }: EinstellungenDetailProps) {
+export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, automationTemplates, profileFieldConfig, agencySettings, leadNotificationRecipientIds, matchingRecipientIds, customFieldDefinitions, customFieldReviewQueue, metaCampaigns, fieldTemplates, leadForms, leadSyncWarnings }: EinstellungenDetailProps) {
   const [tab, setTab] = useState<Tab>("konto")
   const isAdmin = ownProfile.role === "agency_admin"
   const activeFields = customFieldDefinitions.filter((f) => f.active)
@@ -124,6 +126,17 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
               <Section title="Benachrichtigung bei neuen Leads (intern ans Team)" meta={`${leadNotificationRecipientIds.length} Empfänger`}>
                 <div className="max-w-lg">
                   <AutomatisierungTab agencyId={agencyId} team={team} initialRecipientIds={leadNotificationRecipientIds} />
+                </div>
+              </Section>
+              <Section title="Matching-Übersicht (Mail Mo + Do, intern ans Team)" meta={`${matchingRecipientIds.length} Empfänger`}>
+                <div className="max-w-lg">
+                  <RecipientsCard
+                    team={team}
+                    initialRecipientIds={matchingRecipientIds}
+                    title="Sammel-Mail mit neuen Matching-Vorschlägen"
+                    description="Diese Team-Mitglieder bekommen montags und donnerstags um 8 Uhr eine Mail, wenn es neue Vorschläge in der Matching-Übersicht gibt — mit Link zur Übersicht."
+                    save={(ids) => updateMatchingMailRecipientsAction(agencyId, ids)}
+                  />
                 </div>
               </Section>
             </div>
@@ -751,14 +764,19 @@ function AgenturTab({ agencyName }: { agencyName: string }) {
   )
 }
 
-function AutomatisierungTab({
-  agencyId,
+// Empfänger-Auswahl für interne Mails ans Team (Lead-Benachrichtigung, Matching-Übersicht).
+function RecipientsCard({
   team,
   initialRecipientIds,
+  title,
+  description,
+  save,
 }: {
-  agencyId: string
   team: TeamMember[]
   initialRecipientIds: string[]
+  title: string
+  description: string
+  save: (profileIds: string[]) => Promise<{ error: string } | null>
 }) {
   const router = useRouter()
   const [selectedIds, setSelectedIds] = useState<string[]>(initialRecipientIds)
@@ -775,7 +793,7 @@ function AutomatisierungTab({
     setSaveError(null)
     setSaved(false)
     startSaveTransition(async () => {
-      const result = await updateLeadNotificationRecipientsAction(agencyId, selectedIds)
+      const result = await save(selectedIds)
       if (result?.error) { setSaveError(result.error); return }
       setSaved(true)
       router.refresh()
@@ -783,49 +801,66 @@ function AutomatisierungTab({
   }
 
   return (
+    <Card>
+      <div>
+        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+        <p className="mt-1 text-xs text-gray-500">{description}</p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {team.map((m) => (
+          <label
+            key={m.id}
+            className="flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 hover:bg-gray-50"
+            style={{ borderColor: selectedIds.includes(m.id) ? "#1e56a0" : "#dde3ea" }}
+          >
+            <input
+              type="checkbox"
+              checked={selectedIds.includes(m.id)}
+              onChange={() => toggle(m.id)}
+              className="shrink-0 accent-[#1e56a0]"
+            />
+            <div>
+              <p className="text-sm font-medium text-gray-900">{m.full_name ?? "—"}</p>
+              <p className="text-xs text-gray-500">{m.email ?? "—"}</p>
+            </div>
+          </label>
+        ))}
+        {team.length === 0 && <p className="text-sm text-gray-400">Kein Team vorhanden.</p>}
+      </div>
+
+      {saveError && <p className="text-xs text-red-600">{saveError}</p>}
+      {saved && !saveError && <p className="text-xs" style={{ color: "#1a9a6a" }}>Gespeichert.</p>}
+      <button
+        onClick={handleSave}
+        disabled={savePending}
+        className="self-start rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        style={{ backgroundColor: "#1e56a0" }}
+      >
+        {savePending ? "Wird gespeichert…" : "Speichern"}
+      </button>
+    </Card>
+  )
+}
+
+function AutomatisierungTab({
+  agencyId,
+  team,
+  initialRecipientIds,
+}: {
+  agencyId: string
+  team: TeamMember[]
+  initialRecipientIds: string[]
+}) {
+  return (
     <div className="flex flex-col gap-4">
-      <Card>
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">Benachrichtigung bei neuem Lead</h2>
-          <p className="mt-1 text-xs text-gray-500">
-            Diese Team-Mitglieder bekommen eine Mail, sobald ein neuer Kandidat angelegt wird (manuell,
-            Meta-Leads, Leadtable) — mit direktem Link zum Kandidaten.
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          {team.map((m) => (
-            <label
-              key={m.id}
-              className="flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 hover:bg-gray-50"
-              style={{ borderColor: selectedIds.includes(m.id) ? "#1e56a0" : "#dde3ea" }}
-            >
-              <input
-                type="checkbox"
-                checked={selectedIds.includes(m.id)}
-                onChange={() => toggle(m.id)}
-                className="shrink-0 accent-[#1e56a0]"
-              />
-              <div>
-                <p className="text-sm font-medium text-gray-900">{m.full_name ?? "—"}</p>
-                <p className="text-xs text-gray-500">{m.email ?? "—"}</p>
-              </div>
-            </label>
-          ))}
-          {team.length === 0 && <p className="text-sm text-gray-400">Kein Team vorhanden.</p>}
-        </div>
-
-        {saveError && <p className="text-xs text-red-600">{saveError}</p>}
-        {saved && !saveError && <p className="text-xs" style={{ color: "#1a9a6a" }}>Gespeichert.</p>}
-        <button
-          onClick={handleSave}
-          disabled={savePending}
-          className="self-start rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          style={{ backgroundColor: "#1e56a0" }}
-        >
-          {savePending ? "Wird gespeichert…" : "Speichern"}
-        </button>
-      </Card>
+      <RecipientsCard
+        team={team}
+        initialRecipientIds={initialRecipientIds}
+        title="Benachrichtigung bei neuem Lead"
+        description="Diese Team-Mitglieder bekommen eine Mail, sobald ein neuer Kandidat angelegt wird (manuell, Meta-Leads, Leadtable) — mit direktem Link zum Kandidaten."
+        save={(ids) => updateLeadNotificationRecipientsAction(agencyId, ids)}
+      />
 
       <Card>
         <div>
