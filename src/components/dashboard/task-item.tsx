@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { useRouter } from "next/navigation"
 import { Check, RotateCcw, Trash2 } from "lucide-react"
 import { deleteTaskAction, updateTaskStatusAction } from "@/app/dashboard/tasks/actions"

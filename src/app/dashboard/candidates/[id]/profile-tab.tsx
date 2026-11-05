@@ -1,8 +1,9 @@
 "use client"
 
 import { useRef, useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
 import { CopyButton } from "@/components/ui/copy-button"
+import { safeAction } from "@/lib/safe-action"
+import { useUnsavedWarning } from "@/lib/use-unsaved-warning"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { WEITERE_ANTWORTEN_KEY } from "@/lib/candidate-custom-fields"
 import { updateCandidateProfileAction, updateCandidateCustomFieldAction } from "./actions"
@@ -53,9 +54,11 @@ export function ProfileTab({
   templateFieldKeys,
 }: ProfileTabProps) {
   const bb = useBerufsbilder()
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [editMode, setEditMode] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  // Neu laden/Tab schließen während der Bearbeitung fragt erst nach (Paket 99).
+  useUnsavedWarning(editMode)
 
   const [localFirst, setLocalFirst] = useState(firstName)
   const [localLast, setLocalLast] = useState(lastName)
@@ -121,6 +124,7 @@ export function ProfileTab({
     setLocalCustom(customFields ?? {})
     setNewKey("")
     setNewValue("")
+    setSaveError(null)
     setEditMode(false)
   }
 
@@ -133,6 +137,7 @@ export function ProfileTab({
   }
 
   function handleSave() {
+    setSaveError(null)
     startTransition(async () => {
       const fd = new FormData()
       fd.append("first_name", localFirst)
@@ -142,8 +147,13 @@ export function ProfileTab({
       fd.append("berufsbild", localBerufsbild)
       fd.append("plz", localPlz)
       fd.append("custom_fields_json", JSON.stringify(localCustom))
-      await updateCandidateProfileAction(candidateId, fd)
-      router.refresh()
+      // Bei einem Fehler bleibt die Bearbeitung offen, damit nichts Eingetippte verloren geht.
+      // Kein router.refresh(): die Action aktualisiert die Seite selbst (Paket 99).
+      const result = await safeAction(() => updateCandidateProfileAction(candidateId, fd))
+      if (result?.error) {
+        setSaveError(result.error)
+        return
+      }
       setEditMode(false)
     })
   }
@@ -353,6 +363,7 @@ export function ProfileTab({
           >
             Abbrechen
           </button>
+          {saveError && <span className="text-xs text-red-600">{saveError}</span>}
         </div>
       )}
     </div>
@@ -372,23 +383,28 @@ function CustomFieldRow({
   value: string
   onSaved: (key: string, value: string) => void
 }) {
-  const router = useRouter()
   const [localValue, setLocalValue] = useState(value)
   const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
   const savedValueRef = useRef(value)
 
+  // Paket 99: Das Feld bleibt während des Speicherns bedienbar, und nach dem Speichern wird
+  // nichts mehr überschrieben, was inzwischen weitergetippt wurde. Schlägt das Speichern
+  // fehl, bleibt der Text stehen und ein Hinweis erscheint. Kein router.refresh(): die
+  // Action aktualisiert die Seite selbst.
   function handleBlur() {
     const trimmed = localValue.trim()
-    if (trimmed === savedValueRef.current) {
-      setLocalValue(trimmed)
-      return
-    }
+    if (trimmed !== localValue) setLocalValue(trimmed)
+    if (trimmed === savedValueRef.current) return
+    setError(null)
     startTransition(async () => {
-      await updateCandidateCustomFieldAction(candidateId, fieldKey, trimmed)
+      const result = await safeAction(() => updateCandidateCustomFieldAction(candidateId, fieldKey, trimmed))
+      if (result?.error) {
+        setError(result.error)
+        return
+      }
       savedValueRef.current = trimmed
-      setLocalValue(trimmed)
       onSaved(fieldKey, trimmed)
-      router.refresh()
     })
   }
 
@@ -398,17 +414,17 @@ function CustomFieldRow({
           Umschalt+Enter macht eine neue Zeile. */}
       <div className="flex items-start gap-2">
         <AutoTextarea
-          className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1 disabled:opacity-50"
-          style={{ borderColor: "#dde3ea" }}
+          className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1"
+          style={{ borderColor: error ? "#fca5a5" : "#dde3ea", opacity: pending ? 0.7 : undefined }}
           value={localValue}
           placeholder="Hier eingeben"
           onChange={(e) => setLocalValue(e.target.value)}
           onBlur={handleBlur}
           submitOnEnter
-          disabled={pending}
         />
         <CopyButton value={localValue} />
       </div>
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </FieldRow>
   )
 }

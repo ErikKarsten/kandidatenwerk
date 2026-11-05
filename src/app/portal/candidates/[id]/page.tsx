@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { ArrowLeft, FileText } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"

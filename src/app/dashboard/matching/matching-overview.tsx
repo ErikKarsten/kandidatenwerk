@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { useRouter } from "next/navigation"
 import { Search } from "lucide-react"
 import { CandidatePanel } from "@/components/dashboard/candidate-panel/candidate-panel"

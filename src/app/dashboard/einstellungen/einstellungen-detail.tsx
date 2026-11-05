@@ -10,7 +10,7 @@ import { AutomationTemplatesTab } from "./automation-templates-tab"
 import type { AutomationTemplate, AutomationTemplateSet } from "./automation-template-actions"
 import type { LeadCampaignOverview } from "@/lib/meta-campaigns-queries"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { BookOpen, ChevronDown, Clock, RefreshCw as SyncIcon, Send, Plus, Pencil } from "lucide-react"
 import {
   teamPasswordLinkAction,

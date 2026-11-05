@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import Link from "next/link"
-import { Search } from "lucide-react"
+import Link from "@/components/app-link"
+import { Loader2, Search } from "lucide-react"
 import {
   Table,
   TableBody,
@@ -105,21 +105,32 @@ export function CandidatesList({
   // "Zustand waehrend des Renderns anpassen"-Muster statt useEffect (siehe React-Doku)
   // - synchronisiert searchInput nur bei EXTERNEN Aenderungen von `search` (z.B.
   // Browser-Zurueck), ohne den fuer setState-in-Effect ueblichen Extra-Render-Zyklus.
+  // Paket 99: Ergebnisse der eigenen Suche zählen nicht als extern. Vorher setzte jedes
+  // ankommende Ergebnis das Feld auf den älteren Suchbegriff zurück, während man schon
+  // weitertippte. Buchstaben verschwanden, die Suche wirkte verzögert.
   const [prevSearch, setPrevSearch] = useState(search)
   const [searchInput, setSearchInput] = useState(search)
+  const [pushedSearch, setPushedSearch] = useState(search)
+  const [searching, startSearch] = useTransition()
   if (search !== prevSearch) {
     setPrevSearch(search)
-    setSearchInput(search)
+    if (search !== pushedSearch) {
+      setSearchInput(search)
+      setPushedSearch(search)
+    }
   }
 
-  function updateParams(next: Record<string, string | null>) {
+  function updateParams(next: Record<string, string | null>, { replace = false }: { replace?: boolean } = {}) {
     const params = new URLSearchParams(searchParams.toString())
     for (const [key, value] of Object.entries(next)) {
       if (value === null || value === "") params.delete(key)
       else params.set(key, value)
     }
     const query = params.toString()
-    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false })
+    const url = query ? `${pathname}?${query}` : pathname
+    // Suchen ersetzt den Eintrag im Browserverlauf, statt pro Buchstabe einen neuen anzulegen.
+    if (replace) startSearch(() => router.replace(url, { scroll: false }))
+    else router.push(url, { scroll: false })
   }
 
   // Erster Seitenaufruf ohne pageSize-Parameter in der URL -> gespeicherte
@@ -137,8 +148,10 @@ export function CandidatesList({
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      if (searchInput !== search) {
-        updateParams({ q: searchInput || null, page: null })
+      const term = searchInput.trim()
+      if (term !== search) {
+        setPushedSearch(term)
+        updateParams({ q: term || null, page: null }, { replace: true })
       }
     }, SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(handle)
@@ -208,9 +221,12 @@ export function CandidatesList({
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Name oder E-Mail suchen…"
-            className="rounded-md border py-1.5 pl-8 pr-3 text-sm focus:outline-none"
+            className="rounded-md border py-1.5 pl-8 pr-8 text-sm focus:outline-none"
             style={{ borderColor: "#dde3ea", minWidth: "220px" }}
           />
+          {searching && (
+            <Loader2 size={14} aria-label="Sucht…" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />
+          )}
         </div>
         <select
           value={statusFilter}

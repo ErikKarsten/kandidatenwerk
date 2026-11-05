@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
 import { Download, Paperclip, Send } from "lucide-react"
 import { substituteTemplateVars, type TemplateVars } from "@/lib/automation-engine"
+import { safeAction } from "@/lib/safe-action"
 import { sendCandidateEmailAction } from "./communication-actions"
 
 export interface CandidateMessage {
@@ -82,7 +82,6 @@ export function CommunicationTab({
   templates: MessageTemplate[]
   messages: CandidateMessage[]
 }) {
-  const router = useRouter()
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
@@ -99,13 +98,17 @@ export function CommunicationTab({
 
   function send() {
     setResult(null)
+    // Bricht die Verbindung ab, kann die Mail trotzdem raus sein: Text bleibt stehen, erst im
+    // Verlauf nachsehen (Paket 99). Kein router.refresh(): die Action aktualisiert die Seite.
     startTransition(async () => {
-      const res = await sendCandidateEmailAction(candidateId, { subject, body })
+      const res = await safeAction(
+        () => sendCandidateEmailAction(candidateId, { subject, body }),
+        "Verbindung unterbrochen. Bitte erst unten in der Liste nachsehen, ob die Mail rausging, bevor Sie erneut senden."
+      )
       if (res?.error) return setResult({ ok: false, text: res.error })
       setSubject("")
       setBody("")
       setResult({ ok: true, text: "E-Mail verschickt." })
-      router.refresh()
     })
   }
 

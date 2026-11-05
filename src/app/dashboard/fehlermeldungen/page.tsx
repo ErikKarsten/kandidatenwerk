@@ -1,4 +1,4 @@
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { notFound } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { requireAgencyAdmin } from "@/lib/auth-guards"

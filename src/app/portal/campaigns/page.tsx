@@ -1,4 +1,4 @@
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { isPortalVisible } from "@/lib/portal-visibility"
 

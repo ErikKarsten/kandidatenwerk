@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { Copy, MapPinPlus, Pencil, Plus, Trash2 } from "lucide-react"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import type { ClientLocation } from "@/lib/client-locations"

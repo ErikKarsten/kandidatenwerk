@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { RefreshCw } from "lucide-react"
 import { resolveDuplicateCaseAction, runDuplicateCheckAction, type DuplicateCaseView } from "./duplicate-actions"
 

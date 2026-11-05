@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import dynamic from "next/dynamic"
 import { Megaphone, X } from "lucide-react"
 import type { MapCircle, MapPoint } from "@/components/dashboard/matches-map"

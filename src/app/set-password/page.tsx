@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { Briefcase } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { establishInviteSessionAction, setNewPasswordAction } from "./actions"

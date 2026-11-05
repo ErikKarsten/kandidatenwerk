@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { PortalCandidateRow } from "@/components/portal/portal-candidate-row"
 import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"

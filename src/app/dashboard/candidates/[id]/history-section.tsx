@@ -1,10 +1,10 @@
 "use client"
 
 import { useMemo, useRef, useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
 import { ArrowRightLeft, StickyNote, Circle, Trash2, Mail, CheckSquare } from "lucide-react"
 import { addNoteAction, deleteNoteAction } from "./actions"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
+import { safeAction } from "@/lib/safe-action"
 import { referenceQueryAt, splitReferences } from "@/lib/comment-text"
 
 // Für @Erwähnungen und #Aufgaben in Notizen (Paket 78).
@@ -161,7 +161,6 @@ export function HistorySection({
   onOpenTask?: (taskId: string) => void
   currentUserId?: string
 }) {
-  const router = useRouter()
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [deletePending, startDeleteTransition] = useTransition()
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -220,28 +219,28 @@ export function HistorySection({
     const text = note.trim()
     if (!text || notePending) return
     setNoteError(null)
+    // Kein router.refresh(): die Actions aktualisieren die Seite selbst (Paket 99). Bei einem
+    // Fehler bleibt die Notiz im Feld stehen.
     startNoteTransition(async () => {
-      const result = await addNoteAction(candidateId, text)
+      const result = await safeAction(() => addNoteAction(candidateId, text))
       if (result?.error) {
         setNoteError(result.error)
         return
       }
       setNote("")
       setNoteInfo(notifyNames.length ? `Benachrichtigt: ${notifyNames.join(", ")}` : null)
-      router.refresh()
     })
   }
 
   function handleDelete(entryId: string) {
     setDeleteError(null)
     startDeleteTransition(async () => {
-      const result = await deleteNoteAction(entryId)
+      const result = await safeAction(() => deleteNoteAction(entryId))
       if (result?.error) {
         setDeleteError(result.error)
         return
       }
       setDeleteConfirmId(null)
-      router.refresh()
     })
   }
 
