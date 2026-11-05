@@ -58,25 +58,34 @@ export async function loadAutomationSends(db: Db, campaignId: string): Promise<A
     if (!data || data.length < 1000) break
   }
 
-  // Empfänger älterer Läufe aus dem Verlauf.
-  const legacyIds = [...new Set(runs.filter((r) => r.status === null).map((r) => r.candidate_id))]
-  const historyByCandidate = new Map<string, string[]>()
+  // Empfänger älterer Läufe aus dem Verlauf. Ebenso "gesendet" ohne Empfänger: Bis 05.11.2026
+  // durfte der Versand die Empfänger nicht nachtragen (fehlendes UPDATE-Recht, Paket 98).
+  const fromHistory = (r: (typeof runs)[number]) => r.status === null || (r.status === "gesendet" && !(r.recipients ?? []).length)
+  const legacyIds = [...new Set(runs.filter(fromHistory).map((r) => r.candidate_id))]
+  const historyByCandidate = new Map<string, { content: string; at: number }[]>()
   for (let i = 0; i < legacyIds.length; i += 80) {
     const { data } = await db
       .from("candidate_history")
-      .select("candidate_id, content")
+      .select("candidate_id, content, created_at")
       .eq("type", "automation")
       .in("candidate_id", legacyIds.slice(i, i + 80))
       .like("content", "Automatisierung %")
-    for (const h of data ?? []) historyByCandidate.set(h.candidate_id, [...(historyByCandidate.get(h.candidate_id) ?? []), h.content ?? ""])
+    for (const h of data ?? [])
+      historyByCandidate.set(h.candidate_id, [...(historyByCandidate.get(h.candidate_id) ?? []), { content: h.content ?? "", at: Date.parse(h.created_at) }])
   }
 
   const byAutomation = new Map<string, AutomationSend[]>()
   for (const r of runs) {
     let recipients = r.recipients ?? []
-    if (r.status === null) {
+    if (fromHistory(r)) {
+      // Gleiche Automatisierung in mehreren Kampagnen (z. B. "Neuer Kandidat für die Kanzlei"
+      // bei zwei Kanzleien): der Eintrag, der zeitlich am nächsten am Lauf liegt.
       const name = nameById.get(r.automation_id) ?? ""
-      const hit = (historyByCandidate.get(r.candidate_id) ?? []).map((c) => recipientsFromHistory(c, name)).find((x) => x !== null)
+      const firedAt = Date.parse(r.fired_at)
+      const hit = (historyByCandidate.get(r.candidate_id) ?? [])
+        .map((h) => ({ recipients: recipientsFromHistory(h.content, name), distance: Math.abs(h.at - firedAt) }))
+        .filter((h): h is { recipients: string[]; distance: number } => h.recipients !== null)
+        .sort((a, b) => a.distance - b.distance)[0]?.recipients
       if (!hit) continue
       recipients = hit
     } else if (r.status !== "gesendet" || recipients.length === 0) continue
@@ -122,7 +131,7 @@ export async function resendAutomationMail(db: Db, automationId: string, candida
   if (delivered.length === 0) throw new Error("An diese Adresse werden keine Mails verschickt.")
   const { data: run } = await db.from("campaign_automation_runs").select("send_count").eq("automation_id", automationId).eq("candidate_id", candidateId).maybeSingle()
   const now = new Date().toISOString()
-  await db
+  const { error: logError } = await db
     .from("campaign_automation_runs")
     .upsert(
       { automation_id: automationId, candidate_id: candidateId, status: "gesendet", recipients: delivered, last_sent_at: now, send_count: Math.max(1, run?.send_count ?? 0) + 1 },
@@ -134,5 +143,6 @@ export async function resendAutomationMail(db: Db, automationId: string, candida
     content: `Automatisierung "${automation.name}" erneut verschickt (Mail an ${delivered.join(", ")})`,
     ...(sentBy ? { created_by: sentBy } : {}),
   })
+  if (logError) throw new Error(`Mail ist verschickt, aber nicht im Versandprotokoll gespeichert: ${logError.message}`)
   return delivered
 }
