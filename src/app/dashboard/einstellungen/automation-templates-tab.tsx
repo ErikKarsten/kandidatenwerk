@@ -40,7 +40,8 @@ const EMPTY: AutomationTemplateInput = {
 // Reiter "Automatisierungs-Vorlagen" (Paket 15, T-74): Vorlagen sind komplette
 // Automatisierungen (Auslöser, Empfänger, Text); Vorlagensets bündeln mehrere davon.
 // In der Kampagne wird eine Vorlage oder ein Set mit einem Klick übernommen, neue
-// Kampagnen bekommen das Standard-Set automatisch (ausgeschaltet).
+// Kampagnen bekommen das Standard-Set automatisch (ausgeschaltet, nur "Neuer Kandidat für
+// die Kanzlei" ist in Kanzlei-Kampagnen gleich an).
 export function AutomationTemplatesTab({ templates, sets }: { templates: AutomationTemplate[]; sets: AutomationTemplateSet[] }) {
   return (
     <div className="flex flex-col gap-4">
@@ -242,7 +243,7 @@ function SetsCard({ templates, sets }: { templates: AutomationTemplate[]; sets: 
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Vorlagensets</h2>
-          <p className="text-xs text-gray-500">Mehrere Vorlagen auf einmal übernehmen. Das Standard-Set bekommt jede neue Kampagne (ausgeschaltet).</p>
+          <p className="text-xs text-gray-500">Mehrere Vorlagen auf einmal übernehmen. Das Standard-Set bekommt jede neue Kampagne, ausgeschaltet. Nur „Kandidat der Kampagne zugeordnet“ (Neuer Kandidat für die Kanzlei) ist in Kanzlei-Kampagnen gleich an.</p>
         </div>
         <button
           type="button"

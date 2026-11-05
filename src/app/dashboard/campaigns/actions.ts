@@ -72,7 +72,8 @@ export async function createCampaignAction(
 
   if (error) return { error: error.message }
 
-  // Automatisierungen aus dem Standard-Vorlagenset, ausgeschaltet (Paket 15, T-74).
+  // Automatisierungen aus dem Standard-Vorlagenset (Paket 15, T-74); "Neuer Kandidat für
+  // die Kanzlei" gleich an, alles andere aus.
   await applyDefaultTemplateSet(supabase, campaign.id)
 
   try {

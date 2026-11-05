@@ -386,11 +386,17 @@ export async function runAutomations(
             delivered = await sendEmail(recipients, subject, emailHtml)
           } catch (sendError) {
             // Reservierung zurücknehmen, damit der nächste Lauf es erneut versucht.
-            await supabase.from("campaign_automation_runs").delete().eq("automation_id", automation.id).eq("candidate_id", candidate.id)
+            const { error: releaseError } = await supabase
+              .from("campaign_automation_runs")
+              .delete()
+              .eq("automation_id", automation.id)
+              .eq("candidate_id", candidate.id)
+            if (releaseError) console.error(`Reservierung für "${automation.name}" nicht zurückgenommen: ${releaseError.message}`)
             throw sendError
           }
-          // Versandprotokoll für den Reiter "Automatisierungen" (Paket 84).
-          await supabase
+          // Versandprotokoll für den Reiter "Automatisierungen" (Paket 84). Fehler zählen
+          // (Paket 98): bis 05.11. fehlte das UPDATE-Recht, und die Liste blieb unbemerkt leer.
+          const { error: logError } = await supabase
             .from("campaign_automation_runs")
             .update(
               delivered.length
@@ -399,6 +405,10 @@ export async function runAutomations(
             )
             .eq("automation_id", automation.id)
             .eq("candidate_id", candidate.id)
+          if (logError) {
+            console.error(`Versandprotokoll für "${automation.name}" nicht gespeichert: ${logError.message}`)
+            errors++
+          }
 
           await supabase.from("candidate_history").insert({
             candidate_id: candidate.id,

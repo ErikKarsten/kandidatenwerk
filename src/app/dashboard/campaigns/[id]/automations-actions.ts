@@ -97,6 +97,7 @@ export async function toggleAutomationActiveAction(
 
 // Vorlage oder Vorlagenset in die Kampagne übernehmen (Paket 15, T-74). Übernommene
 // Automatisierungen starten ausgeschaltet - geschaltet wird bewusst in der Kampagne.
+// Ausnahme: "Neuer Kandidat für die Kanzlei" ist in Kanzlei-Kampagnen gleich an.
 export async function applyAutomationTemplatesAction(
   campaignId: string,
   source: { templateId: string } | { setId: string }
@@ -106,7 +107,7 @@ export async function applyAutomationTemplatesAction(
   if (staffError) return staffError
   try {
     const ids = "setId" in source ? await templateIdsOfSet(supabase, source.setId) : [source.templateId]
-    const added = await applyTemplatesToCampaign(supabase, campaignId, ids, false)
+    const added = await applyTemplatesToCampaign(supabase, campaignId, ids)
     revalidatePath(`/dashboard/campaigns/${campaignId}`)
     return { added }
   } catch (err) {

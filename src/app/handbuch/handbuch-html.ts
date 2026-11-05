@@ -298,7 +298,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
         <li>In der <span class="path">Matching</span>-Übersicht: alle offenen Vorschläge über alle Kampagnen.</li>
         <li>Eigene Meta-Leads einer Kanzlei-Kampagne gehen von selbst an die Kanzlei, sobald ihr sie auf „Vorqualifiziert“ setzt.</li>
       </ul>
-      <p>Nach dem Zuordnen schickt die Automatisierung „Neuer Kandidat für die Kanzlei“ eine Mail an die Portal-Zugänge der Kanzlei, sofern sie in der Kampagne eingeschaltet ist.</p>
+      <p>Nach dem Zuordnen schickt die Automatisierung „Neuer Kandidat für die Kanzlei“ eine Mail an die Portal-Zugänge der Kanzlei. Sie ist in jeder Kanzlei-Kampagne von Anfang an eingeschaltet.</p>
     </section>
 
     <section class="chap" id="matching">
@@ -386,6 +386,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       </table></div>
       <p>Platzhalter wie <span class="path">#Kandidatenname</span>, <span class="path">#Kampagnenname</span> oder <span class="path">#Bewerberlink</span> füllt Kandidatenwerk beim Versand aus. Eine Automatisierung gilt nur für Kandidaten, die nach dem Einschalten hinzukommen.</p>
       <div class="why"><b>Warum</b><p>Sonst würde eine frisch eingeschaltete Automatisierung allen Bestandskandidaten auf einmal schreiben.</p></div>
+      <p>Jede neue Kampagne bekommt das Standard-Set aus <span class="path">Einstellungen → E-Mail-Vorlagen</span>. In Kanzlei-Kampagnen ist „Neuer Kandidat für die Kanzlei“ gleich eingeschaltet, alle anderen Automatisierungen starten ausgeschaltet. Ausschalten könnt ihr sie jederzeit in der Kampagne.</p>
       <h3>Verschickt und erneut senden</h3>
       <p>Die Spalte <span class="ui">Verschickt</span> zeigt, wie viele Mails eine Automatisierung verschickt hat. Ein Klick öffnet <span class="ui">Gesendete E-Mails</span> mit Empfänger und Zeitpunkt. Dort gibt es eine Vorschau und <span class="ui">Erneut senden</span>, etwa wenn eine Kanzlei eine Mail nicht bekommen hat.</p>
       <h3>Eingangsbestätigung</h3>

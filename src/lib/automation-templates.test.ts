@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { automationDelayLabel, automationRecipientLabel, automationTriggerLabel, isCampaignTrigger } from "./automation-templates"
+import { automationDelayLabel, automationRecipientLabel, automationTriggerLabel, isCampaignTrigger, startsActive } from "./automation-templates"
 import { ASSIGNMENT_STATUS_OPTIONS, PORTAL_ASSIGNMENT_STATUS_VALUES, assignmentStatusLabel } from "./assignment-status"
 import { CANDIDATE_STATUS_OPTIONS } from "./candidate-status"
 
@@ -18,6 +18,16 @@ describe("Automatisierungs-Vorlagen", () => {
     expect(isCampaignTrigger("client_assigned")).toBe(true)
     expect(isCampaignTrigger("manual")).toBe(false)
     expect(automationTriggerLabel("client_assigned", null)).toBe("Kandidat der Kampagne zugeordnet")
+  })
+})
+
+describe("Neuer Kandidat für die Kanzlei standardmäßig an (Paket 98)", () => {
+  it("nur 'Kandidat zugeordnet' in echten Kanzlei-Kampagnen", () => {
+    expect(startsActive("client_assigned", { kind: "kanzlei", is_demo: false })).toBe(true)
+    expect(startsActive("client_assigned", { kind: "kanzlei", is_demo: true })).toBe(false)
+    expect(startsActive("client_assigned", { kind: "lead", is_demo: false })).toBe(false)
+    expect(startsActive("new_lead", { kind: "kanzlei", is_demo: false })).toBe(false)
+    expect(startsActive("status_change", { kind: "kanzlei", is_demo: false })).toBe(false)
   })
 })
 
