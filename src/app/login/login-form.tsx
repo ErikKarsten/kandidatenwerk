@@ -1,7 +1,7 @@
 "use client"
 
 import { useActionState } from "react"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { loginAction } from "./actions"
 import { cn } from "@/lib/utils"
 

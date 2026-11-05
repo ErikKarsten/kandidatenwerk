@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react"
 import { saveLeadFormMappingAction, syncLeadFormsNowAction, type LeadFormOverview } from "./field-actions"
 import type { CustomFieldDefinition } from "./actions"

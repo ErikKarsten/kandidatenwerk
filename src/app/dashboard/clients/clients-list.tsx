@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { Search } from "lucide-react"
 import { PaginationBar, readStoredPageSize, type PageSize } from "@/components/ui/pagination-bar"
 import { ClientCard, type ClientCardProps } from "@/components/dashboard/client-card"

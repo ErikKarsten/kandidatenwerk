@@ -1,8 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
+import Link from "@/components/app-link"
 import dynamic from "next/dynamic"
 import type { MapCircle, MapPoint } from "@/components/dashboard/matches-map"
 import { AssignmentControl, assignmentStatusLabel, type ActiveAssignment } from "./matches-section"
@@ -14,6 +13,7 @@ import { assignCandidateToCampaignAction } from "../../campaigns/[id]/actions"
 import { assignCandidateToClientAction } from "./actions"
 import { kanzleiDistanceKm, type KanzleiOption } from "@/lib/kanzlei-umkreis"
 import { RadiusControl } from "@/components/ui/radius-control"
+import { safeAction } from "@/lib/safe-action"
 import { isNationwide } from "@/lib/radius"
 
 export interface KanzleiCampaignOption {
@@ -87,7 +87,6 @@ export function AssignmentTab({
   const bb = useBerufsbilder()
   const berufsbildLabel = (value: string | null) => bb.label(value) ?? "ohne Berufsbild"
   const clientName = (id: string) => clients.find((c) => c.id === id)?.name ?? "Unbekannter Kunde"
-  const router = useRouter()
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM)
   const [assigningId, setAssigningId] = useState<string | null>(null)
   const [assignError, setAssignError] = useState<string | null>(null)
@@ -97,10 +96,10 @@ export function AssignmentTab({
   async function assign(clientId: string, campaignId: string | null) {
     setAssigningId(clientId)
     setAssignError(null)
-    const res = campaignId ? await assignCandidateToCampaignAction(campaignId, candidateId) : await assignCandidateToClientAction(candidateId, clientId)
+    // Kein router.refresh(): die Actions aktualisieren die Seite selbst (Paket 99).
+    const res = await safeAction(() => (campaignId ? assignCandidateToCampaignAction(campaignId, candidateId) : assignCandidateToClientAction(candidateId, clientId)))
     setAssigningId(null)
     if (res?.error) setAssignError(res.error)
-    else router.refresh()
   }
 
   // Kanzleien im Umkreis (nächster Standort zählt) - auch ohne Kanzlei-Kampagne. Kanzleien

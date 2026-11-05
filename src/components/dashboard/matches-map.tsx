@@ -1,7 +1,7 @@
 "use client"
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"

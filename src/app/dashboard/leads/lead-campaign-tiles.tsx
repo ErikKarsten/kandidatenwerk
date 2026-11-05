@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { useRouter } from "next/navigation"
 import { Search, Settings } from "lucide-react"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"

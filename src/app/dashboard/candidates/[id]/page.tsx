@@ -41,6 +41,11 @@ export default async function CandidateDetailPage({
     profileFieldConfig,
     { data: taskRows },
     { data: { user } },
+    { data: templateRows },
+    { data: messageRows },
+    { data: messageTemplateRows },
+    { data: tagRows },
+    berufsbilder,
   ] = await Promise.all([
     supabase
       .from("candidates")
@@ -102,19 +107,39 @@ export default async function CandidateDetailPage({
       .order("status")
       .order("due_date", { ascending: true, nullsFirst: false }),
     supabase.auth.getUser(),
+    // Paket 99: Diese Abfragen hängen von nichts ab und liefen vorher erst nach allen
+    // anderen, jede in einer eigenen Runde. Jetzt in derselben Runde.
+    supabase.from("field_templates").select("id, field_keys, is_default"),
+    // Reiter "Kommunikation" (Paket 18, T-84): verschickte Mails, Vorlagen an "Kandidat".
+    supabase.from("candidate_messages").select("*").eq("candidate_id", id).order("created_at", { ascending: false }),
+    supabase.from("automation_templates").select("id, name, subject, body_html").eq("recipient", "candidate").order("name"),
+    supabase.from("candidate_tag_list").select("tag").order("tag"),
+    loadBerufsbilder(),
   ])
 
   if (!candidate) notFound()
 
+  // Zweite und letzte Runde (Paket 99): alles, was auf Ergebnisse der ersten wartet,
+  // gemeinsam statt nacheinander. Signierte Datei-Links in einer Anfrage statt einer pro Datei.
   const creatorIds = [...new Set((history ?? []).map((h) => h.created_by).filter((id): id is string => id !== null))]
-  const { data: creatorProfiles } =
-    creatorIds.length > 0
-      ? await supabase.from("profiles").select("id, full_name").in("id", creatorIds)
-      : { data: [] }
+  // Eigene Notizen des Kunden im Portal (client_assignment_notes) - braucht die IDs der
+  // aktiven Zuordnungen (assignmentRows).
+  const assignmentIds = (assignmentRows ?? []).map((a) => a.id)
+  const filePaths = (fileRows ?? []).map((f) => f.file_path)
+  const [{ data: creatorProfiles }, { data: me }, { data: clientNoteRows }, { data: signedRows }] = await Promise.all([
+    creatorIds.length > 0 ? supabase.from("profiles").select("id, full_name").in("id", creatorIds) : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
+    // Dass es ein Musterdatensatz ist, sehen nur Admins und der Vertrieb (Paket 76/91).
+    user ? supabase.from("profiles").select("role, team").eq("id", user.id).maybeSingle() : Promise.resolve({ data: null }),
+    assignmentIds.length > 0
+      ? supabase
+          .from("client_assignment_notes")
+          .select("id, client_assignment_id, content, created_at")
+          .in("client_assignment_id", assignmentIds)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as { id: string; client_assignment_id: string; content: string; created_at: string }[] }),
+    filePaths.length > 0 ? supabase.storage.from("candidate-files").createSignedUrls(filePaths, 3600) : Promise.resolve({ data: [] as { path: string | null; signedUrl: string | null }[] }),
+  ])
   const creatorNameById = new Map((creatorProfiles ?? []).map((p) => [p.id, p.full_name]))
-
-  // Dass es ein Musterdatensatz ist, sehen nur Admins und der Vertrieb (Paket 76/91).
-  const { data: me } = user ? await supabase.from("profiles").select("role, team").eq("id", user.id).maybeSingle() : { data: null }
   const canSeeSamples = profileSeesSamples(me)
   const historyWithCreatorNames = (history ?? []).filter((h) => canSeeSamples || !revealsSample(h.content)).map((h) => ({
     id: h.id,
@@ -124,21 +149,9 @@ export default async function CandidateDetailPage({
     createdByName: h.created_by ? (creatorNameById.get(h.created_by) ?? null) : null,
   }))
 
-  // Eigene Notizen des Kunden im Portal (client_assignment_notes) - erst hier, nicht im
-  // Promise.all oben, da wir die IDs der aktiven Zuordnungen (assignmentRows) brauchen.
   // Kundenname wird bewusst aus den bereits geladenen assignmentRows/clientRows aufgelöst
   // (statt einer zusätzlichen profiles-Abfrage für den einzelnen Portal-Autor) - braucht
   // keine weitere Datenbankabfrage.
-  const assignmentIds = (assignmentRows ?? []).map((a) => a.id)
-  const { data: clientNoteRows } =
-    assignmentIds.length > 0
-      ? await supabase
-          .from("client_assignment_notes")
-          .select("id, client_assignment_id, content, created_at")
-          .in("client_assignment_id", assignmentIds)
-          .order("created_at", { ascending: false })
-      : { data: [] }
-
   const clientIdByAssignmentId = new Map((assignmentRows ?? []).map((a) => [a.id, a.client_id]))
   const clientNameById = new Map((clientRows ?? []).map((c) => [c.id, c.name]))
   const clientNotes = (clientNoteRows ?? []).map((n) => {
@@ -151,24 +164,21 @@ export default async function CandidateDetailPage({
     }
   })
 
-  const files = await Promise.all(
-    (fileRows ?? []).map(async (f) => {
-      const { data: urlData } = await supabase.storage
-        .from("candidate-files")
-        .createSignedUrl(f.file_path, 3600)
-      return {
-        id: f.id,
-        name: f.file_name,
-        storage_path: f.file_path,
-        size: f.file_size,
-        mime_type: f.mime_type,
-        created_at: f.created_at,
-        signedUrl: urlData?.signedUrl ?? null,
-        // Gleicher Link, aber als Download statt im Browser öffnen (Supabase: &download=).
-        downloadUrl: urlData?.signedUrl ? `${urlData.signedUrl}&download=${encodeURIComponent(f.file_name)}` : null,
-      }
-    })
-  )
+  const signedUrlByPath = new Map((signedRows ?? []).map((s) => [s.path, s.signedUrl]))
+  const files = (fileRows ?? []).map((f) => {
+    const signedUrl = signedUrlByPath.get(f.file_path) ?? null
+    return {
+      id: f.id,
+      name: f.file_name,
+      storage_path: f.file_path,
+      size: f.file_size,
+      mime_type: f.mime_type,
+      created_at: f.created_at,
+      signedUrl,
+      // Gleicher Link, aber als Download statt im Browser öffnen (Supabase: &download=).
+      downloadUrl: signedUrl ? `${signedUrl}&download=${encodeURIComponent(f.file_name)}` : null,
+    }
+  })
 
   type CampaignJoin = {
     title: string
@@ -233,7 +243,6 @@ export default async function CandidateDetailPage({
   })
 
   // Feld-Vorlagen der zugeordneten Kanzlei-Kampagnen bestimmen die Zusatzfelder (Paket 8).
-  const { data: templateRows } = await supabase.from("field_templates").select("id, field_keys, is_default")
   const templateFieldKeys = resolveTemplateFieldKeys(
     templateRows ?? [],
     (assignmentRows ?? [])
@@ -244,13 +253,7 @@ export default async function CandidateDetailPage({
   const clients = (clientRows ?? []).map((c) => ({ id: c.id, name: c.name }))
   const profiles = (profileRows ?? []).map((p) => ({ id: p.id, full_name: p.full_name }))
 
-  // Reiter "Kommunikation" (Paket 18, T-84): verschickte Mails, Vorlagen an "Kandidat",
-  // Platzhalter-Werte für die Vorlagen.
-  const [{ data: messageRows }, { data: messageTemplateRows }, { data: tagRows }] = await Promise.all([
-    supabase.from("candidate_messages").select("*").eq("candidate_id", id).order("created_at", { ascending: false }),
-    supabase.from("automation_templates").select("id, name, subject, body_html").eq("recipient", "candidate").order("name"),
-    supabase.from("candidate_tag_list").select("tag").order("tag"),
-  ])
+  // Reiter "Kommunikation": Platzhalter-Werte für die Vorlagen.
   const knownTags = (tagRows ?? []).map((r) => r.tag).filter((t): t is string => !!t)
   const firstAssignment = (assignmentRows ?? [])[0]
   const assignmentCampaign = firstAssignment
@@ -260,7 +263,7 @@ export default async function CandidateDetailPage({
     vars: {
       Kandidatenname: `${candidate.first_name} ${candidate.last_name}`.trim(),
       // Stellentitel statt internem Meta-Kampagnennamen (Paket 46).
-      Kampagnenname: assignmentCampaign?.title ?? mailCampaignName(campaigns, berufsbildLabel(candidate.berufsbild, await loadBerufsbilder())),
+      Kampagnenname: assignmentCampaign?.title ?? mailCampaignName(campaigns, berufsbildLabel(candidate.berufsbild, berufsbilder)),
       Kundenname: campaigns?.clients?.name ?? clients.find((c) => c.id === firstAssignment?.client_id)?.name ?? "",
       Email: candidate.email ?? "",
       Telefon: candidate.phone ?? "",

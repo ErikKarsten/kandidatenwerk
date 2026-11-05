@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useTransition } from "react"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { useRouter } from "next/navigation"
 import { Download, Printer, Sparkles } from "lucide-react"
 import type { CvPdfData } from "./cv-pdf"

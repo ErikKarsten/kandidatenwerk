@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { Eye, ExternalLink, Mail, RotateCw, X } from "lucide-react"
 import { previewAutomationMailAction, resendAutomationMailAction } from "./actions"
 import type { AutomationSend } from "@/lib/automation-sends"

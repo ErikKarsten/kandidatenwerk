@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useGoBack } from "@/components/navigation-tracker"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { ChevronLeft, Plus, Pencil, LayoutGrid, List, Search, Globe } from "lucide-react"
 import {
   updateCampaignTitleAction,

@@ -1,6 +1,6 @@
 "use client"
 
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { LegalLinks } from "@/components/legal-links"
 import { usePathname, useRouter } from "next/navigation"
 import { Briefcase, LayoutDashboard, Users, Megaphone, LogOut } from "lucide-react"

@@ -1,4 +1,4 @@
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { ChevronLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { BackButton } from "@/components/ui/back-button"

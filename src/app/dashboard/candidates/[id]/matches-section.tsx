@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
 import { updateAssignmentStatusAction, removeClientAssignmentAction } from "./actions"
+import { safeAction } from "@/lib/safe-action"
 import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 
 // Status-Liste und Farben zentral in src/lib/assignment-status.ts (Paket 15, T-71).
@@ -21,7 +21,6 @@ export interface ActiveAssignment {
 // Reiter Zuordnung (assignment-tab.tsx). Die frühere Match-Liste dieser Datei
 // (MatchesSection) ist seit Atlas T-35 durch den Reiter ersetzt.
 export function AssignmentControl({ assignment }: { assignment: ActiveAssignment }) {
-  const router = useRouter()
   const [statusPending, startStatusTransition] = useTransition()
   const [removeConfirm, setRemoveConfirm] = useState(false)
   const [removePending, startRemoveTransition] = useTransition()
@@ -30,25 +29,18 @@ export function AssignmentControl({ assignment }: { assignment: ActiveAssignment
   function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const newStatus = e.target.value
     setError(null)
+    // Kein router.refresh(): die Actions aktualisieren die Seite selbst (Paket 99).
     startStatusTransition(async () => {
-      const result = await updateAssignmentStatusAction(assignment.id, newStatus)
-      if (result?.error) {
-        setError(result.error)
-        return
-      }
-      router.refresh()
+      const result = await safeAction(() => updateAssignmentStatusAction(assignment.id, newStatus))
+      if (result?.error) setError(result.error)
     })
   }
 
   function handleRemove() {
     setError(null)
     startRemoveTransition(async () => {
-      const result = await removeClientAssignmentAction(assignment.id)
-      if (result?.error) {
-        setError(result.error)
-        return
-      }
-      router.refresh()
+      const result = await safeAction(() => removeClientAssignmentAction(assignment.id))
+      if (result?.error) setError(result.error)
     })
   }
 

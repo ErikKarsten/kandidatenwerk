@@ -1,4 +1,4 @@
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { Briefcase } from "lucide-react"
 import { ResetForm } from "./reset-form"
 import { LegalLinks } from "@/components/legal-links"

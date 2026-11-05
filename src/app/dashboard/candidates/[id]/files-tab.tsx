@@ -1,9 +1,9 @@
 "use client"
 
 import { useTransition, useState } from "react"
-import { useRouter } from "next/navigation"
 import { uploadFileAction, deleteFileAction } from "./actions"
 import { FileDropZone } from "@/components/ui/file-drop-zone"
+import { safeAction } from "@/lib/safe-action"
 import { Download } from "lucide-react"
 
 interface FileItem {
@@ -30,7 +30,6 @@ function formatSize(bytes: number | null): string {
 }
 
 export function FilesTab({ candidateId, files }: FilesTabProps) {
-  const router = useRouter()
   const [uploadPending, startUpload] = useTransition()
   const [deletePending, startDelete] = useTransition()
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -41,25 +40,18 @@ export function FilesTab({ candidateId, files }: FilesTabProps) {
     const fd = new FormData()
     fd.append("file", file)
 
+    // Kein router.refresh(): die Actions aktualisieren die Seite selbst (Paket 99).
     startUpload(async () => {
-      const result = await uploadFileAction(candidateId, fd)
-      if (result?.error) {
-        setUploadError(result.error)
-      } else {
-        router.refresh()
-      }
+      const result = await safeAction(() => uploadFileAction(candidateId, fd))
+      if (result?.error) setUploadError(result.error)
     })
   }
 
   function handleDelete(fileId: string, storagePath: string) {
     setDeleteError(null)
     startDelete(async () => {
-      const result = await deleteFileAction(fileId, storagePath, candidateId)
-      if (result?.error) {
-        setDeleteError(result.error)
-      } else {
-        router.refresh()
-      }
+      const result = await safeAction(() => deleteFileAction(fileId, storagePath, candidateId))
+      if (result?.error) setDeleteError(result.error)
     })
   }
 

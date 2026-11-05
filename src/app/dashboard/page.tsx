@@ -1,4 +1,4 @@
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { Users, Megaphone, UserSearch, UserX, Inbox, Euro, Target, Coins, BadgeCheck } from "lucide-react"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { createSupabaseServerClient } from "@/lib/supabase-server"

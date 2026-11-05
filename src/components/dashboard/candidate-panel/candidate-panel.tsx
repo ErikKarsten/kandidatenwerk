@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { ExternalLink, Mail, MapPin, Phone, X } from "lucide-react"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"

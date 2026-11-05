@@ -1,4 +1,4 @@
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { Users, Megaphone, Award, Mail, Phone } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"

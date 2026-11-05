@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { Search } from "lucide-react"
 import { ClientCard, type ClientCardProps } from "./client-card"
 import { PaginationBar, usePaginatedList } from "@/components/ui/pagination-bar"

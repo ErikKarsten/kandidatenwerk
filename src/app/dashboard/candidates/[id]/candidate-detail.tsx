@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useState, useTransition } from "react"
 import { useGoBack } from "@/components/navigation-tracker"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/app-link"
 import { Briefcase, Check, ChevronDown, ListTodo, Mail, MapPin, Megaphone, MoreHorizontal, Phone, Trash2, type LucideIcon } from "lucide-react"
 import { updateCandidateStatusAction } from "@/app/dashboard/candidates/actions"
 import {
@@ -35,6 +35,8 @@ import { useShowMode } from "@/lib/show-mode"
 import { CandidateShowView } from "./show-view"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
 import { CopyButton } from "@/components/ui/copy-button"
+import { safeAction } from "@/lib/safe-action"
+import { useUnsavedWarning } from "@/lib/use-unsaved-warning"
 
 const STATUS_OPTIONS = CANDIDATE_STATUS_OPTIONS
 const STATUS_COLORS = Object.fromEntries(CANDIDATE_STATUS_OPTIONS.map((o) => [o.value, o]))
@@ -114,11 +116,18 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
 
   // Status sofort zeigen, dann speichern (Paket 69: eigenes Menü statt Auswahlfeld).
   const [status, setStatus] = useState(candidate.status)
+  const [statusError, setStatusError] = useState<string | null>(null)
   function changeStatus(newStatus: string) {
+    const previous = status
     setStatus(newStatus)
+    setStatusError(null)
+    // Die Action aktualisiert die Seite selbst (revalidatePath), kein zweites Neuladen (Paket 99).
     startStatusTransition(async () => {
-      await updateCandidateStatusAction(candidate.id, newStatus, candidate.campaign_id ?? undefined)
-      router.refresh()
+      const result = await safeAction(() => updateCandidateStatusAction(candidate.id, newStatus, candidate.campaign_id ?? undefined))
+      if (result?.error) {
+        setStatus(previous)
+        setStatusError(result.error)
+      }
     })
   }
 
@@ -261,6 +270,7 @@ export function CandidateDetail({ candidate, canSeeSamples = true, history, file
                 </h1>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <StatusMenu value={status} pending={statusPending} onChange={changeStatus} />
+                  {statusError && <span className="text-xs text-red-600">{statusError}</span>}
                   <TagEditor
                     candidateId={candidate.id}
                     tags={canSeeSamples ? candidate.tags : candidate.tags.filter((t) => t !== SAMPLE_TAG)}
@@ -488,7 +498,6 @@ function DescriptionSection({
   placeholder?: string
   save?: (candidateId: string, text: string) => Promise<{ error: string } | null>
 }) {
-  const router = useRouter()
   const [value, setValue] = useState(notes ?? "")
   const [savedValue, setSavedValue] = useState(notes ?? "")
   const [pending, startTransition] = useTransition()
@@ -498,6 +507,7 @@ function DescriptionSection({
   const [tooLong, setTooLong] = useState(false)
   const textarea = useRef<HTMLTextAreaElement>(null)
   const dirty = value !== savedValue
+  useUnsavedWarning(dirty)
 
   // Höhe wächst mit dem Text (Paket 13) - bei langen Texten nur bis zur Einklapp-Höhe,
   // außer "Ganz anzeigen" ist an (Paket 67).
@@ -516,8 +526,9 @@ function DescriptionSection({
     if (!dirty || pending) return
     setError(null)
     const text = value
+    // Kein router.refresh() mehr: die Action aktualisiert die Seite selbst (Paket 99).
     startTransition(async () => {
-      const result = await save(candidateId, text)
+      const result = await safeAction(() => save(candidateId, text))
       if (result?.error) {
         setError(result.error)
         return
@@ -525,7 +536,6 @@ function DescriptionSection({
       setSavedValue(text)
       setJustSaved(true)
       setTimeout(() => setJustSaved(false), 2000)
-      router.refresh()
     })
   }
 
