@@ -150,7 +150,8 @@ export function AutomationsTab({
     }))
   }
 
-  // Vorlage oder Vorlagenset direkt als (ausgeschaltete) Automatisierungen übernehmen.
+  // Vorlage oder Vorlagenset direkt als Automatisierungen übernehmen (ausgeschaltet, außer
+  // "Kandidat der Kampagne zugeordnet" in Kanzlei-Kampagnen).
   function handleApply() {
     if (!applyValue) return
     setApplyMessage(null)
@@ -160,7 +161,7 @@ export function AutomationsTab({
       if ("error" in result) return setApplyMessage({ ok: false, text: result.error })
       setApplyMessage({
         ok: true,
-        text: result.added > 0 ? `${result.added} übernommen – zum Versenden noch einschalten.` : "Schon vorhanden, nichts übernommen.",
+        text: result.added > 0 ? `${result.added} übernommen – ausgeschaltete zum Versenden noch einschalten.` : "Schon vorhanden, nichts übernommen.",
       })
       setApplyValue("")
       router.refresh()

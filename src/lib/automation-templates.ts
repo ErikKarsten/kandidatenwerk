@@ -59,32 +59,45 @@ export function automationDelayLabel(seconds: number): string {
 
 type Db = SupabaseClient<Database>
 
+// "Neuer Kandidat für die Kanzlei" (Auslöser "Kandidat der Kampagne zugeordnet") ist in
+// echten Kanzlei-Kampagnen gleich eingeschaltet (Entscheidung 05.11.2026). Alle anderen
+// übernommenen Automatisierungen starten weiter ausgeschaltet (Entscheidung 06.10.2026).
+export function startsActive(trigger: string, campaign: { kind: string; is_demo: boolean }): boolean {
+  return trigger === "client_assigned" && campaign.kind === "kanzlei" && !campaign.is_demo
+}
+
 // Übernimmt Vorlagen als Automatisierungen in eine Kampagne. Bereits aus derselben
 // Vorlage übernommene werden übersprungen. Liefert die Zahl neu angelegter.
-export async function applyTemplatesToCampaign(db: Db, campaignId: string, templateIds: string[], active: boolean): Promise<number> {
+export async function applyTemplatesToCampaign(db: Db, campaignId: string, templateIds: string[]): Promise<number> {
   if (templateIds.length === 0) return 0
-  const [{ data: templates, error }, { data: existing }] = await Promise.all([
+  const [{ data: templates, error }, { data: existing }, { data: campaign }] = await Promise.all([
     db.from("automation_templates").select("*").in("id", templateIds),
     db.from("campaign_automations").select("template_id").eq("campaign_id", campaignId).not("template_id", "is", null),
+    db.from("campaigns").select("kind, is_demo").eq("id", campaignId).maybeSingle(),
   ])
   if (error) throw new Error(error.message)
   const already = new Set((existing ?? []).map((e) => e.template_id))
+  const now = new Date().toISOString()
   const rows = (templates ?? [])
     // Manuelle Vorlagen (Kommunikation) werden nie zu Automatisierungen.
     .filter((t) => !already.has(t.id) && isCampaignTrigger(t.trigger))
-    .map((t) => ({
-      campaign_id: campaignId,
-      template_id: t.id,
-      name: t.name,
-      trigger: t.trigger,
-      trigger_status: t.trigger_status,
-      delay_seconds: t.delay_seconds,
-      recipient: t.recipient,
-      subject: t.subject,
-      body_html: t.body_html,
-      active,
-      active_since: active ? new Date().toISOString() : null,
-    }))
+    .map((t) => {
+      const active = !!campaign && startsActive(t.trigger, campaign)
+      return {
+        campaign_id: campaignId,
+        template_id: t.id,
+        name: t.name,
+        trigger: t.trigger,
+        trigger_status: t.trigger_status,
+        delay_seconds: t.delay_seconds,
+        recipient: t.recipient,
+        subject: t.subject,
+        body_html: t.body_html,
+        active,
+        // Ab jetzt: keine Mail für Kandidaten, die vorher schon zugeordnet waren.
+        active_since: active ? now : null,
+      }
+    })
   if (rows.length === 0) return 0
   const { error: insertError } = await db.from("campaign_automations").insert(rows)
   if (insertError) throw new Error(insertError.message)
@@ -96,14 +109,14 @@ export async function templateIdsOfSet(db: Db, setId: string): Promise<string[]>
   return (data ?? []).map((r) => r.template_id)
 }
 
-// Neue Kampagne: Standard-Set übernehmen, ausgeschaltet (Entscheidung 06.10.2026) - es
-// geht nichts raus, bis jemand die Automatisierungen in der Kampagne einschaltet.
+// Neue Kampagne: Standard-Set übernehmen. "Neuer Kandidat für die Kanzlei" ist in
+// Kanzlei-Kampagnen gleich an, alles andere aus (siehe startsActive).
 // Fehler werden geloggt, damit die Kampagnenanlage nicht daran scheitert.
 export async function applyDefaultTemplateSet(db: Db, campaignId: string): Promise<void> {
   try {
     const { data: set } = await db.from("automation_template_sets").select("id").eq("is_default", true).limit(1).maybeSingle()
     if (!set) return
-    await applyTemplatesToCampaign(db, campaignId, await templateIdsOfSet(db, set.id), false)
+    await applyTemplatesToCampaign(db, campaignId, await templateIdsOfSet(db, set.id))
   } catch (err) {
     console.error("Standard-Vorlagenset konnte nicht übernommen werden:", err instanceof Error ? err.message : err)
   }
