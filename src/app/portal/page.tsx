@@ -9,7 +9,7 @@ import { isPortalVisible } from "@/lib/portal-visibility"
 
 // Kandidaten nach Status = Status der Zuordnung beim Kunden (Paket 15, T-71) - dieselben
 // Namen wie im Backend und in der Kandidatenliste (src/lib/assignment-status.ts).
-const STATUS_COLORS: Record<string, string> = { inbox: "#4ba3c3", vg: "#1e56a0", ja: "#1a9a6a", nein: "#9ca3af" }
+const STATUS_COLORS: Record<string, string> = { inbox: "#4ba3c3", vg: "#1e56a0", ja: "#1a9a6a", nein: "#9ca3af", abgesagt: "#d97706" }
 
 export default async function PortalDashboardPage() {
   const supabase = await createSupabaseServerClient()

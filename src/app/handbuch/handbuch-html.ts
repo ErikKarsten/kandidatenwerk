@@ -264,7 +264,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
         <li>Jeder Status kann in einer Kampagne eine Automatisierung auslösen, etwa eine Mail bei „Nicht erreicht“. Siehe <a href="#automatisierungen">Automatisierungen</a>.</li>
         <li>Bekommt ein zugeordneter Kandidat einen anderen Status als „Vorqualifiziert“, verschwindet er aus dem Portal der Kanzlei.</li>
       </ul>
-      <p>Bei der Kanzlei hat jede Zuordnung einen eigenen Status, den auch die Kanzlei setzt: <span class="ui">Neu</span>, <span class="ui">Vorstellungsgespräch</span>, <span class="ui">Eingestellt</span>, <span class="ui">Abgelehnt</span>.</p>
+      <p>Bei der Kanzlei hat jede Zuordnung einen eigenen Status, den auch die Kanzlei setzt: <span class="ui">Neu</span>, <span class="ui">Vorstellungsgespräch</span>, <span class="ui">Eingestellt</span>, <span class="ui">Abgelehnt</span>, <span class="ui">Bewerber hat abgesagt</span>. „Abgelehnt“ heißt, die Kanzlei hat abgesagt; „Bewerber hat abgesagt“ heißt, der Kandidat hat abgesagt.</p>
     </section>
 
     <section class="chap" id="lebenslauf">
@@ -431,7 +431,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <p class="kicker">Jede Kanzlei hat eigene Zugänge und sieht dort nur ihre Kandidaten.</p>
       <ul>
         <li>Zu sehen sind die zugeordneten Kandidaten mit Status „Vorqualifiziert“, in Reitern für Profil, Dateien und Notizen.</li>
-        <li>Die Kanzlei setzt den Status der Zuordnung selbst: Neu, Vorstellungsgespräch, Eingestellt, Abgelehnt.</li>
+        <li>Die Kanzlei setzt den Status der Zuordnung selbst: Vorstellungsgespräch, Eingestellt, Abgelehnt oder Bewerber hat abgesagt. Neu ist der Startwert.</li>
         <li>Notizen der Kanzlei seht ihr am Kandidaten unter „Notizen vom Kunden“.</li>
         <li><span class="ui">Lebenslauf</span>: die vollständige Fassung mit genau den Feldern, die die Kanzlei im Portal sieht, und dem Key Account Manager als Ansprechpartner.</li>
       </ul>
