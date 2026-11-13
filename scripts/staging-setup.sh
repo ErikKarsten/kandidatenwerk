@@ -14,7 +14,7 @@
 # Verbindungen (Supabase > Connect > Session pooler), Passwort jeweils einsetzen:
 #   LIVE_DB_URL=postgresql://postgres.<ref>:<passwort>@aws-...pooler.supabase.com:5432/postgres
 #   STAGING_DB_URL=postgresql://postgres.<ref>:<passwort>@aws-...pooler.supabase.com:5432/postgres
-# Aufruf: bash scripts/staging-setup.sh [--nur-dump]   (fragt beide Verbindungen verdeckt ab)
+# Aufruf: bash scripts/staging-setup.sh [--nur-dump | --fortsetzen]   (fragt die Verbindungen ab)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="/Applications/Postgres.app/Contents/Versions/latest/bin:$PATH"
@@ -61,7 +61,9 @@ pg_dump "$LIVE_DB_URL" --schema-only --schema=public --no-owner --quote-all-iden
 #  Standardrechte für supabase_admin dürfte der Nutzer postgres ohnehin nicht setzen.)
 # Storage-Buckets und -Richtlinien gehören zum Schema der App (Dateien, Team-Fotos).
 pg_dump "$LIVE_DB_URL" --data-only --table=storage.buckets --no-owner --inserts > supabase/storage-buckets.sql
-psql "$LIVE_DB_URL" -At -c "select format('create policy %I on storage.objects as %s for %s to %s%s%s;',
+# Leerer Suchpfad: Tabellen und Funktionen in den Regeln werden voll ausgeschrieben
+# (public.client_assignments), sonst findet Staging sie beim Einspielen nicht.
+psql "$LIVE_DB_URL" -qAt -c "set search_path = ''" -c "select format('create policy %I on storage.objects as %s for %s to %s%s%s;',
     policyname, permissive, cmd, array_to_string(roles, ', '),
     coalesce(' using (' || qual || ')', ''), coalesce(' with check (' || with_check || ')', ''))
   from pg_policies where schemaname = 'storage' and tablename = 'objects' order by policyname" \
@@ -77,17 +79,34 @@ if [[ "$STAGING_DB_URL" == "$LIVE_DB_URL" ]]; then echo "STAGING_DB_URL zeigt au
 live_ref=$(sed -E 's#^postgres(ql)?://postgres\.([^:]+):.*#\2#' <<<"$LIVE_DB_URL")
 staging_ref=$(sed -E 's#^postgres(ql)?://postgres\.([^:]+):.*#\2#' <<<"$STAGING_DB_URL")
 if [[ "$live_ref" == "$staging_ref" ]]; then echo "STAGING_DB_URL gehört zum Live-Projekt - Abbruch."; exit 1; fi
-if [[ "$(psql "$STAGING_DB_URL" -At -c "select to_regclass('public.candidates') is not null")" == "t" ]]; then
-  echo "Staging hat schon Tabellen. Für einen Neuaufbau das Staging-Projekt zurücksetzen (Supabase > Database > Reset) - Abbruch."
+# --fortsetzen: Schema steht schon (z. B. nach einem Abbruch bei Speicher oder Konfiguration).
+schema_da=$(psql "$STAGING_DB_URL" -At -c "select to_regclass('public.candidates') is not null")
+if [[ "$schema_da" == "t" && "${1:-}" != "--fortsetzen" ]]; then
+  echo "Staging hat schon Tabellen. Fortsetzen ohne erneutes Schema: bash scripts/staging-setup.sh --fortsetzen"
+  echo "Für einen Neuaufbau das Staging-Projekt zurücksetzen (Supabase > Database > Reset) - Abbruch."
   exit 1
 fi
 
-echo "3/4 Erweiterungen und Schema in Staging einspielen"
+echo "3/4 Erweiterungen, Schema und Dateispeicher in Staging einspielen"
+if [[ "$schema_da" == "t" ]]; then echo "   Schema steht schon - übersprungen."; else
 psql "$STAGING_DB_URL" -q -f supabase/extensions.sql || echo "Hinweis: nicht jede Erweiterung ließ sich anlegen (siehe oben)."
 psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q --single-transaction -f supabase/schema.sql
-psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q --single-transaction -f supabase/storage-buckets.sql -f supabase/storage-policies.sql
+fi
+# Eigene Aufrufe: pg_dump-Dateien setzen den Suchpfad für die ganze Verbindung auf leer.
+if [[ "$(psql "$STAGING_DB_URL" -At -c "select count(*) from storage.buckets")" == "0" ]]; then
+  psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q --single-transaction -f supabase/storage-buckets.sql
+fi
+regeln=$(mktemp)
+psql "$STAGING_DB_URL" -At -c "select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects'" > "$regeln"
+grep -v -F -f <(sed 's/.*/create policy "&" on/' "$regeln"; echo "§kein-treffer§") supabase/storage-policies.sql \
+  | psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q --single-transaction
+rm -f "$regeln"
 
 echo "4/4 Konfiguration in Staging einspielen"
-psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q --single-transaction -c "set session_replication_role = replica;" -f supabase/staging-config.sql
+if [[ "$(psql "$STAGING_DB_URL" -At -c "select count(*) from public.agencies")" != "0" ]]; then
+  echo "   Konfiguration ist schon da - übersprungen."
+else
+  psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q --single-transaction -c "set session_replication_role = replica;" -f supabase/staging-config.sql
+fi
 psql "$STAGING_DB_URL" -q -c "NOTIFY pgrst, 'reload schema';"
 echo "Fertig. Jetzt: npx tsx scripts/staging-seed.ts (Admin-Login und Testdaten)."
