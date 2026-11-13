@@ -102,7 +102,8 @@ if [[ "$(psql "$STAGING_DB_URL" -At -c "select count(*) from storage.buckets")" 
 fi
 regeln=$(mktemp)
 psql "$STAGING_DB_URL" -At -c "select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects'" > "$regeln"
-grep -v -F -f <(awk '{ print "create policy \"" $0 "\" on "; print "create policy " $0 " on " }' "$regeln"; echo "§kein-treffer§") supabase/storage-policies.sql \
+# "|| true": grep meldet "nichts gefunden", wenn alle Regeln schon da sind - das ist kein Fehler.
+{ grep -v -F -f <(awk '{ print "create policy \"" $0 "\" on "; print "create policy " $0 " on " }' "$regeln"; echo "§kein-treffer§") supabase/storage-policies.sql || true; } \
   | psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q --single-transaction
 rm -f "$regeln"
 
