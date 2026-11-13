@@ -10,7 +10,7 @@ import { emailButton, renderEmailLayout } from "@/lib/email-layout"
 
 type Supabase = SupabaseClient<Database>
 
-const APP_BASE_URL = "https://kandidatenwerk.kanzleistelle24.de"
+import { APP_BASE_URL } from "@/lib/app-url"
 
 export interface TaskRemindersResult {
   dueTasks: number

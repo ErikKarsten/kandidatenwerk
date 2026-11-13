@@ -1,5 +1,7 @@
-// Testdaten für Staging (T-99), nach scripts/staging-setup.sh: Admin-Login, eine
-// Testkanzlei mit Portal-Zugang, eine Kampagne und Kandidaten in typischen Status.
+// Testdaten für Staging (T-99, aktualisiert Paket 102), nach scripts/staging-setup.sh:
+// Admin-Login, eine Testkanzlei mit Portal-Zugang, eine Lead-Kampagne (Herkunft) und eine
+// Kanzlei-Kampagne, Kandidaten in typischen Status und Zuordnungen zur Kanzlei in den
+// Portal-Status (Neu, Vorstellungsgespräch, Bewerber hat abgesagt).
 // Alle Test-E-Mail-Adressen sind Plus-Adressen des Staging-Admins (name+kandidat1@...) -
 // Mails aus Staging landen so nur im eigenen Postfach. Mehrfach ausführbar.
 //
@@ -52,39 +54,72 @@ async function main() {
   const portalId = await ensureUser(plus("kanzlei"), adminPassword)
   await db.from("profiles").upsert({ id: portalId, agency_id: null, client_id: client.id, role: "client", full_name: "Kanzlei Test", email: plus("kanzlei") })
 
-  let { data: campaign } = await db.from("campaigns").select("id").eq("client_id", client.id).limit(1).maybeSingle()
+  let { data: campaign } = await db.from("campaigns").select("id").eq("client_id", client.id).eq("kind", "kanzlei").limit(1).maybeSingle()
   if (!campaign) {
     const res = await db
       .from("campaigns")
-      .insert({ agency_id: agency.id, client_id: client.id, title: "Steuerfachangestellte Bonn (Staging)", berufsbild: "steuerfachangestellte", plz: "53111", radius_km: 30 })
+      .insert({ agency_id: agency.id, client_id: client.id, kind: "kanzlei", title: "Steuerfachangestellte Bonn (Staging)", berufsbild: "steuerfachangestellte", plz: "53111", radius_km: 30 })
       .select("id")
       .single()
-    if (res.error) throw new Error(res.error.message)
+    if (res.error) throw new Error(`Kanzlei-Kampagne: ${res.error.message}`)
     campaign = res.data
   }
 
+  let { data: leadCampaign } = await db.from("campaigns").select("id").eq("kind", "lead").eq("title", "Meta-Leads Bonn (Staging)").maybeSingle()
+  if (!leadCampaign) {
+    const res = await db
+      .from("campaigns")
+      .insert({ agency_id: agency.id, kind: "lead", title: "Meta-Leads Bonn (Staging)", berufsbild: "steuerfachangestellte", plz: "53111", radius_km: 30 })
+      .select("id")
+      .single()
+    if (res.error) throw new Error(`Lead-Kampagne: ${res.error.message}`)
+    leadCampaign = res.data
+  }
+
+  // assignment: Status der Zuordnung zur Testkanzlei (null = nicht zugeordnet)
   const candidates = [
-    { tag: "kandidat1", first_name: "Anna", last_name: "Neu", status: "neu" },
-    { tag: "kandidat2", first_name: "Ben", last_name: "Vorqualifiziert", status: "vorqualifiziert" },
-    { tag: "kandidat3", first_name: "Clara", last_name: "Kontakt", status: "in_kontakt" },
+    { tag: "kandidat1", first_name: "Anna", last_name: "Neu", status: "neu", assignment: null },
+    { tag: "kandidat2", first_name: "Ben", last_name: "Vorqualifiziert", status: "vorqualifiziert", assignment: "inbox" },
+    { tag: "kandidat3", first_name: "Clara", last_name: "Kontakt", status: "in_kontakt", assignment: "vg" },
+    { tag: "kandidat4", first_name: "David", last_name: "Absage", status: "in_kontakt", assignment: "abgesagt" },
+    { tag: "kandidat5", first_name: "Eva", last_name: "Pruefung", status: "in_pruefung", assignment: null },
   ]
   for (const c of candidates) {
     const email = plus(c.tag)
-    const { data: existing } = await db.from("candidates").select("id").eq("email", email).maybeSingle()
-    if (existing) continue
-    const { error } = await db.from("candidates").insert({
-      campaign_id: campaign.id,
-      first_name: c.first_name,
-      last_name: c.last_name,
-      email,
-      phone: "+49 228 000000",
-      status: c.status,
-      source: "manual",
-      berufsbild: "steuerfachangestellte",
-      plz: "53111",
-      custom_fields: { verfuegbar_ab: "sofort", wechselgrund: "Testdaten für Staging" },
-    })
-    if (error) throw new Error(`${c.first_name}: ${error.message}`)
+    let { data: candidate } = await db.from("candidates").select("id").eq("email", email).maybeSingle()
+    if (!candidate) {
+      const { data: inserted, error } = await db
+        .from("candidates")
+        .insert({
+          campaign_id: leadCampaign.id,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          email,
+          phone: "+49 228 000000",
+          status: c.status,
+          source: "manual",
+          berufsbild: "steuerfachangestellte",
+          plz: "53111",
+          custom_fields: { verfuegbar_ab: "sofort", wechselgrund: "Testdaten für Staging" },
+        })
+        .select("id")
+        .single()
+      if (error) throw new Error(`${c.first_name}: ${error.message}`)
+      candidate = inserted
+    }
+    if (!c.assignment) continue
+    const { data: assigned } = await db
+      .from("client_assignments")
+      .select("id")
+      .eq("candidate_id", candidate.id)
+      .eq("campaign_id", campaign.id)
+      .is("removed_at", null)
+      .maybeSingle()
+    if (assigned) continue
+    const { error: assignError } = await db
+      .from("client_assignments")
+      .insert({ candidate_id: candidate.id, campaign_id: campaign.id, client_id: client.id, status: c.assignment, created_by: adminId })
+    if (assignError) throw new Error(`Zuordnung ${c.first_name}: ${assignError.message}`)
   }
   console.log(`Staging bereit: Admin ${adminEmail}, Portal ${plus("kanzlei")} (gleiches Passwort), ${candidates.length} Testkandidaten.`)
 }

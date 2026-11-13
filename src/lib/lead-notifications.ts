@@ -2,7 +2,7 @@ import { createSupabaseAdminClient } from "./supabase-admin"
 import { sendEmail } from "./brevo-mail"
 import { emailButton, renderEmailLayout } from "@/lib/email-layout"
 
-const APP_BASE_URL = "https://kandidatenwerk.kanzleistelle24.de"
+import { APP_BASE_URL } from "@/lib/app-url"
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")

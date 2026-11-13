@@ -2,6 +2,7 @@
 
 import { isTeam, type Team } from "@/lib/teams"
 import { createPasswordLink } from "@/lib/password-link"
+import { APP_BASE_URL } from "@/lib/app-url"
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
@@ -157,7 +158,7 @@ export async function inviteTeamMemberAction(formData: FormData): Promise<{ erro
   // Profil-/Foto-Fehler den bereits eingeladenen Auth-User wieder entfernen, damit
   // kein verwaister Login ohne Profil zurueckbleibt.
   const { data, error } = await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
-    redirectTo: "https://kandidatenwerk.kanzleistelle24.de/set-password",
+    redirectTo: `${APP_BASE_URL}/set-password`,
   })
   if (error) return { error: error.message }
   if (!data.user) return { error: "Einladung konnte nicht erstellt werden." }

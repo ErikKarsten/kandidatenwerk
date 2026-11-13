@@ -3,6 +3,7 @@ import type { Database } from "@/types/database"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
 import { renderEmailLayout } from "@/lib/email-layout"
 import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
+import { APP_BASE_URL } from "@/lib/app-url"
 
 // #Kampagnenname in Mails an Kandidaten (Paket 46): interne Meta-Kampagnennamen wie
 // "KS24 - Video Neele - Region Essen/ …" nie zeigen, stattdessen die Stelle (Berufsbild).
@@ -24,7 +25,6 @@ export interface TemplateVars {
   Bewerberlink: string
 }
 
-const APP_BASE_URL = "https://kandidatenwerk.kanzleistelle24.de"
 
 // Direktlink auf den Kandidaten im Kundenportal (Paket 16, T-76, Variable #Bewerberlink).
 export function candidatePortalLink(candidateId: string): string {

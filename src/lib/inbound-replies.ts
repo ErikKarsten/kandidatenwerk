@@ -13,7 +13,7 @@ import type { Database } from "@/types/database"
 import { sendEmail } from "@/lib/brevo-mail"
 import { emailButton, renderEmailLayout } from "@/lib/email-layout"
 
-const APP_BASE_URL = "https://kandidatenwerk.kanzleistelle24.de"
+import { APP_BASE_URL } from "@/lib/app-url"
 
 export function replyAddressFor(messageId: string): string | null {
   const domain = process.env.INBOUND_REPLY_DOMAIN?.trim()

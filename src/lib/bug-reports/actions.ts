@@ -30,7 +30,7 @@ import {
   type SubmitBugReportResult,
 } from "@/lib/bug-reports/shared"
 
-const APP_BASE_URL = "https://kandidatenwerk.kanzleistelle24.de"
+import { APP_BASE_URL } from "@/lib/app-url"
 const STAFF_ROLES = ["agency_admin", "agency_member"]
 
 interface BugReportRow {

@@ -52,6 +52,11 @@
       "name": "kandidatenwerk-staging",
       "routes": [],
       "workers_dev": true,
+      // Paket 102: schaltet die Mail-Sperre ein (src/lib/mail-guard.ts) - Mails nur an
+      // MAIL_ALLOWLIST aus .env.staging.
+      "vars": {
+        "APP_ENV": "staging"
+      },
       // Gleiche Cronjobs wie live - Staging-Daten sind reine Testdaten.
       "triggers": {
         "crons": ["*/5 * * * *", "*/30 * * * *", "0 * * * *", "0 6 * * *"]
