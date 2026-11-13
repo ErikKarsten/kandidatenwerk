@@ -71,7 +71,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <ResponsiveShell
       title="Kandidatenwerk"
-      tone="light"
       sidebar={
         <Sidebar
           candidatesCount={candidatesCount ?? 0}

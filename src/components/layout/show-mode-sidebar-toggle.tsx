@@ -18,18 +18,18 @@ export function ShowModeSidebarToggle({ collapsed = false }: { collapsed?: boole
       aria-checked={on}
       onClick={() => setOn(!on)}
       title={on ? "Anonymisierten Modus beenden" : "Personenbezogene Daten ausblenden, z. B. zum Vorführen beim Kunden"}
-      // Heller Look der Sidebar (Paket 105); eingeschaltet weiter deutlich violett.
+      // Kompakte Zeile der Sidebar (Paket 105); eingeschaltet weiter deutlich violett.
       className={cn(
         "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[13px] tracking-wide transition-colors",
-        on ? "hover:bg-violet-500/90" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
+        on ? "hover:bg-violet-500/90" : "hover:bg-white/10 hover:text-white",
         collapsed && "justify-center px-0"
       )}
-      style={on ? { backgroundColor: "#7c3aed", color: "#fff" } : undefined}
+      style={on ? { backgroundColor: "#7c3aed", color: "#fff" } : { color: "rgba(219, 234, 254, 0.7)" }}
     >
       {on ? (
         <EyeOff className="h-4 w-4 shrink-0" strokeWidth={1.75} />
       ) : (
-        <Eye className="h-4 w-4 shrink-0 text-gray-400 group-hover:text-gray-600" strokeWidth={1.75} />
+        <Eye className="h-4 w-4 shrink-0" strokeWidth={1.75} />
       )}
       {!collapsed && (
         <>
@@ -38,7 +38,7 @@ export function ShowModeSidebarToggle({ collapsed = false }: { collapsed?: boole
           <span
             aria-hidden
             className="relative h-4 w-7 shrink-0 rounded-full transition-colors"
-            style={{ backgroundColor: on ? "rgba(255,255,255,0.35)" : "#d1d5db" }}
+            style={{ backgroundColor: on ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.15)" }}
           >
             <span
               className="absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all"
