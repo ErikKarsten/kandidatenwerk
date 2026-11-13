@@ -11,7 +11,7 @@ import { geocodePlz, plzWithin } from "@/lib/geocode-plz"
 import { generateText } from "@/lib/llm"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
 import { cleanWerdegang } from "@/lib/cv-werdegang"
-import { SAMPLE_FOCUS_OPTIONS, type SampleSoftware } from "@/lib/sample-focus"
+import { cleanSoftware, focusOptions, sampleField, type SampleField, type SampleSoftware } from "@/lib/sample-focus"
 import { sampleEmailDomain, samplePhone } from "@/lib/sample-contact"
 
 export const SAMPLE_COUNT = 3
@@ -118,14 +118,57 @@ const SOFTWARE_HINT: Record<SampleSoftware, string> = {
   DATEV: "DATEV (Kanzlei-Rechnungswesen, Lohn und Gehalt bzw. LODAS, Jahresabschluss) und immer auch DATEV Unternehmen online",
   ADDISON: "ADDISON (Wolters Kluwer)",
   Agenda: "Agenda",
+  "RA-MICRO": "RA-MICRO",
+  Advoware: "Advoware",
+  "DATEV Anwalt": "DATEV Anwalt classic",
+}
+
+// Fachrichtung (Paket 103): Rechtsanwaltsfachangestellte bekamen vorher Lebensläufe aus
+// Steuerkanzleien mit Lohn und Jahresabschlüssen. Alles Kanzlei-Spezifische des Auftrags
+// steht deshalb hier je Fachrichtung.
+const FIELD_PROMPT: Record<SampleField, {
+  system: string
+  kanzlei: string
+  kanzleien: string
+  herkunft: string
+  mandanten: string
+  aufgaben: string
+  software: (hint: (s: SampleSoftware) => string) => string
+  ausbildungBeispiel: string
+  aktuelleKanzlei: string
+}> = {
+  steuer: {
+    system: "Du erstellst fiktive Beispieldaten für eine Recruiting-Software für Steuerkanzleien. Alle Personen sind frei erfunden.",
+    kanzlei: "Steuerkanzlei",
+    kanzleien: "Steuerkanzleien",
+    herkunft: "- Alle haben ihre Ausbildung in einer deutschen Steuerkanzlei gemacht und ausschließlich in Steuerkanzleien gearbeitet - keine Industrie, keine Unternehmen, keine Buchhaltungsabteilungen.",
+    mandanten: "- Keine Branchen nennen: Die Mandanten sind querbeet gemischt, ohne Branchenschwerpunkt.",
+    aufgaben: "",
+    software: (hint) => `- Kanzleisoftware: Die angegebene Software zieht sich durch datev_erfahrung, Beschreibung und Werdegang. DATEV heißt: ${hint("DATEV")}. Bei ${hint("ADDISON")} oder Agenda steht in datev_erfahrung, dass die Person damit arbeitet und offen für DATEV ist.`,
+    ausbildungBeispiel: "Steuerfachangestellte 2012, Steuerfachwirtin 2016",
+    aktuelleKanzlei: 'aktuelle_steuerkanzlei ("Ja"), ',
+  },
+  recht: {
+    system: "Du erstellst fiktive Beispieldaten für eine Recruiting-Software für Rechtsanwaltskanzleien. Alle Personen sind frei erfunden.",
+    kanzlei: "Rechtsanwaltskanzlei",
+    kanzleien: "Rechtsanwaltskanzleien",
+    herkunft: "- Alle haben ihre Ausbildung in einer deutschen Rechtsanwaltskanzlei gemacht und ausschließlich in Rechtsanwaltskanzleien gearbeitet - keine Steuerkanzleien, keine Rechtsabteilungen von Unternehmen, keine Gerichte.",
+    mandanten: "- Rechtsgebiete je Station passend und realistisch, z. B. Arbeitsrecht, Familienrecht, Mietrecht, Verkehrsrecht, Erbrecht, Vertragsrecht, Insolvenzrecht - keine Mandantennamen.",
+    aufgaben:
+      "- Aufgaben stammen ausschließlich aus dem Alltag einer/eines Rechtsanwaltsfachangestellten, z. B. Fristen- und Terminüberwachung im Fristenkalender, Posteingang und -ausgang über das beA (besonderes elektronisches Anwaltspostfach), Anlage und Führung der (elektronischen) Akten, Mandantenempfang, Telefon und Korrespondenz, Schriftsätze nach Diktat oder Vorlage, Kostennoten und Gebührenabrechnung nach RVG, Kostenfestsetzungsanträge, gerichtliches Mahnverfahren, Zwangsvollstreckung, Vorbereitung von Gerichts- und Mandantenterminen. Keine steuerlichen oder buchhalterischen Aufgaben: keine Finanz- oder Lohnbuchhaltung, keine Jahresabschlüsse, keine Steuererklärungen, kein DATEV Unternehmen online, kein LODAS.",
+    software: (hint) => `- Kanzleisoftware: Die angegebene Anwaltssoftware (${hint("RA-MICRO")}, ${hint("Advoware")} oder ${hint("DATEV Anwalt")}) zieht sich durch datev_erfahrung, Beschreibung und Werdegang; dazu immer das beA. In datev_erfahrung steht, mit welcher Anwaltssoftware die Person arbeitet (bei anderer Software als DATEV Anwalt: offen für DATEV).`,
+    ausbildungBeispiel: "Rechtsanwaltsfachangestellte 2012, Rechtsfachwirtin 2017",
+    aktuelleKanzlei: "",
+  },
 }
 
 // Qualifikation je Berufsbild (Paket 71): Die Person hat sie heute bereits - ein
 // "Steuerberater" ist bestellt, kein Steuerfachangestellter mit Fortbildungsplänen.
-export type QualificationKind = "steuerberater" | "steuerfachwirt" | "bilanzbuchhalter" | "lohnbuchhalter" | "finanzbuchhalter" | "steuerfachangestellte" | "sonstige"
+export type QualificationKind = "steuerberater" | "steuerfachwirt" | "bilanzbuchhalter" | "lohnbuchhalter" | "finanzbuchhalter" | "steuerfachangestellte" | "rechtsanwaltsfachangestellte" | "sonstige"
 
 export function qualificationKind(berufsbild: string): QualificationKind {
   const b = berufsbild.toLowerCase()
+  if (sampleField(b) === "recht") return "rechtsanwaltsfachangestellte"
   if (/steuerberater/.test(b)) return "steuerberater"
   if (/steuerfachwirt/.test(b)) return "steuerfachwirt"
   if (/bilanzbuchhalter/.test(b)) return "bilanzbuchhalter"
@@ -149,6 +192,8 @@ function qualificationRule(kind: QualificationKind, label: string): string {
       return "Alle sind heute bereits qualifizierte Finanzbuchhalter:innen: abgeschlossene Ausbildung zur/zum Steuerfachangestellten (oder geprüfte:r Finanzbuchhalter:in IHK) und mehrere Jahre Finanzbuchhaltung in Steuerkanzleien. Aktuelle Position: Finanzbuchhalter:in. Eine Fortbildung zum Steuerfachwirt darf geplant sein, nie zum Bilanzbuchhalter."
     case "steuerfachangestellte":
       return "Alle haben die Ausbildung zur/zum Steuerfachangestellten heute bereits abgeschlossen (mit Jahr) und arbeiten seitdem als Steuerfachangestellte:r. Eine Fortbildung zum Steuerfachwirt darf geplant sein, nie zum Bilanzbuchhalter."
+    case "rechtsanwaltsfachangestellte":
+      return "Alle haben die Ausbildung zur/zum Rechtsanwaltsfachangestellten (oder Rechtsanwalts- und Notarfachangestellten) heute bereits abgeschlossen (mit Jahr) und arbeiten seitdem als Rechtsanwaltsfachangestellte:r in Rechtsanwaltskanzleien. Eine Fortbildung zum geprüften Rechtsfachwirt darf geplant oder abgeschlossen sein."
     default:
       return `Alle haben die Qualifikation "${label}" heute bereits abgeschlossen (mit Jahr) und arbeiten aktuell als ${label}.`
   }
@@ -168,7 +213,11 @@ export function sampleProblems(s: Pick<SampleCandidate, "werdegang" | "felder"> 
     steuerberater: /steuerberater/i,
     steuerfachwirt: /steuerfachwirt/i,
     bilanzbuchhalter: /bilanzbuchhalter/i,
+    rechtsanwaltsfachangestellte: /rechtsanwalts(- und notar)?fachangestellte|rechtsfachwirt/i,
   }
+  // Paket 103: Lebenslauf aus der falschen Kanzleiwelt (Steuer-Aufgaben bei ReFa).
+  if (sampleField(berufsbild) === "recht" && /steuerkanzlei|steuerberatung|lohnbuchhaltung|lohn- und gehalt|finanzbuchhaltung|jahresabschl|steuererklärung|unternehmen online|lodas/i.test(werdegang))
+    problems.push("Werdegang mit Steuer-Aufgaben")
   const need = strict[qualificationKind(berufsbild)]
   if (need) {
     if (!need.test(ausbildung)) problems.push("Qualifikation fehlt in der Ausbildung")
@@ -183,26 +232,29 @@ export function buildSamplePrompt(berufsbildLabel: string, people: SamplePerson[
   const focus = opts.focus ?? []
   const extra = opts.extra?.trim() ?? ""
   const avoid = opts.avoidNames ?? []
+  const field = sampleField(berufsbildKey ?? berufsbildLabel)
+  const f = FIELD_PROMPT[field]
   return [
-    `Erstelle ${people.length} fiktive, realistische Bewerberprofile für die Stelle "${berufsbildLabel} (m/w/d)" in einer deutschen Steuerkanzlei.`,
+    `Erstelle ${people.length} fiktive, realistische Bewerberprofile für die Stelle "${berufsbildLabel} (m/w/d)" in einer deutschen ${f.kanzlei}.`,
     "Personen:",
     ...people.map(
       (p, i) =>
-        `${i + 1}. ${p.name ? `Name: ${p.name} (genau so übernehmen), ` : ""}${p.geschlecht}, wohnt in PLZ ${p.plz}, Namensherkunft: ${p.herkunft}, Kanzleisoftware: ${p.software}${p.allrounder ? ", Allrounder" : ""}`
+        `${i + 1}. ${p.name ? `Name: ${p.name} (genau so übernehmen), ` : ""}${p.geschlecht}, wohnt in PLZ ${p.plz}, Namensherkunft: ${p.herkunft}, Kanzleisoftware: ${cleanSoftware(p.software, berufsbildKey ?? berufsbildLabel)}${p.allrounder ? ", Allrounder" : ""}`
     ),
     "",
     "Regeln:",
     "- Erfundene Vor- und Nachnamen passend zu Geschlecht und Namensherkunft, so wie sie in Deutschland vorkommen (auch Doppelnamen oder gemischte Namen sind möglich). Keine bekannten Personen, keine Allerweltskombinationen wie Max Müller.",
     ...(avoid.length ? [`- Diese Namen sind schon vergeben, nicht wiederholen: ${avoid.join(", ")}.`] : []),
-    "- Alle haben ihre Ausbildung in einer deutschen Steuerkanzlei gemacht und ausschließlich in Steuerkanzleien gearbeitet - keine Industrie, keine Unternehmen, keine Buchhaltungsabteilungen.",
-    "- Keine Branchen nennen: Die Mandanten sind querbeet gemischt, ohne Branchenschwerpunkt.",
+    f.herkunft,
+    f.mandanten,
+    ...(f.aufgaben ? [f.aufgaben] : []),
     `- Werdegang und Erfahrung passen zum Berufsbild ${berufsbildLabel}; die Profile unterscheiden sich deutlich (Alter, Berufsjahre, Kanzleigröße, Wechselgrund).`,
     `- Qualifikation: ${qualificationRule(qualificationKind(berufsbildKey ?? berufsbildLabel), berufsbildLabel)}`,
     "- Alter, Ausbildungsjahre und Werdegang passen zusammen (Ausbildungsbeginn mit etwa 16 bis 22 Jahren).",
-    `- Kanzleisoftware: Die angegebene Software zieht sich durch datev_erfahrung, Beschreibung und Werdegang. DATEV heißt: ${SOFTWARE_HINT.DATEV}. Bei ${SOFTWARE_HINT.ADDISON} oder Agenda steht in datev_erfahrung, dass die Person damit arbeitet und offen für DATEV ist.`,
+    f.software((s) => SOFTWARE_HINT[s]),
     ...(people.some((p) => p.allrounder)
       ? [
-          `- Allrounder haben Erfahrung in allen Bereichen (${SAMPLE_FOCUS_OPTIONS.join(", ")}) - zwingend sichtbar in bevorzugter_bereich (beginnt mit "Allrounder:"), in der Beschreibung und im Werdegang.`,
+          `- Allrounder haben Erfahrung in allen Bereichen (${focusOptions(field).join(", ")}) - zwingend sichtbar in bevorzugter_bereich (beginnt mit "Allrounder:"), in der Beschreibung und im Werdegang.`,
         ]
       : []),
     // Gewählte Schwerpunkte (Paket 57): prägen bevorzugten Bereich, Beschreibung und Erfahrung.
@@ -213,10 +265,10 @@ export function buildSamplePrompt(berufsbildLabel: string, people: SamplePerson[
       : []),
     ...(extra ? [`- Zusätzliche Vorgaben des Vertriebs (unbedingt berücksichtigen): ${extra}`] : []),
     // Ohne Namen - sonst stünde er im anonymisierten Modus trotzdem in der Beschreibung.
-    '- beschreibung: 2-3 Sätze Kurzprofil aus Sicht des Recruiters, sachlich, ohne den Namen der Person (z. B. "Steuerfachangestellte, 29 Jahre, ..."). Danach eine Leerzeile, die Zeile "Stationen der letzten zehn Jahre:" und je Station eine Zeile "JJJJ – heute: Position, Steuerkanzlei ca. N Mitarbeitende – Schwerpunkt der Aufgaben" bzw. "JJJJ – JJJJ: ...", neueste zuerst, dieselben Stationen wie im Werdegang. Änderungen der Aufgaben innerhalb einer Station ergänzen (z. B. "ab 2022 zusätzlich Jahresabschlüsse", "seit 2023 Teamleitung Lohn").',
+    `- beschreibung: 2-3 Sätze Kurzprofil aus Sicht des Recruiters, sachlich, ohne den Namen der Person (z. B. "${berufsbildLabel}, 29 Jahre, ..."). Danach eine Leerzeile, die Zeile "Stationen der letzten zehn Jahre:" und je Station eine Zeile "JJJJ – heute: Position, ${f.kanzlei} ca. N Mitarbeitende – Schwerpunkt der Aufgaben" bzw. "JJJJ – JJJJ: ...", neueste zuerst, dieselben Stationen wie im Werdegang. Änderungen der Aufgaben innerhalb einer Station ergänzen (z. B. ${field === "recht" ? '"ab 2022 zusätzlich Zwangsvollstreckung", "seit 2023 Ausbildung der Azubis"' : '"ab 2022 zusätzlich Jahresabschlüsse", "seit 2023 Teamleitung Lohn"'}).`,
     '- offene_fragen: 2-3 Fragen des Kandidaten an den neuen Arbeitgeber, je Zeile mit "- ".',
-    '- felder: ausbildung (alle abgeschlossenen Abschlüsse mit Jahr, der höchste zuletzt, z. B. "Steuerfachangestellte 2012, Steuerfachwirtin 2016"), alter (Zahl), verfuegbar_ab, wechselgrund, erwartungen_neuer_ag, bevorzugter_bereich, datev_erfahrung, anzahl_ag_5_jahre (Zahl), aktuelle_steuerkanzlei ("Ja"), kanzleigroesse, gehaltsvorstellung (Jahresbrutto in €), erreichbarkeit.',
-    `- werdegang: lückenloser beruflicher Werdegang der letzten zehn Jahre (${year - 10} bis heute; bei Jüngeren ab Ausbildungsbeginn), neueste Station zuerst, nur Steuerkanzleien (einschließlich Ausbildung). Je Station eine Kopfzeile "MM/JJJJ – MM/JJJJ · Position · Steuerkanzlei, ca. N Mitarbeitende" (aktuelle Station "MM/JJJJ – heute"), darunter 3-5 typische Aufgaben je Zeile mit "- ", zwischen den Stationen eine Leerzeile. Die aktuelle Station zeigt die heutige Position ${berufsbildLabel}; Abschlüsse bzw. Bestellung im passenden Jahr. Keine Kanzleinamen, keine Orte, keine Branchen.`,
+    `- felder: ausbildung (alle abgeschlossenen Abschlüsse mit Jahr, der höchste zuletzt, z. B. "${f.ausbildungBeispiel}"), alter (Zahl), verfuegbar_ab, wechselgrund, erwartungen_neuer_ag, bevorzugter_bereich, datev_erfahrung, anzahl_ag_5_jahre (Zahl), ${f.aktuelleKanzlei}kanzleigroesse, gehaltsvorstellung (Jahresbrutto in €), erreichbarkeit.`,
+    `- werdegang: lückenloser beruflicher Werdegang der letzten zehn Jahre (${year - 10} bis heute; bei Jüngeren ab Ausbildungsbeginn), neueste Station zuerst, nur ${f.kanzleien} (einschließlich Ausbildung). Je Station eine Kopfzeile "MM/JJJJ – MM/JJJJ · Position · ${f.kanzlei}, ca. N Mitarbeitende" (aktuelle Station "MM/JJJJ – heute"), darunter 3-5 für das Berufsbild typische Aufgaben je Zeile mit "- ", zwischen den Stationen eine Leerzeile. Die aktuelle Station zeigt die heutige Position ${berufsbildLabel}; Abschlüsse bzw. Bestellung im passenden Jahr. Keine Kanzleinamen, keine Orte, keine Branchen.`,
     "",
     'Antworte nur mit JSON: {"kandidaten": [{"first_name": "", "last_name": "", "beschreibung": "", "offene_fragen": "", "werdegang": "", "felder": {}}]} in der Reihenfolge der Personen.',
   ].join("\n")
@@ -276,7 +328,7 @@ export async function generateSamples(
   for (let attempt = 0; attempt < 3 && open.length > 0; attempt++) {
     const answer = await generateText({
       tier: "smart",
-      system: "Du erstellst fiktive Beispieldaten für eine Recruiting-Software für Steuerkanzleien. Alle Personen sind frei erfunden.",
+      system: FIELD_PROMPT[sampleField(berufsbild.value)].system,
       prompt: buildSamplePrompt(berufsbild.label, open, opts, undefined, berufsbild.value),
       maxTokens: 2500 + open.length * 1800,
       timeoutMs: 180_000,
@@ -290,6 +342,14 @@ export async function generateSamples(
     open = retry
   }
   return done
+}
+
+// "Aktuell Steuerkanzlei" ergibt bei Rechtsanwaltskanzleien keinen Sinn (Paket 103).
+function fieldsFor(berufsbild: string, felder: SampleCandidate["felder"]): SampleCandidate["felder"] {
+  if (sampleField(berufsbild) !== "recht") return felder
+  const rest = { ...felder }
+  delete rest.aktuelle_steuerkanzlei
+  return rest
 }
 
 export async function insertSampleCandidate(
@@ -316,7 +376,7 @@ export async function insertSampleCandidate(
       notes: sample.beschreibung || null,
       offene_fragen: sample.offene_fragen || null,
       cv_werdegang: sample.werdegang || null,
-      custom_fields: sample.felder,
+      custom_fields: fieldsFor(berufsbild, sample.felder),
       tags: [SAMPLE_TAG],
     })
     .select("id")

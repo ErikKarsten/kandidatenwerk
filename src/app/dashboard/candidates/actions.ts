@@ -245,9 +245,9 @@ export async function createSampleCandidatesAction(input: {
       {
         berufsbild,
         plz: cleanPlz,
-        focus: cleanFocus(input.focus),
+        focus: cleanFocus(input.focus, berufsbild),
         allrounder: input.allrounder === true,
-        software: cleanSoftware(input.software),
+        software: cleanSoftware(input.software, berufsbild),
         extra: cleanExtra(input.extra),
       },
       user?.id ?? null
