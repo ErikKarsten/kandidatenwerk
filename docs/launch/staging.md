@@ -32,7 +32,8 @@ herumliegen, z. B. nach einem abgebrochenen Staging-Deploy.
    ```bash
    bash scripts/staging-setup.sh
    ```
-4. Testdaten anlegen: `npx tsx scripts/staging-seed.ts`
+4. Testdaten anlegen: `npx tsx scripts/staging-seed.ts` (ohne `STAGING_ADMIN_PASSWORD` gibt das Skript
+   Links zum Passwort-Setzen aus)
 5. Im Staging-Supabase unter Authentication > URL Configuration Site URL und Redirect URLs auf
    die Staging-Adresse setzen; Mail-Vorlagen aus `supabase/email-templates/` übernehmen. Keine
    eigene SMTP-Verbindung eintragen - der eingebaute Versand von Supabase schickt nur an
