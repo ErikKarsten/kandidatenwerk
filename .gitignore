@@ -52,6 +52,7 @@ next-env.d.ts
 # Vorlagen ohne Werte dürfen ins Repo
 !.env.example
 !.env.staging.example
+!.env.db.example
 
 # Playwright (T-101)
 /playwright-report/

@@ -45,9 +45,19 @@ herumliegen, z. B. nach einem abgebrochenen Staging-Deploy.
 ## Ablauf je Paket
 
 1. Branch auf Staging: `npm run deploy:staging`
-2. Neue Migrationen zuerst im **Staging**-SQL-Editor ausführen.
+2. Neue Migrationen auf Staging: `bash scripts/sql.sh staging supabase/migrations/<datei>.sql`
 3. Codex prüft den Pull Request; Änderung auf Staging durchklicken (`abnahmetests.md`).
-4. Nach dem OK: Migration auf Live, PR mergen, `npm run deploy`.
+4. Der Nutzer mergt den Pull Request - das ist die Freigabe für Live.
+5. Migration auf Live: `bash scripts/sql.sh live supabase/migrations/<datei>.sql`, dann `npm run deploy`.
+
+## SQL ohne SQL-Editor (Paket 104)
+
+`scripts/sql.sh` spielt Migrationen ein, zeigt offene (`status`) und führt Abfragen aus (`-c`).
+Verbindungen stehen in `.env.db` (Vorlage `.env.db.example`), nicht in `.env.local`.
+- Live nur mit Dateien, die genau so in `origin/main` liegen (gemergt), sonst Abbruch.
+- Abfragen auf Live laufen nur lesend.
+- Jede Migration in einer Transaktion, vermerkt mit Prüfsumme in `kw_meta.migrationen` -
+  doppelt einspielen geht nicht, nachträglich geänderte Dateien fallen auf.
 
 ## Sicherheitsnetze
 
