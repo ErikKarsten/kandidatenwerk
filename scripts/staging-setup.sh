@@ -37,6 +37,10 @@ check_db_url() { # $1 = LIVE/STAGING, $2 = Adresse, $3 = erwartete Projekt-ID
     echo "Adresse $1 hat nicht das Format des Session poolers (postgresql://postgres.<projekt>:<passwort>@...pooler.supabase.com:5432/postgres) - Abbruch."; exit 1; }
   [[ "${BASH_REMATCH[2]}" == "$3" ]] || { echo "Adresse $1 gehört zum falschen Supabase-Projekt (erwartet: $3) - Abbruch."; exit 1; }
 }
+# Verbindungen aus .env.db (Paket 104), sonst Abfrage.
+db_env() { [[ -f .env.db ]] && grep -E "^$1=" .env.db | tail -1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/' || true; }
+LIVE_DB_URL="${LIVE_DB_URL:-$(db_env LIVE_DB_URL)}"
+STAGING_DB_URL="${STAGING_DB_URL:-$(db_env STAGING_DB_URL)}"
 live_ref=$(ref_from_env .env.local)
 staging_ref=$(ref_from_env .env.staging)
 if [[ -z "${LIVE_DB_URL:-}" ]]; then LIVE_DB_URL=$(ask_db_url LIVE "$live_ref"); fi
