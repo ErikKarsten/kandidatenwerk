@@ -155,3 +155,51 @@ describe("Beschreibung mit Stationen (Paket 75)", () => {
     expect(sampleProblems({ werdegang, felder, beschreibung: "Steuerfachangestellte, 29 Jahre." }, "steuerfachangestellte")).toContain("Beschreibung ohne Stationen")
   })
 })
+
+describe("Rechtsanwaltsfachangestellte (Paket 103)", () => {
+  const person = { plz: "53111", geschlecht: "weiblich" as const, herkunft: "deutsch", software: "DATEV" as const, allrounder: false }
+
+  it("beschreibt eine Rechtsanwaltskanzlei mit passenden Aufgaben statt Steuer-Aufgaben", async () => {
+    const { buildSamplePrompt } = await import("@/lib/sample-candidates")
+    const prompt = buildSamplePrompt("Rechtsanwaltsfachangestellte", [person], {}, 2026, "rechtsanwaltsfachangestellte")
+    expect(prompt).toContain("in einer deutschen Rechtsanwaltskanzlei")
+    expect(prompt).toContain("· Rechtsanwaltskanzlei, ca. N Mitarbeitende")
+    expect(prompt).toContain("beA")
+    expect(prompt).toContain("RVG")
+    expect(prompt).toContain("Zwangsvollstreckung")
+    expect(prompt).toContain("Ausbildung zur/zum Rechtsanwaltsfachangestellten")
+    // DATEV aus der Steuer-Voreinstellung wird zur Anwaltssoftware
+    expect(prompt).toContain("Kanzleisoftware: RA-MICRO")
+    expect(prompt).not.toContain("aktuelle_steuerkanzlei")
+    expect(prompt).not.toMatch(/nur Steuerkanzleien|in einer deutschen Steuerkanzlei|LODAS\)/)
+  })
+
+  it("lässt Steuer-Berufsbilder unverändert", async () => {
+    const { buildSamplePrompt } = await import("@/lib/sample-candidates")
+    const prompt = buildSamplePrompt("Steuerfachangestellte", [person], {}, 2026, "steuerfachangestellte")
+    expect(prompt).toContain("in einer deutschen Steuerkanzlei")
+    expect(prompt).toContain("Kanzleisoftware: DATEV")
+    expect(prompt).toContain('aktuelle_steuerkanzlei ("Ja")')
+    expect(prompt).not.toContain("Rechtsanwaltskanzlei")
+  })
+
+  it("verwirft Lebensläufe mit Steuer-Aufgaben oder ohne ReFa-Abschluss", async () => {
+    const { sampleProblems } = await import("@/lib/sample-candidates")
+    const gut = "05/2019 – heute · Rechtsanwaltsfachangestellte · Rechtsanwaltskanzlei, ca. 12 Mitarbeitende\n- Fristenkontrolle\n- beA-Postein- und -ausgang"
+    const steuer = "05/2019 – heute · Rechtsanwaltsfachangestellte · Steuerkanzlei, ca. 25 Mitarbeitende\n- Lohn- und Gehaltsabrechnungen mit DATEV LODAS"
+    const felder = { ausbildung: "Rechtsanwaltsfachangestellte 2019" }
+    expect(sampleProblems({ werdegang: gut, felder }, "rechtsanwaltsfachangestellte")).toEqual([])
+    expect(sampleProblems({ werdegang: steuer, felder }, "rechtsanwaltsfachangestellte")).toContain("Werdegang mit Steuer-Aufgaben")
+    expect(sampleProblems({ werdegang: gut, felder: { ausbildung: "Steuerfachangestellte 2019" } }, "rechtsanwaltsfachangestellte")).toContain("Qualifikation fehlt in der Ausbildung")
+  })
+
+  it("zeigt im Dialog Anwaltssoftware und ReFa-Schwerpunkte", async () => {
+    const { cleanFocus, cleanSoftware, focusOptions, softwareOptions } = await import("@/lib/sample-focus")
+    expect(softwareOptions("rechtsanwaltsfachangestellte")).toEqual(["RA-MICRO", "Advoware", "DATEV Anwalt"])
+    expect(focusOptions("rechtsanwaltsfachangestellte")).toContain("Kostenrecht und RVG-Abrechnung")
+    expect(cleanSoftware("DATEV", "rechtsanwaltsfachangestellte")).toBe("RA-MICRO")
+    expect(cleanSoftware("Advoware", "rechtsanwaltsfachangestellte")).toBe("Advoware")
+    expect(cleanSoftware("Advoware", "steuerfachangestellte")).toBe("DATEV")
+    expect(cleanFocus(["Lohnbuchhaltung", "Fristen und Termine"], "rechtsanwaltsfachangestellte")).toEqual(["Fristen und Termine"])
+  })
+})

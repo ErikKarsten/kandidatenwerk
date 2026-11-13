@@ -6,7 +6,7 @@ import { Sparkles } from "lucide-react"
 import { useShowMode } from "@/lib/show-mode"
 import { useBerufsbilder } from "@/components/berufsbild-context"
 import { createSampleCandidatesAction } from "./actions"
-import { SAMPLE_EXTRA_MAX, SAMPLE_FOCUS_OPTIONS, SAMPLE_SOFTWARE_OPTIONS, type SampleSoftware } from "@/lib/sample-focus"
+import { SAMPLE_EXTRA_MAX, cleanSoftware, focusOptions, sampleField, softwareOptions, type SampleSoftware } from "@/lib/sample-focus"
 
 const inputClass = "w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1"
 const inputStyle = { borderColor: "#dde3ea" }
@@ -25,13 +25,21 @@ export function SampleCandidatesButton() {
   // Schwerpunkte (Paket 57), Mehrfachauswahl.
   const [focus, setFocus] = useState<string[]>([])
   const [allrounder, setAllrounder] = useState(false)
-  const [software, setSoftware] = useState<SampleSoftware>("DATEV")
+  const [software, setSoftware] = useState<SampleSoftware>(cleanSoftware(null, berufsbild))
   const [extra, setExtra] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<number | null>(null)
   const [pending, startTransition] = useTransition()
 
   if (showMode) return null
+
+  // Paket 103: Software und Schwerpunkte passend zur Fachrichtung des Berufsbilds
+  // (Rechtsanwaltskanzlei oder Steuerkanzlei).
+  function changeBerufsbild(value: string) {
+    setBerufsbild(value)
+    setSoftware(cleanSoftware(software, value))
+    setFocus(focus.filter((f) => focusOptions(value).includes(f)))
+  }
 
   function close() {
     if (pending) return
@@ -77,7 +85,7 @@ export function SampleCandidatesButton() {
               </p>
               <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
                 Berufsbild
-                <select value={berufsbild} onChange={(e) => setBerufsbild(e.target.value)} className={inputClass} style={{ ...inputStyle, backgroundColor: "white" }} disabled={pending}>
+                <select value={berufsbild} onChange={(e) => changeBerufsbild(e.target.value)} className={inputClass} style={{ ...inputStyle, backgroundColor: "white" }} disabled={pending}>
                   {sampleBerufsbilder.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -101,7 +109,7 @@ export function SampleCandidatesButton() {
               <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
                 Software
                 <select value={software} onChange={(e) => setSoftware(e.target.value as SampleSoftware)} className={inputClass} style={{ ...inputStyle, backgroundColor: "white" }} disabled={pending}>
-                  {SAMPLE_SOFTWARE_OPTIONS.map((o) => (
+                  {softwareOptions(berufsbild).map((o) => (
                     <option key={o} value={o}>
                       {o === "DATEV" ? "DATEV (inkl. DATEV Unternehmen online)" : o}
                     </option>
@@ -120,7 +128,7 @@ export function SampleCandidatesButton() {
                   {allrounder ? "Schwerpunkte (beim Allrounder alle)" : "Schwerpunkte (optional, mehrere möglich)"}
                 </legend>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {SAMPLE_FOCUS_OPTIONS.map((o) => {
+                  {focusOptions(berufsbild).map((o) => {
                     const checked = allrounder || focus.includes(o)
                     return (
                       <label
@@ -144,7 +152,7 @@ export function SampleCandidatesButton() {
                 <textarea
                   value={extra}
                   onChange={(e) => setExtra(e.target.value.slice(0, SAMPLE_EXTRA_MAX))}
-                  placeholder="z. B. Schwerpunkt Ärzte und Heilberufe, eher Berufseinsteiger, Teilzeit gewünscht"
+                  placeholder={sampleField(berufsbild) === "recht" ? "z. B. Schwerpunkt Arbeitsrecht, eher Berufseinsteiger, Teilzeit gewünscht" : "z. B. Schwerpunkt Ärzte und Heilberufe, eher Berufseinsteiger, Teilzeit gewünscht"}
                   rows={3}
                   className={inputClass}
                   style={inputStyle}
