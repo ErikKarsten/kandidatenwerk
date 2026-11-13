@@ -71,7 +71,9 @@ psql "$LIVE_DB_URL" -qAt -c "set search_path = ''" -c "select format('create pol
 
 echo "2/4 Konfiguration (ohne Personen) -> supabase/staging-config.sql"
 args=(); for t in "${CONFIG_TABLES[@]}"; do args+=(--table="public.$t"); done
-pg_dump "$LIVE_DB_URL" --data-only --no-owner --inserts --disable-triggers "${args[@]}" > supabase/staging-config.sql
+# Ohne --disable-triggers: das bräuchte Superuser-Rechte. Fremdschlüssel und Trigger schaltet
+# beim Einspielen session_replication_role = replica ab (in Supabase erlaubt).
+pg_dump "$LIVE_DB_URL" --data-only --no-owner --inserts "${args[@]}" > supabase/staging-config.sql
 
 if [[ "${1:-}" == "--nur-dump" ]]; then echo "Nur Abzug erstellt."; exit 0; fi
 : "${STAGING_DB_URL:?STAGING_DB_URL fehlt}"
