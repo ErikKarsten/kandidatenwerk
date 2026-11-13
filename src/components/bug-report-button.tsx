@@ -14,7 +14,8 @@ const inputStyle = { borderColor: "#dde3ea" }
 // "Fehler melden"-Button für beide Seitenleisten (Dashboard und Kunden-Portal, Atlas
 // T-26). Was nach dem Absenden passiert, entscheidet der Server anhand der Rolle:
 // Team-Meldungen werden direkt zur Aufgabe, Kunden-Meldungen gehen erst zur Prüfung.
-export function BugReportButton({ collapsed = false }: { collapsed?: boolean }) {
+// compact: kleinere Zeile wie die übrigen Einträge der Dashboard-Sidebar (Paket 105); ohne: Kundenportal.
+export function BugReportButton({ collapsed = false, compact = false }: { collapsed?: boolean; compact?: boolean }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState("")
@@ -49,12 +50,14 @@ export function BugReportButton({ collapsed = false }: { collapsed?: boolean }) 
       type="button"
       onClick={openDialog}
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-white/10 hover:text-white",
+        compact
+          ? "flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[13px] tracking-wide transition-colors hover:bg-white/10 hover:text-white"
+          : "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-white/10 hover:text-white",
         collapsed && "justify-center px-0"
       )}
       style={{ color: "rgba(219, 234, 254, 0.7)" }}
     >
-      <Bug size={18} className="shrink-0" />
+      {compact ? <Bug className="h-4 w-4 shrink-0" strokeWidth={1.75} /> : <Bug size={18} className="shrink-0" />}
       {!collapsed && <span>Fehler melden</span>}
     </button>
   )

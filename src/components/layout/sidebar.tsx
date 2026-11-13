@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import Link from "@/components/app-link"
 import { usePathname } from "next/navigation"
 import {
@@ -16,103 +17,116 @@ import {
   LayoutGrid,
   BookOpen,
   Handshake,
+  Search,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLocalStorageValue } from "@/lib/use-local-storage"
 import { useIsMobile } from "@/lib/use-is-mobile"
-import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { BugReportButton } from "@/components/bug-report-button"
 import { ShowModeSidebarToggle } from "@/components/layout/show-mode-sidebar-toggle"
+import { CommandPalette, type PaletteTarget } from "@/components/layout/command-palette"
 
+// Seitenleiste im Look der Sidebar-Vorlage (Paket 105, src/components/ui/dashboard-sidebar.tsx):
+// Zwischenüberschriften, kompakte Einträge, Schnellsuche mit ⌘K - mit der echten Kandidatenwerk-Navigation.
+// Farbe bleibt das bisherige Dunkelblau (Wunsch 13.11.).
 const SIDEBAR_COLLAPSED_KEY = "sidebar_collapsed"
+const BRAND = "#1e56a0"
+const NAVY = "#0f2137"
+const ACCENT = "#4ba3c3"
+const LINE = "rgba(255,255,255,0.08)"
+const MUTED = "rgba(219, 234, 254, 0.7)"
 
-function buildNavItems(
-  candidatesCount: number,
-  clientsCount: number,
-  myOpenTasksCount: number,
-  matchingCount: number
-) {
-  return [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/dashboard/clients", label: "Kunden", icon: Users, badge: String(clientsCount) },
-    { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: String(candidatesCount) },
-    { href: "/dashboard/leads", label: "Kandidaten nach Kampagnen", icon: LayoutGrid },
-    { href: "/dashboard/matching", label: "Matching", icon: Handshake, badge: String(matchingCount) },
-    { href: "/dashboard/tasks", label: "Aufgaben", icon: ListTodo, badge: String(myOpenTasksCount) },
-    { href: "/dashboard/map", label: "Karte", icon: MapPin },
-  ] as const
+interface NavEntry {
+  href: string
+  label: string
+  icon: React.ElementType
+  badge?: number
+  // Eigene Seite außerhalb des Dashboards (Handbuch, Paket 91): normaler Link in neuem Tab.
+  external?: boolean
 }
 
-// Zeigte bisher auf "/einstellungen" - eine Route, die es nirgends gab (404). Jetzt
-// unter /dashboard/einstellungen gebaut, damit die Seite das bestehende
-// DashboardLayout (Sidebar-Zaehler, Auth-Check) automatisch mitbekommt statt eine
-// eigene Layout-Kopie zu brauchen.
-const SETTINGS_ITEM = { href: "/dashboard/einstellungen", label: "Einstellungen", icon: Settings }
+function buildNavGroups(counts: { candidates: number; clients: number; tasks: number; matching: number }): { heading?: string; items: NavEntry[] }[] {
+  return [
+    {
+      items: [
+        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/dashboard/tasks", label: "Aufgaben", icon: ListTodo, badge: counts.tasks },
+      ],
+    },
+    {
+      heading: "Kandidaten",
+      items: [
+        { href: "/dashboard/candidates", label: "Alle Kandidaten", icon: UserSearch, badge: counts.candidates },
+        { href: "/dashboard/leads", label: "Nach Kampagnen", icon: LayoutGrid },
+        { href: "/dashboard/matching", label: "Matching", icon: Handshake, badge: counts.matching },
+        { href: "/dashboard/map", label: "Karte", icon: MapPin },
+      ],
+    },
+    {
+      heading: "Kunden",
+      items: [{ href: "/dashboard/clients", label: "Kunden", icon: Users, badge: counts.clients }],
+    },
+  ]
+}
+
+const SETTINGS_HREF = "/dashboard/einstellungen"
 const BUG_REPORTS_HREF = "/dashboard/fehlermeldungen"
+
+function isActive(pathname: string, href: string): boolean {
+  return href === "/dashboard" ? pathname === "/dashboard" : pathname === href || pathname.startsWith(href + "/")
+}
 
 function initials(name: string): string {
   const parts = name.split(/[\s@.]+/).filter(Boolean)
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?"
 }
 
-interface NavItemProps {
-  href: string
-  label: string
-  icon: React.ElementType
-  badge?: string
-  active: boolean
-  collapsed: boolean
-  // Eigene Seite außerhalb des Dashboards (Handbuch, Paket 91): normaler Link in neuem Tab.
-  external?: boolean
-}
-
-function NavItem({ href, label, icon: Icon, badge, active, collapsed, external = false }: NavItemProps) {
-  const Anchor = external ? "a" : Link
-  const link = (
-    <Anchor
-      href={href}
-      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-      className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-        collapsed && "justify-center px-0",
-        active ? "text-white" : "hover:bg-white/10 hover:text-white"
-      )}
-      // Statt Tailwinds "text-blue-100/70" (Opacity-Utility, in Tailwind v4 über
-      // color-mix() im oklab-Farbraum berechnet): unter Chrome auf Windows live
-      // gemeldet, dass der Text dadurch schwarz statt hell dargestellt wird (Fix vom
-      // 25.09.2026) - macOS/andere Browser offenbar nicht betroffen, vermutlich eine
-      // Chromium-Rendering-Eigenheit bei der oklab-Interpolation auf Windows. Fester
-      // rgba()-Wert im sRGB-Farbraum umgeht das zuverlässig, gleiches Muster wie die
-      // übrigen Sidebar-Farben in dieser Datei (siehe rgba(255,255,255,0.08/0.5) unten).
-      style={active ? { backgroundColor: "#1e56a0" } : { color: "rgba(219, 234, 254, 0.7)" }}
-    >
-      <Icon size={18} className="shrink-0" />
-      {!collapsed && (
-        <>
-          <span className="flex-1">{label}</span>
-          {badge && (
-            <Badge
-              className="h-5 min-w-5 px-1.5 text-xs font-semibold"
-              style={{ backgroundColor: "#4ba3c3", color: "white", border: "none" }}
-            >
-              {badge}
-            </Badge>
-          )}
-        </>
-      )}
-    </Anchor>
-  )
-
-  // Im eingeklappten Zustand ersetzt ein Tooltip das ausgeblendete Label - ohne
-  // Tooltip wüsste man sonst nicht mehr, wofür ein reines Icon steht.
-  if (!collapsed) return link
-
+// Im eingeklappten Zustand ersetzt ein Tooltip das ausgeblendete Label.
+function WithTooltip({ collapsed, label, children }: { collapsed: boolean; label: string; children: React.ReactElement }) {
+  if (!collapsed) return children
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{link}</TooltipTrigger>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side="right">{label}</TooltipContent>
     </Tooltip>
+  )
+}
+
+const itemClass = (active: boolean, collapsed: boolean) =>
+  cn(
+    "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[13px] tracking-wide transition-colors select-none",
+    collapsed && "justify-center px-0",
+    active ? "font-medium text-white" : "hover:bg-white/10 hover:text-white"
+  )
+
+function NavItem({ href, label, icon: Icon, badge, active, collapsed, external = false }: NavEntry & { active: boolean; collapsed: boolean }) {
+  const Anchor = external ? "a" : Link
+  return (
+    <WithTooltip collapsed={collapsed} label={label}>
+      <Anchor
+        href={href}
+        {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+        aria-current={active ? "page" : undefined}
+        className={itemClass(active, collapsed)}
+        style={active ? { backgroundColor: BRAND } : { color: MUTED }}
+      >
+        <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+        {!collapsed && (
+          <>
+            <span className="min-w-0 flex-1 truncate">{label}</span>
+            {badge !== undefined && (
+              <span
+                className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold"
+                style={{ backgroundColor: active ? "rgba(255,255,255,0.2)" : ACCENT, color: "#fff" }}
+              >
+                {badge}
+              </span>
+            )}
+          </>
+        )}
+      </Anchor>
+    </WithTooltip>
   )
 }
 
@@ -138,125 +152,117 @@ export function Sidebar({
   logoUrl?: string | null
 }) {
   const pathname = usePathname()
-  const navItems = buildNavItems(candidatesCount, clientsCount, myOpenTasksCount, matchingCount)
+  const groups = buildNavGroups({ candidates: candidatesCount, clients: clientsCount, tasks: myOpenTasksCount, matching: matchingCount })
+  const [searchOpen, setSearchOpen] = useState(false)
 
   // Start bewusst ausgeklappt (= Server-/Erstrender-Zustand), der localStorage-Wert wird
-  // erst nach dem Mount übernommen - sonst Hydration-Mismatch, da localStorage auf dem
-  // Server nicht existiert (gleiches Muster wie der view-Toggle in campaign-detail.tsx).
-  const [storedCollapsed, setCollapsed] = useLocalStorageValue(
-    SIDEBAR_COLLAPSED_KEY,
-    (raw) => raw === "true",
-    false
-  )
+  // erst nach dem Mount übernommen - sonst Hydration-Mismatch.
+  const [storedCollapsed, setCollapsed] = useLocalStorageValue(SIDEBAR_COLLAPSED_KEY, (raw) => raw === "true", false)
   // In der mobilen Schublade immer ausgeklappt (Paket 14, T-63).
   const isMobile = useIsMobile()
   const collapsed = storedCollapsed && !isMobile
 
-  function toggleCollapsed() {
-    setCollapsed(!collapsed)
-  }
+  const paletteTargets: PaletteTarget[] = [
+    ...groups.flatMap((g) => g.items),
+    ...(isAdmin ? [{ href: BUG_REPORTS_HREF, label: "Fehlermeldungen", icon: Bug }] : []),
+    { href: SETTINGS_HREF, label: "Einstellungen", icon: Settings },
+  ]
 
   return (
     <aside
-      className={cn(
-        "flex h-full shrink-0 flex-col overflow-y-auto transition-[width] duration-200",
-        collapsed ? "w-16" : "w-60"
-      )}
-      style={{ backgroundColor: "#0f2137" }}
+      className={cn("flex h-full shrink-0 flex-col p-3 transition-[width] duration-200", collapsed ? "w-16 px-2" : "w-[248px]")}
+      style={{ backgroundColor: NAVY }}
     >
-      <div className={cn("flex items-center gap-2.5 px-5 py-5", collapsed && "justify-center px-0")}>
+      {/* Kopf: Logo, Name, Benutzer - an der Stelle des Arbeitsbereich-Wechslers der Vorlage. */}
+      <div className={cn("mb-3 flex items-center gap-3 px-1.5 py-1.5", collapsed && "flex-col gap-2 px-0")}>
         {logoUrl ? (
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={logoUrl} alt="Logo" className="h-full w-full object-contain p-0.5" />
           </div>
         ) : (
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-            style={{ backgroundColor: "#4ba3c3" }}
-          >
-            <Briefcase size={16} className="text-white" />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: ACCENT }}>
+            <Briefcase size={15} className="text-white" />
           </div>
         )}
         {!collapsed && (
-          <span className="text-base font-bold text-white tracking-wide">Kandidatenwerk</span>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="mb-1 truncate text-[14px] font-bold leading-none tracking-wide text-white">Kandidatenwerk</span>
+            <span className="truncate text-[11px] leading-none" style={{ color: "rgba(255,255,255,0.5)" }}>{isAdmin ? "Admin" : "Mitarbeiter"}</span>
+          </div>
         )}
+        <WithTooltip collapsed={collapsed} label={collapsed ? "Ausklappen" : "Einklappen"}>
+          <button
+            type="button"
+            onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Sidebar ausklappen" : "Sidebar einklappen"}
+            className="hidden shrink-0 rounded-md p-1.5 transition-colors hover:bg-white/10 hover:text-white md:block"
+            style={{ color: MUTED }}
+          >
+            {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.75} /> : <PanelLeftClose size={16} strokeWidth={1.75} />}
+          </button>
+        </WithTooltip>
       </div>
 
-      <div className="mx-3 mb-2 h-px" style={{ backgroundColor: "rgba(255,255,255,0.08)" }} />
+      <WithTooltip collapsed={collapsed} label="Suchen (⌘K)">
+        <button type="button" onClick={() => setSearchOpen(true)} className={itemClass(false, collapsed)} style={{ color: MUTED }}>
+          <Search className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">Suchen</span>
+              <kbd className="inline-flex h-5 items-center rounded border px-1.5 font-mono text-[10px] font-medium" style={{ borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.5)" }}>
+                ⌘K
+              </kbd>
+            </>
+          )}
+        </button>
+      </WithTooltip>
 
-      <button
-        type="button"
-        onClick={toggleCollapsed}
-        aria-label={collapsed ? "Sidebar ausklappen" : "Sidebar einklappen"}
-        className={cn(
-          "mx-3 mb-2 hidden items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors hover:bg-white/10 hover:text-white md:flex",
-          collapsed && "justify-center px-0"
-        )}
-        style={{ color: "rgba(219, 234, 254, 0.7)" }}
-      >
-        {collapsed ? (
-          <PanelLeftOpen size={16} className="shrink-0" />
-        ) : (
-          <>
-            <PanelLeftClose size={16} className="shrink-0" />
-            <span>Einklappen</span>
-          </>
-        )}
-      </button>
-
-      <nav className="flex flex-1 flex-col gap-1 px-3">
-        {navItems.map((item) => (
-          <NavItem
-            key={item.href}
-            {...item}
-            collapsed={collapsed}
-            active={item.href === "/dashboard" ? pathname === "/dashboard" : pathname === item.href || pathname.startsWith(item.href + "/")}
-          />
+      <nav className="mt-2 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {groups.map((group, i) => (
+          <div key={group.heading ?? i} className="flex flex-col gap-0.5">
+            {group.heading &&
+              (collapsed ? (
+                <div className="mx-2 mb-1 h-px" style={{ backgroundColor: LINE }} />
+              ) : (
+                <span className="mb-1 px-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>
+                  {group.heading}
+                </span>
+              ))}
+            {group.items.map((item) => (
+              <NavItem key={item.href} {...item} collapsed={collapsed} active={isActive(pathname, item.href)} />
+            ))}
+          </div>
         ))}
       </nav>
 
-      <div className="mx-3 mb-3 h-px" style={{ backgroundColor: "rgba(255,255,255,0.08)" }} />
-
-      <div className="flex flex-col gap-1 px-3 pb-3">
+      <div className="mt-3 flex flex-col gap-0.5 border-t pt-3" style={{ borderColor: LINE }}>
         <ShowModeSidebarToggle collapsed={collapsed} />
-        <BugReportButton collapsed={collapsed} />
+        <BugReportButton collapsed={collapsed} compact />
         {isAdmin && (
           <NavItem
             href={BUG_REPORTS_HREF}
             label="Fehlermeldungen"
             icon={Bug}
-            badge={openBugReportsCount > 0 ? String(openBugReportsCount) : undefined}
+            badge={openBugReportsCount > 0 ? openBugReportsCount : undefined}
             collapsed={collapsed}
-            active={pathname === BUG_REPORTS_HREF || pathname.startsWith(BUG_REPORTS_HREF + "/")}
+            active={isActive(pathname, BUG_REPORTS_HREF)}
           />
         )}
         <NavItem href="/handbuch" label="Handbuch" icon={BookOpen} collapsed={collapsed} active={false} external />
-        <NavItem
-          {...SETTINGS_ITEM}
-          collapsed={collapsed}
-          active={pathname === SETTINGS_ITEM.href}
-        />
+        <NavItem href={SETTINGS_HREF} label="Einstellungen" icon={Settings} collapsed={collapsed} active={pathname === SETTINGS_HREF} />
       </div>
 
-      <div className="mx-3 mb-3 h-px" style={{ backgroundColor: "rgba(255,255,255,0.08)" }} />
-
-      <div className={cn("flex items-center gap-3 px-4 pb-5", collapsed && "justify-center px-0")}>
-        <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-          style={{ backgroundColor: "#1e56a0" }}
-        >
-          {initials(userName)}
-        </div>
-        {!collapsed && (
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-white">{userName}</p>
-            <p className="truncate text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-              {isAdmin ? "Admin" : "Mitarbeiter"}
-            </p>
+      <div className={cn("mt-3 flex items-center gap-2.5 border-t px-1.5 pt-3", collapsed && "justify-center px-0")} style={{ borderColor: LINE }}>
+        <WithTooltip collapsed={collapsed} label={userName}>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ backgroundColor: BRAND }}>
+            {initials(userName)}
           </div>
-        )}
+        </WithTooltip>
+        {!collapsed && <p className="min-w-0 truncate text-[13px] font-medium text-white">{userName}</p>}
       </div>
+
+      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} targets={paletteTargets} />
     </aside>
   )
 }

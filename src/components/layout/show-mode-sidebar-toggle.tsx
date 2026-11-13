@@ -18,14 +18,19 @@ export function ShowModeSidebarToggle({ collapsed = false }: { collapsed?: boole
       aria-checked={on}
       onClick={() => setOn(!on)}
       title={on ? "Anonymisierten Modus beenden" : "Personenbezogene Daten ausblenden, z. B. zum Vorführen beim Kunden"}
+      // Kompakte Zeile der Sidebar (Paket 105); eingeschaltet weiter deutlich violett.
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:text-white",
-        on ? "hover:bg-violet-500/90" : "hover:bg-white/10",
+        "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[13px] tracking-wide transition-colors",
+        on ? "hover:bg-violet-500/90" : "hover:bg-white/10 hover:text-white",
         collapsed && "justify-center px-0"
       )}
       style={on ? { backgroundColor: "#7c3aed", color: "#fff" } : { color: "rgba(219, 234, 254, 0.7)" }}
     >
-      {on ? <EyeOff size={18} className="shrink-0" /> : <Eye size={18} className="shrink-0" />}
+      {on ? (
+        <EyeOff className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+      ) : (
+        <Eye className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+      )}
       {!collapsed && (
         <>
           <span className="min-w-0 flex-1 truncate text-left">{label}</span>
