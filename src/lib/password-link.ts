@@ -2,8 +2,9 @@
 // Speichern des neuen Passworts (Link-Vorschauen in Teams/WhatsApp/Mail schaden nicht),
 // ein neuer Link ersetzt den alten. In der Datenbank liegt nur der SHA-256-Hash.
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { APP_BASE_URL } from "@/lib/app-url"
 
-const BASE_URL = "https://kandidatenwerk.kanzleistelle24.de/passwort-setzen"
+const BASE_URL = `${APP_BASE_URL}/passwort-setzen`
 
 function toBase64Url(bytes: Uint8Array): string {
   let s = ""

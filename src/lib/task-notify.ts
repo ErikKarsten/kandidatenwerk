@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
 import { sendEmail } from "@/lib/brevo-mail"
 import { teamLabel, teamsCovering } from "@/lib/teams"
+import { APP_BASE_URL } from "@/lib/app-url"
 
 // Neu zugewiesene Person sofort per Mail informieren (Paket 14, T-69) - nicht erst am
 // Fälligkeitstag über die Erinnerung. Team-Aufgaben (Paket 44): jedes Team-Mitglied außer
@@ -25,7 +26,7 @@ export async function notifyTaskAssigned(supabase: SupabaseClient<Database>, tas
     const emails = (recipients ?? []).map((r) => r.email).filter((e): e is string => !!e)
     if (emails.length === 0) return
     const team = teamLabel(task.assigned_team)
-    const base = "https://kandidatenwerk.kanzleistelle24.de"
+    const base = APP_BASE_URL
     const link = task.client_id
       ? `${base}/dashboard/clients/${task.client_id}?tab=aufgaben`
       : task.candidate_id

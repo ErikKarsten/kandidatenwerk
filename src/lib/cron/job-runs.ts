@@ -8,6 +8,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { sendEmail } from "@/lib/brevo-mail"
+import { APP_BASE_URL } from "@/lib/app-url"
 import { getAdminEmails } from "@/lib/get-admin-emails"
 import { describeCronFailure, recordSystemReport } from "@/lib/bug-reports/system-reports"
 import type { Database } from "@/types/database"
@@ -121,7 +122,7 @@ async function maybeAlert(
     `Kandidatenwerk: Cron-Job "${job}" fehlgeschlagen`,
     `<p>Der Hintergrundjob <strong>${job}</strong> ist am ${new Date(run.startedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} fehlgeschlagen.</p>
 <pre style="white-space:pre-wrap;font-size:12px;background:#f3f4f6;padding:8px">${escapeHtml(details).slice(0, 4000)}</pre>
-<p>Der Fehler steht in Kandidatenwerk unter <a href="https://kandidatenwerk.kanzleistelle24.de/dashboard/fehlermeldungen">Fehlermeldungen</a>. Weitere Fehlschläge zählen dort nur hoch und lösen keine neue Mail aus, bis der Eintrag erledigt ist.</p>`
+<p>Der Fehler steht in Kandidatenwerk unter <a href="${APP_BASE_URL}/dashboard/fehlermeldungen">Fehlermeldungen</a>. Weitere Fehlschläge zählen dort nur hoch und lösen keine neue Mail aus, bis der Eintrag erledigt ist.</p>`
   )
 
   await db.from("cron_job_runs").update({ alert_sent_at: new Date().toISOString() }).eq("id", runId)

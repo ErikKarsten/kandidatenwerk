@@ -8,7 +8,7 @@ import { sendEmail } from "@/lib/brevo-mail"
 import { emailButton, renderEmailLayout } from "@/lib/email-layout"
 import { splitReferences } from "@/lib/comment-text"
 
-const APP_BASE_URL = "https://kandidatenwerk.kanzleistelle24.de"
+import { APP_BASE_URL } from "@/lib/app-url"
 
 interface Person {
   id: string

@@ -15,7 +15,7 @@ import { computeSuggestions, loadMatchingInput, pairKey, syncMatchingSuggestions
 
 type Supabase = SupabaseClient<Database>
 
-const APP_BASE_URL = "https://kandidatenwerk.kanzleistelle24.de"
+import { APP_BASE_URL } from "@/lib/app-url"
 const DIGEST_WEEKDAYS = ["Mon", "Thu"]
 // Ab 8 Uhr deutscher Zeit; spätere Stunden holen einen ausgefallenen Lauf nach.
 const DIGEST_FIRST_HOUR = 8

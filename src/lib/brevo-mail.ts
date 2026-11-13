@@ -1,6 +1,7 @@
 import { applyEmailLogo, hasEmailLayout, renderEmailLayout } from "@/lib/email-layout"
 import { SAMPLE_TAG } from "@/lib/candidate-tags"
 import { isUndeliverableAddress } from "@/lib/sample-contact"
+import { filterMailRecipients, stagingSubject } from "@/lib/mail-guard"
 import { createClient } from "@supabase/supabase-js"
 
 // Logo aus den Kontoeinstellungen (agency_settings.logo_url), 5 Minuten zwischengespeichert.
@@ -71,6 +72,12 @@ export async function sendEmail(
   to = to.filter((email) => !isUndeliverableAddress(email))
   const samples = to.length ? await sampleOnlyAddresses(to) : new Set<string>()
   to = to.filter((email) => !samples.has(email.trim().toLowerCase()))
+  // Staging (Paket 102): nur an freigegebene Testadressen, auch keine Blindkopien nach außen.
+  const allowed = filterMailRecipients(to)
+  if (allowed.length < to.length) console.warn(`[mail] Staging: nicht verschickt an ${to.filter((e) => !allowed.includes(e)).join(", ")}`)
+  to = allowed
+  const bcc = filterMailRecipients(options.bcc ?? [])
+  subject = stagingSubject(subject)
   if (to.length === 0) return []
 
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -84,7 +91,7 @@ export async function sendEmail(
       sender: { email: SENDER_EMAIL, name: options.senderName || SENDER_NAME },
       ...(options.replyTo ? { replyTo: options.replyTo } : {}),
       to: to.map((email) => ({ email })),
-      ...(options.bcc?.length ? { bcc: options.bcc.map((email) => ({ email })) } : {}),
+      ...(bcc.length ? { bcc: bcc.map((email) => ({ email })) } : {}),
       subject,
       // Einheitliches Layout für alle Mails (Paket 19, T-87).
       htmlContent: applyEmailLogo(

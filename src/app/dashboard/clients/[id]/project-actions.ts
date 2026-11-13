@@ -10,6 +10,7 @@ import { parsePlzList } from "@/lib/campaign-locations"
 import { matchCampaignToCandidates } from "@/lib/matching"
 import { getOrCreateLocationForPlz } from "@/lib/location-clustering"
 import { sendEmail } from "@/lib/brevo-mail"
+import { APP_BASE_URL } from "@/lib/app-url"
 import { closeLeadUrl } from "@/lib/close-webhook"
 import { notifyTaskAssigned } from "@/lib/task-notify"
 import { ensureClientLocation } from "@/lib/client-locations"
@@ -530,7 +531,7 @@ async function notifyMentions(supabase: Supabase, authorId: string, clientId: st
     ])
     const recipients = (people ?? []).filter((p) => p.email && p.role !== "client" && p.id !== authorId).map((p) => p.email as string)
     if (recipients.length === 0) return
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://kandidatenwerk.kanzleistelle24.de"
+    const appUrl = APP_BASE_URL
     const escape = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     await sendEmail(
       recipients,
