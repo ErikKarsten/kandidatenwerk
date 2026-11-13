@@ -30,7 +30,7 @@ herumliegen, z. B. nach einem abgebrochenen Staging-Deploy.
    (liest von Live nur, schreibt nur nach Staging; Verbindungen unter Supabase > Connect >
    Session pooler):
    ```bash
-   LIVE_DB_URL='…' STAGING_DB_URL='…' bash scripts/staging-setup.sh
+   bash scripts/staging-setup.sh
    ```
 4. Testdaten anlegen: `npx tsx scripts/staging-seed.ts`
 5. Im Staging-Supabase unter Authentication > URL Configuration Site URL und Redirect URLs auf

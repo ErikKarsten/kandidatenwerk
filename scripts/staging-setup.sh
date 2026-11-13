@@ -14,13 +14,16 @@
 # Verbindungen (Supabase > Connect > Session pooler), Passwort jeweils einsetzen:
 #   LIVE_DB_URL=postgresql://postgres.<ref>:<passwort>@aws-...pooler.supabase.com:5432/postgres
 #   STAGING_DB_URL=postgresql://postgres.<ref>:<passwort>@aws-...pooler.supabase.com:5432/postgres
-# Aufruf: LIVE_DB_URL=... STAGING_DB_URL=... bash scripts/staging-setup.sh [--nur-dump]
+# Aufruf: bash scripts/staging-setup.sh [--nur-dump]   (fragt beide Verbindungen verdeckt ab)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="/Applications/Postgres.app/Contents/Versions/latest/bin:$PATH"
 
-: "${LIVE_DB_URL:?LIVE_DB_URL fehlt}"
 for tool in pg_dump psql; do command -v $tool >/dev/null || { echo "$tool fehlt (Postgres.app installieren)"; exit 1; }; done
+# Ohne Angabe fragt das Skript nach den Verbindungen (verdeckt, landet nicht im Terminal-Verlauf).
+if [[ -z "${LIVE_DB_URL:-}" ]]; then read -rsp "Verbindung LIVE (Session pooler, mit Passwort): " LIVE_DB_URL; echo; fi
+if [[ -z "${STAGING_DB_URL:-}" && "${1:-}" != "--nur-dump" ]]; then read -rsp "Verbindung STAGING (Session pooler, mit Passwort): " STAGING_DB_URL; echo; fi
+: "${LIVE_DB_URL:?LIVE_DB_URL fehlt}"
 
 CONFIG_TABLES=(agencies agency_settings automation_templates automation_template_sets automation_template_set_items
   custom_field_definitions field_templates profile_field_settings position_snippets berufsbilder email_templates locations)
