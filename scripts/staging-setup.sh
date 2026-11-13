@@ -20,10 +20,33 @@ cd "$(dirname "$0")/.."
 export PATH="/Applications/Postgres.app/Contents/Versions/latest/bin:$PATH"
 
 for tool in pg_dump psql; do command -v $tool >/dev/null || { echo "$tool fehlt (Postgres.app installieren)"; exit 1; }; done
-# Ohne Angabe fragt das Skript nach den Verbindungen (verdeckt, landet nicht im Terminal-Verlauf).
-if [[ -z "${LIVE_DB_URL:-}" ]]; then read -rsp "Verbindung LIVE (Session pooler, mit Passwort): " LIVE_DB_URL; echo; fi
-if [[ -z "${STAGING_DB_URL:-}" && "${1:-}" != "--nur-dump" ]]; then read -rsp "Verbindung STAGING (Session pooler, mit Passwort): " STAGING_DB_URL; echo; fi
-: "${LIVE_DB_URL:?LIVE_DB_URL fehlt}"
+# Ohne Angabe fragt das Skript nach Adresse (so wie aus Supabase kopiert, mit [YOUR-PASSWORD])
+# und Passwort getrennt. Das Passwort wird verdeckt abgefragt und für die Adresse kodiert -
+# Sonderzeichen wie @ / # ? : sind so kein Problem (Paket 102).
+ref_from_env() { grep -E '^NEXT_PUBLIC_SUPABASE_URL=' "$1" | sed -E 's#.*https://([a-z0-9]+)\.supabase\.co.*#\1#'; }
+ask_db_url() { # $1 = LIVE/STAGING, $2 = erwartete Projekt-ID
+  local tpl pw
+  echo "Verbindung $1: Supabase > Connect > Direct > Session pooler (Adresse beginnt mit postgresql://postgres.$2:)" >&2
+  read -rp "  Adresse $1 (so wie kopiert, mit [YOUR-PASSWORD]): " tpl
+  read -rsp "  Datenbank-Passwort $1 (bleibt unsichtbar): " pw; echo >&2
+  pw=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$pw")
+  printf '%s' "${tpl//\[YOUR-PASSWORD\]/$pw}"
+}
+check_db_url() { # $1 = LIVE/STAGING, $2 = Adresse, $3 = erwartete Projekt-ID
+  [[ "$2" =~ ^postgres(ql)?://postgres\.([a-z0-9]+):[^@]+@[^/]+pooler\.supabase\.com:5432/postgres$ ]] || {
+    echo "Adresse $1 hat nicht das Format des Session poolers (postgresql://postgres.<projekt>:<passwort>@...pooler.supabase.com:5432/postgres) - Abbruch."; exit 1; }
+  [[ "${BASH_REMATCH[2]}" == "$3" ]] || { echo "Adresse $1 gehört zum falschen Supabase-Projekt (erwartet: $3) - Abbruch."; exit 1; }
+}
+live_ref=$(ref_from_env .env.local)
+staging_ref=$(ref_from_env .env.staging)
+if [[ -z "${LIVE_DB_URL:-}" ]]; then LIVE_DB_URL=$(ask_db_url LIVE "$live_ref"); fi
+check_db_url LIVE "$LIVE_DB_URL" "$live_ref"
+if [[ "${1:-}" != "--nur-dump" ]]; then
+  if [[ -z "${STAGING_DB_URL:-}" ]]; then STAGING_DB_URL=$(ask_db_url STAGING "$staging_ref"); fi
+  check_db_url STAGING "$STAGING_DB_URL" "$staging_ref"
+  psql "$STAGING_DB_URL" -At -c "select 1" >/dev/null || { echo "Anmeldung an Staging fehlgeschlagen (Passwort?) - Abbruch."; exit 1; }
+fi
+psql "$LIVE_DB_URL" -At -c "select 1" >/dev/null || { echo "Anmeldung an Live fehlgeschlagen (Passwort?) - Abbruch."; exit 1; }
 
 CONFIG_TABLES=(agencies agency_settings automation_templates automation_template_sets automation_template_set_items
   custom_field_definitions field_templates profile_field_settings position_snippets berufsbilder email_templates locations)
