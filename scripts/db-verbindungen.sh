@@ -44,4 +44,5 @@ umask 077
   echo "STAGING_DB_URL=$staging"
   echo "LIVE_DB_URL=$live"
 } > .env.db
+chmod 600 .env.db
 echo "Gespeichert in .env.db (nur für dich lesbar)."

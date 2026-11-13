@@ -47,7 +47,7 @@ ref=$(sed -E 's#^postgres(ql)?://postgres\.([a-z0-9]+):.*#\2#' <<<"$url")
 PSQL=(psql "$url" -X -v ON_ERROR_STOP=1 -q)
 
 ensure_meta() {
-  "${PSQL[@]}" -c "create schema if not exists kw_meta;
+  "${PSQL[@]}" -c "set client_min_messages = warning; create schema if not exists kw_meta;
     revoke all on schema kw_meta from public, anon, authenticated;
     create table if not exists kw_meta.migrationen (
       datei text primary key,
