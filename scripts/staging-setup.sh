@@ -62,10 +62,12 @@ pg_dump "$LIVE_DB_URL" --schema-only --schema=public --no-owner --quote-all-iden
 # Storage-Buckets und -Richtlinien gehören zum Schema der App (Dateien, Team-Fotos).
 pg_dump "$LIVE_DB_URL" --data-only --table=storage.buckets --no-owner --inserts > supabase/storage-buckets.sql
 # Leerer Suchpfad: Tabellen und Funktionen in den Regeln werden voll ausgeschrieben
-# (public.client_assignments), sonst findet Staging sie beim Einspielen nicht.
+# (public.client_assignments), sonst findet Staging sie beim Einspielen nicht. Jede Regel
+# auf einer Zeile, damit --fortsetzen vorhandene Regeln zeilenweise überspringen kann.
 psql "$LIVE_DB_URL" -qAt -c "set search_path = ''" -c "select format('create policy %I on storage.objects as %s for %s to %s%s%s;',
     policyname, permissive, cmd, array_to_string(roles, ', '),
-    coalesce(' using (' || qual || ')', ''), coalesce(' with check (' || with_check || ')', ''))
+    coalesce(' using (' || replace(qual, E'\\n', ' ') || ')', ''),
+    coalesce(' with check (' || replace(with_check, E'\\n', ' ') || ')', ''))
   from pg_policies where schemaname = 'storage' and tablename = 'objects' order by policyname" \
   > supabase/storage-policies.sql
 
@@ -100,7 +102,7 @@ if [[ "$(psql "$STAGING_DB_URL" -At -c "select count(*) from storage.buckets")" 
 fi
 regeln=$(mktemp)
 psql "$STAGING_DB_URL" -At -c "select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects'" > "$regeln"
-grep -v -F -f <(sed 's/.*/create policy "&" on/' "$regeln"; echo "§kein-treffer§") supabase/storage-policies.sql \
+grep -v -F -f <(sed -e 's/.*/create policy "&" on /p' -e 's/.*/create policy & on /' "$regeln"; echo "§kein-treffer§") supabase/storage-policies.sql \
   | psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q --single-transaction
 rm -f "$regeln"
 
