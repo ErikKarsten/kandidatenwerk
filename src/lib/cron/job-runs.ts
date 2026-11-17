@@ -10,13 +10,13 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { sendEmail } from "@/lib/brevo-mail"
 import { APP_BASE_URL } from "@/lib/app-url"
 import { getAdminEmails } from "@/lib/get-admin-emails"
-import { describeCronFailure, recordSystemReport } from "@/lib/bug-reports/system-reports"
+import { describeCronFailure, isTransientFailure, recordSystemReport, TRANSIENT_FAILURES_BEFORE_REPORT } from "@/lib/bug-reports/system-reports"
 import type { Database } from "@/types/database"
 
 const ALERT_COOLDOWN_HOURS = 12
 const RETENTION_DAYS = 30
 
-export type CronJobName = "run-automations" | "meta-leads-sync" | "sync-kanzleistelle" | "task-reminders" | "meta-campaigns-sync" | "close-meetings" | "sample-feed" | "cv-werdegang" | "matching"
+export type CronJobName = "run-automations" | "meta-leads-sync" | "sync-kanzleistelle" | "task-reminders" | "meta-campaigns-sync" | "close-meetings" | "sample-feed" | "cv-werdegang" | "matching" | "mail-zustellung"
 
 export interface CronJobOutcome<T> {
   result: T
@@ -82,18 +82,32 @@ async function recordRun(
     await db.from("cron_job_runs").delete().eq("job", job).lt("started_at", retentionCutoff)
 
     if (!run.ok) {
+      const description = describeCronFailure(run.error, run.summary)
+      // Kurze Störung eines fremden Dienstes (Paket 106): nur protokollieren, solange
+      // nicht mehrere Läufe in Folge daran scheitern.
+      if (isTransientFailure(description) && !(await failedInARow(db, job, TRANSIENT_FAILURES_BEFORE_REPORT))) {
+        console.warn(`[cron-monitor] ${job}: vorübergehende Störung, nächster Lauf holt nach - ${description.slice(0, 300)}`)
+        return
+      }
       // Fehlschlag als System-Eintrag bei den Fehlermeldungen (T-67). Mail nur, wenn der
       // Eintrag neu ist - weitere Fehlschläge zählen nur hoch.
       const report = await recordSystemReport(db, {
         sourceKey: `cron:${job}`,
         title: `Cronjob „${job}“ schlägt fehl`,
-        description: describeCronFailure(run.error, run.summary),
+        description,
       })
       if (report.created) await maybeAlert(supabase, job, inserted.id as string, run)
     }
   } catch (err) {
     console.warn(`[cron-monitor] Protokoll/Alarm für ${job} fehlgeschlagen: ${errorMessage(err)}`)
   }
+}
+
+// true, wenn die letzten `count` Läufe des Jobs (inklusive des gerade protokollierten)
+// alle fehlgeschlagen sind.
+async function failedInARow(db: SupabaseClient, job: CronJobName, count: number): Promise<boolean> {
+  const { data } = await db.from("cron_job_runs").select("ok").eq("job", job).order("started_at", { ascending: false }).limit(count)
+  return (data ?? []).length === count && (data ?? []).every((r) => r.ok === false)
 }
 
 async function maybeAlert(

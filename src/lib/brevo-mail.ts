@@ -63,7 +63,14 @@ export async function sendEmail(
   to: string[],
   subject: string,
   htmlContent: string,
-  options: { senderName?: string; replyTo?: { email: string; name?: string }; footerSender?: string; bcc?: string[] } = {}
+  options: {
+    senderName?: string
+    replyTo?: { email: string; name?: string }
+    footerSender?: string
+    bcc?: string[]
+    // Erneuter Versand einer abgewiesenen Mail (Paket 106): Message-ID der ersten Mail.
+    retryOf?: string
+  } = {}
 ): Promise<string[]> {
   const apiKey = process.env.BREVO_API_KEY
   if (!apiKey) throw new Error("BREVO_API_KEY ist nicht gesetzt.")
@@ -105,5 +112,35 @@ export async function sendEmail(
     const body = await response.text().catch(() => "")
     throw new Error(`Brevo-Versand fehlgeschlagen (${response.status}): ${body}`)
   }
+  const sent = (await response.json().catch(() => null)) as { messageId?: string } | null
+  if (sent?.messageId) await logSentMail(sent.messageId, to, subject, options)
   return to
+}
+
+// Versandprotokoll (Paket 106) für die Zustellprüfung (src/lib/mail-delivery.ts). Fehler
+// hier blockieren nie den Versand.
+async function logSentMail(
+  messageId: string,
+  recipients: string[],
+  subject: string,
+  options: { senderName?: string; replyTo?: { email: string; name?: string }; retryOf?: string }
+): Promise<void> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SECRET_KEY
+    if (!url || !key) return
+    const { error } = await createClient(url, key)
+      .from("mail_versand")
+      .insert({
+        message_id: messageId,
+        recipients,
+        subject,
+        sender_name: options.senderName ?? null,
+        reply_to: options.replyTo ?? null,
+        retry_of: options.retryOf ?? null,
+      })
+    if (error) throw new Error(error.message)
+  } catch (err) {
+    console.error(`[mail] Versandprotokoll nicht gespeichert: ${err instanceof Error ? err.message : err}`)
+  }
 }
