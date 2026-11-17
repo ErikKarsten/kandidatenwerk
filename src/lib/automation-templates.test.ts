@@ -38,8 +38,8 @@ describe("Status vereinheitlicht (Paket 15)", () => {
   })
 
   it("benennt den Kunden-Status überall gleich", () => {
-    expect(ASSIGNMENT_STATUS_OPTIONS.map((o) => o.label)).toEqual(["Neu", "Vorstellungsgespräch", "Eingestellt", "Abgelehnt", "Bewerber hat abgesagt"])
-    expect(PORTAL_ASSIGNMENT_STATUS_VALUES.map((v) => assignmentStatusLabel(v).label)).toEqual(["Vorstellungsgespräch", "Eingestellt", "Abgelehnt", "Bewerber hat abgesagt"])
+    expect(ASSIGNMENT_STATUS_OPTIONS.map((o) => o.label)).toEqual(["Neu", "In Kontakt", "Vorstellungsgespräch", "Eingestellt", "Abgelehnt", "Bewerber hat abgesagt"])
+    expect(PORTAL_ASSIGNMENT_STATUS_VALUES.map((v) => assignmentStatusLabel(v).label)).toEqual(["In Kontakt", "Vorstellungsgespräch", "Eingestellt", "Abgelehnt", "Bewerber hat abgesagt"])
     expect(assignmentStatusLabel("unbekannt").label).toBe("unbekannt")
   })
 })

@@ -64,3 +64,25 @@ export function describeCronFailure(error: string | null, summary: unknown): str
   }
   return [...counts].map(([msg, n]) => `${n}× ${msg}`).join("\n")
 }
+
+// Vorübergehende Störungen fremder Dienste (Paket 106): Meta-Aufruflimit, Überlastung,
+// Zeitüberschreitung, Serverfehler. Der nächste Lauf holt das Verpasste nach - gemeldet
+// wird erst, wenn die Störung TRANSIENT_FAILURES_BEFORE_REPORT Läufe in Folge anhält.
+export const TRANSIENT_FAILURES_BEFORE_REPORT = 3
+
+const TRANSIENT_PATTERNS = [
+  /request limit/i,
+  /too ?many ?(requests|calls)/i,
+  /"is_transient":\s*true/,
+  /"code":\s*(4|17|32|613|80004)\b/,
+  /\((429|5\d\d)\)/,
+  /\b(429|5\d\d):/,
+  /try again later/i,
+  /timed? ?out|timeout/i,
+]
+
+// true, wenn jede einzelne Fehlerzeile nach vorübergehender Störung aussieht.
+export function isTransientFailure(description: string): boolean {
+  const lines = description.split("\n").map((l) => l.trim()).filter(Boolean)
+  return lines.length > 0 && lines.every((line) => TRANSIENT_PATTERNS.some((p) => p.test(line)))
+}
