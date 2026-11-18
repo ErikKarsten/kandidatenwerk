@@ -462,7 +462,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <div class="table"><table>
         <thead><tr><th>Reiter</th><th>Inhalt</th></tr></thead>
         <tbody>
-          <tr><td>Mein Konto</td><td>Eigener Name, Telefon und Foto, dazu Agenturname und Logo für Mails und Lebensläufe.</td></tr>
+          <tr><td>Mein Konto</td><td>Eigener Name, Telefon und Foto, dazu Agenturname und Logo für Mails und Lebensläufe. Admins legen hier unter <span class="ui">Claude-Zugang (API)</span> einen Schlüssel an, mit dem Claude Code Kandidatenwerk bedienen kann (suchen, ansehen, Status, Notizen, Aufgaben, Zuordnungen; kein Löschen).</td></tr>
           <tr><td>Team</td><td>Zugänge, Rolle und Team jeder Person.</td></tr>
           <tr><td>E-Mail-Vorlagen</td><td>Vorlagen für Automatisierungen und Kommunikation, Vorlagensets für neue Kampagnen, die Eingangsbestätigung, wer bei neuen Leads benachrichtigt wird und wer die Matching-Mail bekommt.</td></tr>
           <tr><td>Felder</td><td>Zusatzfelder der Kandidaten, Feld-Vorlagen, Felder des Kanzleiprofils und der Stellen.</td></tr>

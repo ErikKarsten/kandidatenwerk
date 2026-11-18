@@ -48,3 +48,12 @@ export async function checkBugReportRateLimit(userId: string): Promise<boolean> 
   const { success } = await env.BUG_REPORT_LIMIT.limit({ key: `bug-report:${userId}` })
   return success
 }
+
+// Claude-Schnittstelle (Paket 111): falsche API-Schlüssel je IP begrenzen (gleiches Limit
+// wie Login-Versuche je IP, eigener Schlüsselraum) - gegen Durchprobieren.
+export async function checkApiKeyFailureRateLimit(ip: string | null): Promise<boolean> {
+  const env = getCloudflareContext().env as unknown as RateLimitEnv
+  if (!env.LOGIN_LIMIT_IP || !ip) return true
+  const { success } = await env.LOGIN_LIMIT_IP.limit({ key: `api-schluessel:${ip}` })
+  return success
+}

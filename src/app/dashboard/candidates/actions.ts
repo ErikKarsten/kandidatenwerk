@@ -7,12 +7,11 @@ import { requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
 import { notifyLeadRecipients } from "@/lib/lead-notifications"
-import { triggerAutomationsNow } from "@/lib/automation-trigger"
-import { RECALL_STATUS, RECALL_TASK_TITLE, recallDueDate } from "@/lib/candidate-status"
 import { ACTIVE_SOURCING_SOURCE, ACTIVE_SOURCING_TAG, canUseActiveSourcing } from "@/lib/teams"
 import { ASSIGNABLE_STATUS, clientNotLiveError, ensureCampaignAssignment } from "@/lib/client-assignment"
+import { triggerAutomationsNow } from "@/lib/automation-trigger"
+import { setCandidateStatus } from "@/lib/kern"
 import { createSampleCandidates } from "@/lib/sample-candidates"
-import { assignOwnCampaignLead } from "@/lib/own-campaign-leads"
 import { friendlyAiError } from "@/lib/llm"
 import { cleanExtra, cleanFocus, cleanSoftware } from "@/lib/sample-focus"
 import { canCreateSamples } from "@/lib/teams"
@@ -138,80 +137,12 @@ export async function updateCandidateStatusAction(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
 
-  const { data: existing } = await supabase
-    .from("candidates")
-    .select("status, campaign_id")
-    .eq("id", candidateId)
-    .single()
-
-  const { error } = await supabase
-    .from("candidates")
-    .update({ status })
-    .eq("id", candidateId)
-
-  if (error) return { error: error.message }
-
-  if (existing) {
-    await supabase.from("candidate_history").insert({
-      candidate_id: candidateId,
-      type: "status_change",
-      content: `Status geändert: ${existing.status} → ${status}`,
-      created_by: user.id,
-    })
-  }
-
-  // "Derzeit nicht auf Suche" (Paket 85): in 6 Monaten erneut anrufen. Gibt es die Aufgabe
-  // schon offen, rückt nur ihr Termin nach hinten.
-  if (existing && existing.status !== status && status === RECALL_STATUS) {
-    const due = recallDueDate()
-    const { data: open } = await supabase
-      .from("tasks")
-      .select("id")
-      .eq("candidate_id", candidateId)
-      .eq("title", RECALL_TASK_TITLE)
-      .neq("status", "erledigt")
-      .limit(1)
-      .maybeSingle()
-    const { error: taskError } = open
-      ? await supabase.from("tasks").update({ due_date: due }).eq("id", open.id)
-      : await supabase.from("tasks").insert({
-          title: RECALL_TASK_TITLE,
-          description: `Status am ${new Date().toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} auf „Derzeit nicht auf Suche“ gesetzt. Nachfragen, ob sich die Lage geändert hat und ein Wechsel jetzt in Frage kommt.`,
-          assigned_to: user.id,
-          created_by: user.id,
-          candidate_id: candidateId,
-          due_date: due,
-        })
-    if (taskError) console.error("Aufgabe erneut anrufen fehlgeschlagen:", taskError.message)
-    else {
-      await supabase.from("candidate_history").insert({
-        candidate_id: candidateId,
-        type: "note",
-        content: `Aufgabe „Kandidat erneut anrufen“ zum ${new Date(`${due}T12:00:00Z`).toLocaleDateString("de-DE", { timeZone: "UTC" })} angelegt.`,
-        created_by: user.id,
-      })
-      revalidatePath("/dashboard/tasks")
-    }
-  }
-
-  // Lead aus der eigenen Meta-Kampagne einer Kanzlei (Paket 93): mit "vorqualifiziert" der
-  // Kampagne zuordnen, die Mail an die Kanzlei kommt dann von der Automatisierung unten.
-  if (existing && existing.status !== status && status === ASSIGNABLE_STATUS) {
-    try {
-      const own = await assignOwnCampaignLead(supabase, candidateId, user.id)
-      if (own?.kind === "assigned") revalidatePath(`/dashboard/clients/${own.clientId}`)
-    } catch (err) {
-      console.error("Automatische Zuordnung fehlgeschlagen:", err)
-    }
-  }
-
-  // Die frühere automatische Kunden-Benachrichtigung bei "vorqualifiziert" (Haken in den
-  // Stammdaten) ist entfallen (Paket 16) - das übernehmen die Automatisierungen, seit
-  // Paket 22 sofort: Herkunftskampagne und zugeordnete Kanzlei-Kampagnen.
-  if (existing && existing.status !== status) {
-    const { data: assigned } = await supabase.from("client_assignments").select("campaign_id").eq("candidate_id", candidateId).is("removed_at", null)
-    triggerAutomationsNow([existing.campaign_id, ...(assigned ?? []).map((a) => a.campaign_id)])
-  }
+  // Kern gemeinsam mit der Claude-Schnittstelle (Paket 111): Verlauf, "erneut anrufen",
+  // Zuordnung eigener Kampagnen-Leads, Automatisierungen.
+  const result = await setCandidateStatus(supabase, user.id, candidateId, status)
+  if ("error" in result) return result
+  if (result.clientId) revalidatePath(`/dashboard/clients/${result.clientId}`)
+  revalidatePath("/dashboard/tasks")
 
   if (campaignId) revalidatePath(`/dashboard/campaigns/${campaignId}`)
   revalidatePath("/dashboard/candidates")
