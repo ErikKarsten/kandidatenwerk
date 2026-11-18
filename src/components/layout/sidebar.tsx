@@ -45,6 +45,8 @@ interface NavEntry {
   badge?: number
   // Eigene Seite außerhalb des Dashboards (Handbuch, Paket 91): normaler Link in neuem Tab.
   external?: boolean
+  // Eigenständige Seite ohne Next-Router, im selben Tab (Meta-Analyse-Tool, Paket 110).
+  plain?: boolean
 }
 
 function buildNavGroups(counts: { candidates: number; clients: number; tasks: number; matching: number }): { heading?: string; items: NavEntry[] }[] {
@@ -71,7 +73,8 @@ function buildNavGroups(counts: { candidates: number; clients: number; tasks: nu
     {
       // Paket 108: Meta-Analyse-Tool als eigener Bereich (vorher eigenständige Seite).
       heading: "Marketing",
-      items: [{ href: "/dashboard/meta-analyse", label: "Meta-Analyse-Tool", icon: BarChart3 }],
+      // Eigene Seite (kein Rahmen: die Live-Domain verbietet Einbetten per X-Frame-Options, Paket 110).
+      items: [{ href: "/meta-analyse-tool/index.html", label: "Meta-Analyse-Tool", icon: BarChart3, plain: true }],
     },
   ]
 }
@@ -106,8 +109,8 @@ const itemClass = (active: boolean, collapsed: boolean) =>
     active ? "font-medium text-white" : "hover:bg-white/10 hover:text-white"
   )
 
-function NavItem({ href, label, icon: Icon, badge, active, collapsed, external = false }: NavEntry & { active: boolean; collapsed: boolean }) {
-  const Anchor = external ? "a" : Link
+function NavItem({ href, label, icon: Icon, badge, active, collapsed, external = false, plain = false }: NavEntry & { active: boolean; collapsed: boolean }) {
+  const Anchor = external || plain ? "a" : Link
   return (
     <WithTooltip collapsed={collapsed} label={label}>
       <Anchor

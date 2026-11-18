@@ -1,6 +1,9 @@
-// Meta-Analyse-Tool (Paket 108): die Webseite des Tools (ErikKarsten/kampagnen-dashboard)
-// 1:1 unter public/meta-analyse-tool/, hier eingebettet. Daten kommen über
-// /api/meta-analyse/* aus Kandidatenwerk; angemeldet ist, wer diese Seite sieht.
+import { redirect } from "next/navigation"
+
+// Meta-Analyse-Tool (Paket 108/110): eigene Seite unter /meta-analyse-tool/ (Webseite des
+// Tools 1:1, Daten über /api/meta-analyse/*). Nicht mehr im Rahmen eingebettet - die
+// Live-Domain setzt X-Frame-Options: DENY (Cloudflare), dann bleibt der Rahmen leer.
+// Diese Adresse leitet nur noch weiter (alte Lesezeichen).
 export default function MetaAnalysePage() {
-  return <iframe src="/meta-analyse-tool/index.html" title="Meta-Analyse-Tool" className="block h-full w-full border-0" />
+  redirect("/meta-analyse-tool/index.html")
 }

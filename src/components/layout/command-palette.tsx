@@ -65,7 +65,9 @@ export function CommandPalette({ open, onOpenChange, targets }: { open: boolean;
   function go(entry: Entry | undefined) {
     if (!entry) return
     close()
-    router.push(entry.href)
+    // Seiten außerhalb von /dashboard (Meta-Analyse-Tool) sind keine Next-Seiten: normal öffnen.
+    if (entry.href.startsWith("/dashboard") || entry.href.startsWith("/handbuch")) router.push(entry.href)
+    else window.location.href = entry.href
   }
 
   const active = Math.min(index, Math.max(entries.length - 1, 0))

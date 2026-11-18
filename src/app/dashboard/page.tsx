@@ -133,9 +133,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         {/* Werbezahlen von Meta stehen seit Paket 108 im Meta-Analyse-Tool. */}
         <p className="text-xs text-gray-500">
           Werbeausgaben, Leads und Kosten pro Lead von Meta:{" "}
-          <Link href="/dashboard/meta-analyse" className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
+          <a href="/meta-analyse-tool/index.html" className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
             im Meta-Analyse-Tool
-          </Link>
+          </a>
         </p>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">

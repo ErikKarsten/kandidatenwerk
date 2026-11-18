@@ -4,7 +4,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { uhrIn, type KontoStand } from "@/lib/meta-konto-logik"
-import AppLink from "@/components/app-link"
 
 export async function MetaAlarmBanner() {
   const db = createSupabaseAdminClient() as unknown as SupabaseClient
@@ -22,7 +21,7 @@ export async function MetaAlarmBanner() {
         <a href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${konto}`} target="_blank" rel="noopener noreferrer" className="underline">
           Im Werbeanzeigenmanager beheben
         </a>{" "}
-        · <AppLink href="/dashboard/meta-analyse" className="underline">Im Meta-Analyse-Tool ansehen</AppLink>
+        · <a href="/meta-analyse-tool/index.html" className="underline">Im Meta-Analyse-Tool ansehen</a>
       </p>
     </div>
   )
