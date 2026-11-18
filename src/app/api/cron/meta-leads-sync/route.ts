@@ -4,10 +4,16 @@ import { syncMetaLeads } from "@/lib/cron/meta-leads-sync"
 import { runTrackedCronJob } from "@/lib/cron/job-runs"
 import { isCronAuthorized } from "@/lib/cron-auth"
 
-// Aufgerufen vom Cloudflare Cron Trigger (custom-worker.ts, alle 30 Minuten).
+// Aufgerufen vom Cloudflare Cron Trigger (custom-worker.ts, stündlich), arbeitet aber nur
+// in geraden Stunden (UTC): Neue Leads kommen sofort über den Webhook, der Abgleich ist nur
+// das Netz für verpasste Events. Vorher alle 30 Minuten - Meta meldete 429 bei /leads
+// (Paket 108). Gleiche Grenze wie die Meta-Anfragen: ein Lauf = 1 + Seiten + Formulare.
 export async function POST(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+  if (new Date().getUTCHours() % 2 !== 0 && !request.nextUrl.searchParams.has("jetzt")) {
+    return NextResponse.json({ skipped: "Nur alle 2 Stunden (gerade Stunden)." })
   }
 
   const supabase = createSupabaseAdminClient()

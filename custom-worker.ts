@@ -34,9 +34,11 @@ interface ExecutionContext {
 // je Ausdruck laufen nacheinander (spart Cron-Trigger).
 const CRON_ROUTES: Record<string, string[]> = {
   "*/5 * * * *": ["/api/cron/run-automations", "/api/cron/close-meetings", "/api/cron/cv-werdegang"],
-  "*/30 * * * *": ["/api/cron/meta-leads-sync"],
-  "0 * * * *": ["/api/cron/sync-kanzleistelle", "/api/cron/meta-campaigns-sync", "/api/cron/sample-feed", "/api/cron/matching", "/api/cron/mail-zustellung"],
-  "0 6 * * *": ["/api/cron/task-reminders"],
+  // Paket 108: meta-zentral ist die eine Meta-Anfrage für Konto-Prüfung und Werbezahlen;
+  // der Lead-Abgleich läuft stündlich mit, arbeitet aber nur alle 2 Stunden (Route).
+  "*/30 * * * *": ["/api/cron/meta-zentral"],
+  "0 * * * *": ["/api/cron/sync-kanzleistelle", "/api/cron/meta-leads-sync", "/api/cron/meta-campaigns-sync", "/api/cron/sample-feed", "/api/cron/matching", "/api/cron/mail-zustellung"],
+  "0 6 * * *": ["/api/cron/task-reminders", "/api/cron/meta-anzeigen"],
 }
 
 const APP_ORIGIN = "https://kandidatenwerk.kanzleistelle24.de"

@@ -19,6 +19,8 @@ export interface GenerateTextOptions {
   tier: LlmTier
   maxTokens?: number
   timeoutMs?: number
+  // Bilder zum Text (Paket 108: Anzeigenmotive). Nur Base64, höchstens ein paar MB.
+  images?: { mediaType: string; base64: string }[]
 }
 
 const KIE_URL = "https://api.kie.ai/claude/v1/messages"
@@ -52,7 +54,11 @@ function textOf(response: MessageResponse): string {
 }
 
 async function viaKieOnce(key: string, o: GenerateTextOptions): Promise<string> {
-  const content = o.system ? `<anweisungen>\n${o.system}\n</anweisungen>\n\n${o.prompt}` : o.prompt
+  const text = o.system ? `<anweisungen>\n${o.system}\n</anweisungen>\n\n${o.prompt}` : o.prompt
+  // Bilder (Paket 108, Einschätzung der Anzeigenmotive) als Inhaltsblöcke vor dem Text.
+  const content = o.images?.length
+    ? [...o.images.map((i) => ({ type: "image", source: { type: "base64", media_type: i.mediaType, data: i.base64 } })), { type: "text", text }]
+    : text
   const res = await fetch(KIE_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
@@ -85,7 +91,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 async function viaKieGeminiOnce(key: string, o: GenerateTextOptions): Promise<string> {
   const messages = [
     ...(o.system ? [{ role: "system", content: [{ type: "text", text: o.system }] }] : []),
-    { role: "user", content: [{ type: "text", text: o.prompt }] },
+    {
+      role: "user",
+      content: [
+        ...(o.images ?? []).map((i) => ({ type: "image_url", image_url: { url: `data:${i.mediaType};base64,${i.base64}` } })),
+        { type: "text", text: o.prompt },
+      ],
+    },
   ]
   const res = await fetch(KIE_FALLBACK_URL, {
     method: "POST",
@@ -148,6 +160,20 @@ async function viaKie(key: string, o: GenerateTextOptions): Promise<string> {
   }
 }
 
+// Modell für Anfragen mit Bild über kie.ai (siehe generateText).
+export const KIE_IMAGE_MODEL = KIE_FALLBACK_MODEL
+
+async function viaKieImages(key: string, o: GenerateTextOptions): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await viaKieGeminiOnce(key, o)
+    } catch (err) {
+      if (!isRetryable(err) || attempt >= 2) throw err
+      await sleep(5_000 * 2 ** attempt)
+    }
+  }
+}
+
 // Nur für Tests: Pause des Ausweichmodells zurücksetzen.
 export function resetLlmFallbackForTests(): void {
   fallbackPausedUntil = 0
@@ -160,7 +186,20 @@ async function viaAnthropic(key: string, o: GenerateTextOptions): Promise<string
     max_tokens: o.maxTokens ?? 2048,
     ...(o.tier === "smart" ? { output_config: { effort: "low" as const } } : {}),
     ...(o.system ? { system: o.system } : {}),
-    messages: [{ role: "user", content: o.prompt }],
+    messages: [
+      {
+        role: "user",
+        content: o.images?.length
+          ? [
+              ...o.images.map((i) => ({
+                type: "image" as const,
+                source: { type: "base64" as const, media_type: i.mediaType as "image/jpeg" | "image/png" | "image/webp" | "image/gif", data: i.base64 },
+              })),
+              { type: "text" as const, text: o.prompt },
+            ]
+          : o.prompt,
+      },
+    ],
   })
   return textOf(response as MessageResponse)
 }
@@ -168,6 +207,9 @@ async function viaAnthropic(key: string, o: GenerateTextOptions): Promise<string
 // Liefert den Antworttext. Wirft bei fehlendem Schlüssel, API-Fehlern oder Ablehnung.
 export async function generateText(o: GenerateTextOptions): Promise<string> {
   const kie = process.env.KIE_API_KEY
+  // Claude bei kie.ai lehnt Bilder ab ("Internal error", geprüft 18.11.2026) - Anfragen
+  // mit Bild gehen direkt an das Ausweichmodell, das Bilder versteht.
+  if (kie && o.images?.length) return viaKieImages(kie, o)
   if (kie) return viaKie(kie, o)
   const anthropic = process.env.ANTHROPIC_API_KEY
   if (anthropic) return viaAnthropic(anthropic, o)

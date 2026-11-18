@@ -10,6 +10,7 @@ import { BerufsbildProvider } from "@/components/berufsbild-context"
 import { NavigationTracker } from "@/components/navigation-tracker"
 import { memberOfTeam } from "@/lib/teams"
 import { Suspense } from "react"
+import { MetaAlarmBanner } from "@/components/meta-alarm-banner"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient()
@@ -88,6 +89,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
         {/* Eigener Zurück-Verlauf (Paket 53). */}
         <Suspense fallback={null}>
           <NavigationTracker />
+        </Suspense>
+        {/* Kampagnen-Alarm (Paket 108) - eigener Suspense, damit die Seite nicht darauf wartet. */}
+        <Suspense fallback={null}>
+          <MetaAlarmBanner />
         </Suspense>
         {children}
       </BerufsbildProvider>

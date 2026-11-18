@@ -168,7 +168,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
       <div class="flow" aria-label="Ablauf">
         <span>Bewerbung kommt herein</span><i>→</i><span>Team ruft an und qualifiziert</span><i>→</i><span>Status „Vorqualifiziert“</span><i>→</i><span>Zuordnung zu einer Live-Kanzlei</span><i>→</i><span>Kanzlei sieht den Kandidaten im Portal</span>
       </div>
-      <p>Die Seitenleiste führt zu den Bereichen <span class="ui">Dashboard</span>, <span class="ui">Kunden</span>, <span class="ui">Alle Kandidaten</span>, <span class="ui">Kandidaten nach Kampagnen</span>, <span class="ui">Aufgaben</span>, <span class="ui">Karte</span> und <span class="ui">Einstellungen</span>. Unten in der Seitenleiste liegen der <span class="ui">Anonymisierte Modus</span>, der Knopf <span class="ui">Fehler melden</span> und dieses <span class="ui">Handbuch</span>.</p>
+      <p>Die Seitenleiste führt zu den Bereichen <span class="ui">Dashboard</span>, <span class="ui">Kunden</span>, <span class="ui">Alle Kandidaten</span>, <span class="ui">Kandidaten nach Kampagnen</span>, <span class="ui">Aufgaben</span>, <span class="ui">Karte</span>, <span class="ui">Meta-Analyse-Tool</span> und <span class="ui">Einstellungen</span>. Unten in der Seitenleiste liegen der <span class="ui">Anonymisierte Modus</span>, der Knopf <span class="ui">Fehler melden</span> und dieses <span class="ui">Handbuch</span>.</p>
       <div class="why"><b>Warum</b><p>Kanzleien sollen nur Kandidaten sehen, mit denen wir schon gesprochen haben. Deshalb gilt überall dieselbe Regel: Eine Kanzlei bekommt einen Kandidaten erst, wenn er vorqualifiziert und ihr zugeordnet ist. Alles davor ist interne Arbeit des Teams.</p></div>
     </section>
 
@@ -479,9 +479,10 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
         <tbody>
           <tr><td>sofort</td><td>Neue Meta-Leads über den Webhook, Eingangsbestätigung, Antworten von Kandidaten.</td></tr>
           <tr><td>alle 5 Minuten</td><td>Automatisierungen, Gespräche aus Close, Werdegänge für geänderte Beschreibungen.</td></tr>
-          <tr><td>alle 30 Minuten</td><td>Abgleich der Meta-Leads als Sicherheitsnetz.</td></tr>
-          <tr><td>stündlich</td><td>Kanzleistelle24, Meta-Kampagnen und Werbegebiete, Beispielkandidaten, Abgleich der Matching-Vorschläge.</td></tr>
-          <tr><td>morgens</td><td>Erinnerung an fällige Aufgaben.</td></tr>
+          <tr><td>alle 30 Minuten</td><td>Werbekonto bei Meta prüfen und Werbezahlen holen (eine Anfrage). Spielt Meta nichts mehr aus, erscheint oben eine rote Leiste und im <span class="ui">Meta-Analyse-Tool</span> der Alarm.</td></tr>
+          <tr><td>stündlich</td><td>Kanzleistelle24, Meta-Kampagnen (Werbegebiete alle 6 Stunden), Beispielkandidaten, Abgleich der Matching-Vorschläge.</td></tr>
+          <tr><td>alle 2 Stunden</td><td>Abgleich der Meta-Leads als Sicherheitsnetz.</td></tr>
+          <tr><td>morgens</td><td>Erinnerung an fällige Aufgaben. Texte und Bilder der Meta-Anzeigen fürs Meta-Analyse-Tool (auch per Knopf „Daten von Meta holen“), dazu die KI-Einschätzung neuer Anzeigen.</td></tr>
           <tr><td>Mo + Do, 8 Uhr</td><td>Sammel-Mail mit neuen Matching-Vorschlägen.</td></tr>
         </tbody>
       </table></div>

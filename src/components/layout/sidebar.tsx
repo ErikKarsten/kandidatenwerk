@@ -18,6 +18,7 @@ import {
   BookOpen,
   Handshake,
   Search,
+  BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLocalStorageValue } from "@/lib/use-local-storage"
@@ -66,6 +67,11 @@ function buildNavGroups(counts: { candidates: number; clients: number; tasks: nu
     {
       heading: "Kunden",
       items: [{ href: "/dashboard/clients", label: "Kunden", icon: Users, badge: counts.clients }],
+    },
+    {
+      // Paket 108: Meta-Analyse-Tool als eigener Bereich (vorher eigenständige Seite).
+      heading: "Marketing",
+      items: [{ href: "/dashboard/meta-analyse", label: "Meta-Analyse-Tool", icon: BarChart3 }],
     },
   ]
 }

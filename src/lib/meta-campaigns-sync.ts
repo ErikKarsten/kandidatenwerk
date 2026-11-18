@@ -179,7 +179,11 @@ export async function syncMetaCampaigns(
   // - Anzeigengruppen (-> Werbegebiete) nur für laufende Kampagnen.
   const running = leadCampaigns.filter((c) => c.effective_status === "ACTIVE")
   const needsFormIds = running.filter((c) => !existingByMetaId.get(c.id)?.meta_form_id).map((c) => c.id)
-  const needsAreasIds = running.map((c) => c.id)
+  // Werbegebiete ändern sich selten, die Anzeigengruppen-Abfrage ist aber die teuerste
+  // (hier kam am 17.11. "User request limit reached"): nur für neue Kampagnen, sonst alle
+  // 6 Stunden für alle laufenden (Paket 108).
+  const areasForAll = new Date().getUTCHours() % 6 === 0
+  const needsAreasIds = running.filter((c) => areasForAll || !existingByMetaId.has(c.id)).map((c) => c.id)
 
   const ads = await fetchForCampaigns<MetaAd>(
     `${act}/ads`,
