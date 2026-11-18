@@ -24,7 +24,7 @@ const staging = args.includes("--staging")
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") })
 if (staging) {
   const s = dotenv.config({ path: path.resolve(__dirname, "../.env.staging"), processEnv: {} }).parsed ?? {}
-  for (const k of ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECRET_KEY", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "NEXT_PUBLIC_APP_URL"]) {
+  for (const k of ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECRET_KEY", "NEXT_PUBLIC_APP_URL"]) {
     if (s[k]) process.env[k] = s[k]
   }
 }

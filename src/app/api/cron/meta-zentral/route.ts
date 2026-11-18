@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
   const supabase = createSupabaseAdminClient()
   const result = await runTrackedCronJob(supabase, "meta-zentral", async () => {
-    // meta_* und push_abos sind noch nicht in src/types/database.ts generiert.
+    // meta_* sind noch nicht in src/types/database.ts generiert.
     const r = await runMetaZentral(supabase as unknown as SupabaseClient)
     return { result: r, ok: true }
   })

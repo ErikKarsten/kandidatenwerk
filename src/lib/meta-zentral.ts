@@ -5,12 +5,11 @@
 // (jede Minute) getrennt - Fehler "User request limit reached".
 //
 // Ergebnis: meta_anzeigen_tag (Dashboard liest daraus) und meta_konto_status (rote
-// Leiste + Browser-Benachrichtigungen beim Kampagnen-Alarm). Liest bei Meta nur.
+// Leiste und Meta-Analyse-Tool). Liest bei Meta nur.
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { metaGraphFetch } from "@/lib/meta-ads-client"
-import { ausCent, bewerte, faelligeNachricht, tagIn, type KontoStand } from "@/lib/meta-konto-logik"
-import { sendWebPush } from "@/lib/web-push"
+import { ausCent, bewerte, tagIn, type KontoStand } from "@/lib/meta-konto-logik"
 
 // Lead-Aktionen wie im Meta-Analyse-Tool: der größte Wert zählt ("lead" fasst die
 // anderen normalerweise schon zusammen).
@@ -132,7 +131,6 @@ export interface MetaZentralResult {
   ausgabenHeute: number
   aktiveAnzeigen: number | null
   alarm: string | null
-  benachrichtigt: number
   hinweise: string[]
 }
 
@@ -192,33 +190,12 @@ export async function runMetaZentral(db: SupabaseClient): Promise<MetaZentralRes
   const { data: vorherRow } = await db.from("meta_konto_status").select("stand").eq("konto_id", account).maybeSingle()
   const vorher = (vorherRow?.stand as KontoStand | undefined) ?? null
   const { alarm } = bewerte(zeile, vorher)
-  const nachricht = faelligeNachricht(zeile, alarm)
-
-  // Erst speichern, damit eine offene Seite beim Eintreffen der Mitteilung den neuen Stand zeigt.
-  const speichern = async () => {
-    const { error } = await db.from("meta_konto_status").upsert({ konto_id: account, stand: zeile, geprueft_am: geprueftAm }, { onConflict: "konto_id" })
-    if (error) throw new Error(`meta_konto_status speichern: ${error.message}`)
-  }
-  await speichern()
-
-  let benachrichtigt = 0
-  if (nachricht) {
-    try {
-      benachrichtigt = await pushAnAlle(db, { title: nachricht.title, body: nachricht.body, tag: "kampagnen-alarm", url: "/dashboard" }, nachricht.urgent)
-      if (alarm && benachrichtigt > 0) {
-        zeile.alarm_gemeldet = alarm.schluessel
-        zeile.alarm_gemeldet_am = new Date().toISOString()
-        await speichern()
-      } else if (!alarm && zeile.alarm_gemeldet) {
-        zeile.alarm_gemeldet = null
-        zeile.alarm_gemeldet_am = null
-        await speichern()
-      }
-    } catch (err) {
-      // Benachrichtigungen sind eine Zugabe - die Prüfung gilt trotzdem als gelaufen.
-      hinweise.push(`Benachrichtigungen nicht möglich: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
+  // Benachrichtigungen aufs Gerät gibt es nicht (wie im Meta-Analyse-Tool seit 18.11.):
+  // Der Alarm erscheint nur auf der Seite.
+  zeile.alarm_gemeldet = null
+  zeile.alarm_gemeldet_am = null
+  const { error: speicherFehler } = await db.from("meta_konto_status").upsert({ konto_id: account, stand: zeile, geprueft_am: geprueftAm }, { onConflict: "konto_id" })
+  if (speicherFehler) throw new Error(`meta_konto_status speichern: ${speicherFehler.message}`)
 
   return {
     konto: account,
@@ -227,36 +204,7 @@ export async function runMetaZentral(db: SupabaseClient): Promise<MetaZentralRes
     impressionenHeute: zeile.impressionen_heute,
     ausgabenHeute: zeile.ausgaben_heute,
     aktiveAnzeigen: zeile.aktive_anzeigen,
-    alarm: zeile.alarm ?? null,
-    benachrichtigt,
+    alarm: alarm?.schluessel ?? null,
     hinweise,
   }
-}
-
-// Schickt eine Benachrichtigung an alle eingeschalteten Geräte; abgemeldete Geräte
-// (404/410) werden gelöscht. Gibt die Zahl der zugestellten Geräte zurück.
-export async function pushAnAlle(
-  db: SupabaseClient,
-  message: { title: string; body: string; tag?: string; url?: string },
-  urgent: boolean,
-  onlyProfileId?: string
-): Promise<number> {
-  let query = db.from("push_abos").select("id, endpoint, p256dh, auth")
-  if (onlyProfileId) query = query.eq("profile_id", onlyProfileId)
-  const { data: abos, error } = await query
-  if (error) throw new Error(error.message)
-  let zugestellt = 0
-  const weg: string[] = []
-  for (const abo of (abos ?? []) as { id: string; endpoint: string; p256dh: string; auth: string }[]) {
-    try {
-      const r = await sendWebPush(abo, message, { urgent })
-      if (r.ok) zugestellt++
-      else if (r.gone) weg.push(abo.id)
-      else console.warn(`[push] Gerät ${abo.id}: HTTP ${r.status}`)
-    } catch (err) {
-      console.warn(`[push] Gerät ${abo.id}:`, err)
-    }
-  }
-  if (weg.length) await db.from("push_abos").delete().in("id", weg)
-  return zugestellt
 }

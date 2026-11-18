@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <!-- Meta-Analyse-Tool (ErikKarsten/kampagnen-dashboard, Stand 24a4e59 vom 18.11.2026), seit Paket 108 in Kandidatenwerk.
+       Unverändert bis auf: keine eigene Anmeldung (Kandidatenwerk), Daten über /api/meta-analyse/* statt Supabase des Tools. -->
+  <meta name="theme-color" content="#00346a">
+  <title>Kampagnenanalyse | Kanzleistelle24</title>
+  <link rel="preload" href="raleway-500.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="raleway-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="merriweather-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css?v=kw-108">
+</head>
+<body>
+
+  <div id="dashboard">
+    <header class="kopf">
+      <div class="kopf-innen">
+        <div class="kopf-titel">
+          <p class="marke-klein">Kanzleistelle24</p>
+          <h1 class="titel">Kampagnenanalyse</h1>
+          <p id="zeitraum" class="zeitraum">Daten werden geladen …</p>
+          <p id="konto-stand" class="konto-stand" aria-live="polite" hidden></p>
+          <p id="konto-meldung" class="konto-meldung" role="status" hidden></p>
+        </div>
+        <div class="kopf-rechts">
+          <div class="zeitwahl" role="group" aria-label="Zeitraum wählen">
+            <button type="button" data-tage="7" aria-pressed="false">7 Tage</button>
+            <button type="button" data-tage="30" aria-pressed="true">30 Tage</button>
+            <button type="button" data-tage="90" aria-pressed="false">90 Tage</button>
+          </div>
+          <button id="daten-holen" class="knopf knopf-hell knopf-daten" type="button" hidden>↻ Daten von Meta holen</button>
+        </div>
+      </div>
+    </header>
+
+    <div id="alarm-leiste" class="alarm-leiste" role="alert" hidden></div>
+
+    <nav class="schritte" aria-label="Schritte des Berichts">
+      <div class="schritte-innen">
+        <a href="#schritt-ueberblick"><span class="nr">1</span>Überblick</a>
+        <a href="#schritt-gut"><span class="nr">2</span>Was Leads bringt</a>
+        <a href="#schritt-schlecht"><span class="nr">3</span>Was hakt</a>
+        <a href="#schritt-motive"><span class="nr">4</span>Motive</a>
+        <a href="#schritt-kampagnen"><span class="nr">5</span>Kampagnen</a>
+        <a href="#schritt-alle"><span class="nr">6</span>Alle Anzeigen</a>
+        <button type="button" id="anleitung" class="schritte-hilfe">Anleitung</button>
+      </div>
+      <div class="fortschritt" aria-hidden="true"><span id="fortschritt-balken"></span></div>
+    </nav>
+
+    <main class="seite">
+      <p id="lade-fehler" class="fehler-box" role="alert" hidden></p>
+      <div id="inhalt"></div>
+    </main>
+  </div>
+
+  <div id="tooltip" class="tooltip" hidden></div>
+  <dialog id="kampagne" class="detail-fenster" aria-label="Kampagne im Detail"></dialog>
+  <dialog id="detail" class="detail-fenster" aria-label="Anzeige im Detail"></dialog>
+  <dialog id="alarm" class="alarm-fenster" aria-labelledby="alarm-titel"></dialog>
+
+  <script src="app.js?v=kw-108"></script>
+</body>
+</html>

@@ -127,20 +127,3 @@ export function bewerte(zeile: KontoStand, vorher: KontoStand | null): { alarm: 
   zeile.alarm_gemeldet_am = zeile.alarm_gemeldet ? (vorher?.alarm_gemeldet_am ?? null) : null
   return { alarm }
 }
-
-const ERINNERN_NACH_MS = 3 * 3600_000
-
-// Welche Benachrichtigung jetzt fällig ist: neuer Alarm, Erinnerung alle 3 Stunden oder
-// Entwarnung. null = keine.
-export function faelligeNachricht(zeile: KontoStand, alarm: Alarm | null, now = Date.now()): { title: string; body: string; urgent: boolean } | null {
-  if (alarm) {
-    const neu = zeile.alarm_gemeldet !== alarm.schluessel || !zeile.alarm_gemeldet_am
-    const faellig = !neu && now - Date.parse(zeile.alarm_gemeldet_am!) >= ERINNERN_NACH_MS
-    if (!neu && !faellig) return null
-    return { title: `🔴 ${alarm.titel}${neu ? "" : " (Erinnerung)"}`, body: `${alarm.text} Jetzt im Werbeanzeigenmanager beheben.`, urgent: true }
-  }
-  if (zeile.alarm_gemeldet) {
-    return { title: "✅ Entwarnung: Kampagnen laufen wieder", body: "Der Alarm ist aufgehoben, Meta spielt die Anzeigen wieder aus.", urgent: false }
-  }
-  return null
-}

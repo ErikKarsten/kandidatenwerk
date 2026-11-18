@@ -8,7 +8,6 @@
 --   übernommen werden können.
 -- meta_konto_status: letzter Stand der Konto-Prüfung (Kontostatus, Ausgabenlimit,
 --   Einblendungen heute, Verlauf, Alarm) - eine Zeile pro Werbekonto.
--- push_abos: Geräte, die den Kampagnen-Alarm als Browser-Benachrichtigung bekommen.
 -- Nur der Server (Service-Rolle) liest und schreibt; RLS an, keine Policies.
 
 create table if not exists public.meta_anzeigen_tag (
@@ -37,17 +36,5 @@ create table if not exists public.meta_konto_status (
   geprueft_am timestamptz not null default now()
 );
 alter table public.meta_konto_status enable row level security;
-
-create table if not exists public.push_abos (
-  id uuid primary key default gen_random_uuid(),
-  profile_id uuid not null references public.profiles(id) on delete cascade,
-  endpoint text not null unique,
-  p256dh text not null,
-  auth text not null,
-  geraet text,
-  created_at timestamptz not null default now()
-);
-create index if not exists push_abos_profile_idx on public.push_abos (profile_id);
-alter table public.push_abos enable row level security;
 
 NOTIFY pgrst, 'reload schema';

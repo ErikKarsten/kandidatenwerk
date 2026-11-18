@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { bewerte, faelligeNachricht, type KontoStand } from "./meta-konto-logik"
+import { bewerte, type KontoStand } from "./meta-konto-logik"
 
 // 12:00 Uhr in Berlin (Winterzeit = UTC+1)
 const MITTAG = "2026-11-18T11:00:00.000Z"
@@ -37,21 +37,13 @@ describe("Konto-Prüfung", () => {
     const { alarm } = bewerte(z, vorher)
     expect(alarm?.schluessel).toBe("offline")
     expect(alarm?.text).toContain("Ausgabenlimit ist erreicht")
-    expect(faelligeNachricht(z, alarm)?.title).toBe("🔴 Kampagnen offline")
   })
 
-  it("Alarm bei gesperrtem Konto, Erinnerung erst nach 3 Stunden, danach Entwarnung", () => {
+  it("Alarm bei gesperrtem Konto, aufgehoben sobald es wieder aktiv ist", () => {
     const z = stand({ kontostatus: 2 })
-    const vorher = stand({ geprueft_am: minus(MITTAG, 30), kontostatus: 2, alarm: "konto-2", alarm_gemeldet: "konto-2", alarm_gemeldet_am: minus(MITTAG, 60) })
-    const { alarm } = bewerte(z, vorher)
-    expect(alarm?.schluessel).toBe("konto-2")
-    expect(faelligeNachricht(z, alarm, Date.parse(MITTAG))).toBeNull()
-    expect(faelligeNachricht(z, alarm, Date.parse(MITTAG) + 2 * 3600_000)?.title).toContain("Erinnerung")
-
-    const wieder = stand()
-    const r = bewerte(wieder, { ...vorher, kontostatus: 1 })
-    expect(r.alarm).toBeNull()
-    expect(faelligeNachricht(wieder, r.alarm)?.title).toContain("Entwarnung")
+    const vorher = stand({ geprueft_am: minus(MITTAG, 30), kontostatus: 2 })
+    expect(bewerte(z, vorher).alarm?.schluessel).toBe("konto-2")
+    expect(bewerte(stand(), { ...vorher, kontostatus: 1 }).alarm).toBeNull()
   })
 
   it("vor 10 Uhr ohne Einblendungen noch kein Alarm", () => {

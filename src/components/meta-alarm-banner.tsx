@@ -22,7 +22,7 @@ export async function MetaAlarmBanner() {
         <a href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${konto}`} target="_blank" rel="noopener noreferrer" className="underline">
           Im Werbeanzeigenmanager beheben
         </a>{" "}
-        · <AppLink href="/dashboard/einstellungen" className="underline">Benachrichtigung aufs Handy</AppLink>
+        · <AppLink href="/dashboard/meta-analyse" className="underline">Im Meta-Analyse-Tool ansehen</AppLink>
       </p>
     </div>
   )

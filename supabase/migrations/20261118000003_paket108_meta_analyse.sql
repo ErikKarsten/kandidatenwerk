@@ -50,6 +50,8 @@ alter table public.meta_anzeigen_tag add column if not exists thruplays integer 
 
 -- Zwischenstand von Teil 1 (nur Staging): Summen je Kampagne braucht das Dashboard nicht mehr.
 drop function if exists public.meta_kampagnen_summen(date, date);
+-- Benachrichtigungen aufs Gerät gibt es nicht (wie im Meta-Analyse-Tool seit 18.11.).
+drop table if exists public.push_abos;
 
 -- Summen je Anzeige im Zeitraum für die Auswertung. Reichweite ist pro Tag und lässt sich
 -- über Tage nicht addieren - deshalb nicht dabei.

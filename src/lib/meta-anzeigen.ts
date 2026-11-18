@@ -11,7 +11,6 @@ import { metaGraphFetch } from "@/lib/meta-ads-client"
 import { metaAdAccount } from "@/lib/meta-zentral"
 import { generateText, KIE_IMAGE_MODEL, llmConfigured } from "@/lib/llm"
 import { tagIn } from "@/lib/meta-konto-logik"
-import type { Urteil } from "@/lib/meta-analyse"
 
 export const MOTIVE_BUCKET = "meta-motive"
 const DETAIL_TAGE = 3
@@ -255,6 +254,7 @@ export async function syncMetaAnzeigen(db: SupabaseClient, options: { alle?: boo
 
 // --- KI-Einschätzung von Bild, Text und Benefits ---
 
+type Urteil = "stark" | "mittel" | "schwach" | "unklar"
 const URTEILE: Urteil[] = ["stark", "mittel", "schwach", "unklar"]
 
 const SYSTEM = `Du bewertest Facebook-/Instagram-Anzeigen, mit denen Kanzleistelle24 und Steuerkanzleien Mitarbeiter suchen (Steuerfachangestellte, Steuerfachwirte, Bilanzbuchhalter usw.). Ziel jeder Anzeige: möglichst viele passende Bewerbungen über das Lead-Formular.
