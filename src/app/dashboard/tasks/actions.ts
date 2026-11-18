@@ -6,6 +6,7 @@ import { requireStaffUser } from "@/lib/auth-guards"
 import { syncBugReportWithTaskStatus } from "@/lib/bug-reports/actions"
 import { notifyTaskAssigned } from "@/lib/task-notify"
 import { parseAssignee } from "@/lib/teams"
+import { createTask, isStaffProfile } from "@/lib/kern"
 
 export async function createTaskAction(
   formData: FormData
@@ -31,24 +32,9 @@ export async function createTaskAction(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Nicht eingeloggt." }
 
-  if (assignee.assigned_to && !(await isStaffProfile(supabase, assignee.assigned_to))) return { error: "Aufgaben können nur Team-Mitgliedern zugewiesen werden." }
-
-  const { data: created, error } = await supabase
-    .from("tasks")
-    .insert({
-      title,
-      description: description || null,
-      ...assignee,
-      created_by: user.id,
-      candidate_id: candidate_id || null,
-      client_id: client_id || null,
-      due_date: due_date || null,
-    })
-    .select("id")
-    .single()
-
-  if (error) return { error: error.message }
-  if (assignee.assigned_to !== user.id) await notifyTaskAssigned(supabase, created.id, user.id)
+  // Kern gemeinsam mit der Claude-Schnittstelle (Paket 111).
+  const created = await createTask(supabase, user.id, { title, description, assignee, candidate_id, client_id, due_date })
+  if ("error" in created) return created
 
   revalidatePath("/dashboard/tasks")
   if (client_id) revalidatePath(`/dashboard/clients/${client_id}`)
@@ -118,13 +104,6 @@ export async function deleteTaskAction(
 
   revalidatePath("/dashboard/tasks")
   return null
-}
-
-type ServerSupabase = Awaited<ReturnType<typeof createSupabaseServerClient>>
-
-async function isStaffProfile(supabase: ServerSupabase, profileId: string): Promise<boolean> {
-  const { data } = await supabase.from("profiles").select("role").eq("id", profileId).maybeSingle()
-  return !!data && ["agency_admin", "agency_member"].includes(data.role)
 }
 
 // Aufgabe neu zuweisen (Paket 14, T-69) - jedes Team-Mitglied, an Personen oder (Paket 44)

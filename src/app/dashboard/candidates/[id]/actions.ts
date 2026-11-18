@@ -6,14 +6,13 @@ import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { getStaffContext, requireStaffUser } from "@/lib/auth-guards"
 import { geocodePlz } from "@/lib/geocode-plz"
 import { matchCandidateToCampaigns } from "@/lib/matching"
-import { clientNotLiveError, ensureCampaignAssignment, ensureClientAssignment } from "@/lib/client-assignment"
+import { ensureCampaignAssignment } from "@/lib/client-assignment"
 import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { triggerAutomationsNow } from "@/lib/automation-trigger"
 import { normalizeTags } from "@/lib/candidate-tags"
-import { ASSIGNMENT_STATUS_OPTIONS, assignmentStatusLabel } from "@/lib/assignment-status"
 import { friendlyAiError } from "@/lib/llm"
-import { notifyHistoryNoteReferences } from "@/lib/history-mentions"
+import { addCandidateNote, assignCandidateToClient, setAssignmentStatus } from "@/lib/kern"
 
 export async function updateCandidateProfileAction(
   candidateId: string,
@@ -168,17 +167,10 @@ export async function addNoteAction(
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { error } = await supabase.from("candidate_history").insert({
-    candidate_id: candidateId,
-    type: "note",
-    content,
-    ...(user ? { created_by: user.id } : {}),
-  })
-
-  if (error) return { error: error.message }
-
-  // @Kollegen und Zuständige von #Aufgaben per Mail benachrichtigen (Paket 78).
-  if (user && /[@#]/.test(content)) await notifyHistoryNoteReferences(supabase, { candidateId, authorId: user.id, content })
+  if (!user) return { error: "Nicht eingeloggt." }
+  // Kern gemeinsam mit der Claude-Schnittstelle (Paket 111), inkl. @-/#-Benachrichtigungen.
+  const result = await addCandidateNote(supabase, user.id, candidateId, content)
+  if (result) return result
 
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   return null
@@ -361,38 +353,16 @@ export async function updateAssignmentStatusAction(
   assignmentId: string,
   status: string
 ): Promise<{ error: string } | null> {
-  if (!ASSIGNMENT_STATUS_OPTIONS.some((o) => o.value === status)) return { error: "Unbekannter Status." }
   const supabase = await createSupabaseServerClient()
   // Zweite Schutzschicht neben RLS: nur Staff (Security-Review 02.10.2026).
   const guard = await getStaffContext(supabase)
   if ("error" in guard) return guard
-
-  const { data: before } = await supabase
-    .from("client_assignments")
-    .select("status, candidate_id, client_id, clients(name)")
-    .eq("id", assignmentId)
-    .is("removed_at", null)
-    .maybeSingle()
-  if (!before) return { error: "Zuordnung nicht gefunden." }
-  if (before.status === status) return null
-
-  // .is("removed_at", null) - nur die aktive Zuordnung darf im Status verändert
-  // werden, eine bereits entfernte (historische) Zuordnung bleibt unveränderlich.
-  const { error } = await supabase.from("client_assignments").update({ status }).eq("id", assignmentId).is("removed_at", null)
-  if (error) return { error: error.message }
-
-  const rel = before.clients as { name: string } | { name: string }[] | null
-  const clientName = (Array.isArray(rel) ? rel[0]?.name : rel?.name) ?? "Kanzlei"
-  const { error: historyError } = await supabase.from("candidate_history").insert({
-    candidate_id: before.candidate_id,
-    type: "note",
-    content: `Status bei „${clientName}“ geändert: ${assignmentStatusLabel(before.status).label} → ${assignmentStatusLabel(status).label}`,
-    created_by: guard.staff.userId,
-  })
-  if (historyError) console.error("Verlaufseintrag fehlgeschlagen:", historyError.message)
-
-  revalidatePath(`/dashboard/candidates/${before.candidate_id}`)
-  revalidatePath(`/dashboard/clients/${before.client_id}`)
+  // Kern gemeinsam mit der Claude-Schnittstelle (Paket 111).
+  const result = await setAssignmentStatus(supabase, guard.staff.userId, assignmentId, status)
+  if (!result) return null
+  if ("error" in result) return result
+  revalidatePath(`/dashboard/candidates/${result.candidateId}`)
+  revalidatePath(`/dashboard/clients/${result.clientId}`)
   revalidatePath("/dashboard/candidates")
   return null
 }
@@ -540,20 +510,9 @@ export async function assignCandidateToClientAction(candidateId: string, clientI
   const supabase = await createSupabaseServerClient()
   const guard = await getStaffContext(supabase)
   if ("error" in guard) return guard
-  const notLive = await clientNotLiveError(supabase, clientId)
-  if (notLive) return { error: notLive }
-  try {
-    await ensureClientAssignment(supabase, candidateId, clientId)
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) }
-  }
-  const { data: client } = await supabase.from("clients").select("name").eq("id", clientId).maybeSingle()
-  await supabase.from("candidate_history").insert({
-    candidate_id: candidateId,
-    type: "note",
-    content: `Zugeordnet zu Kanzlei „${client?.name ?? "Unbekannt"}“ (ohne Kampagne)`,
-    created_by: guard.staff.userId,
-  })
+  // Kern gemeinsam mit der Claude-Schnittstelle (Paket 111).
+  const result = await assignCandidateToClient(supabase, guard.staff.userId, candidateId, clientId)
+  if (result) return result
   revalidatePath(`/dashboard/candidates/${candidateId}`)
   revalidatePath(`/dashboard/clients/${clientId}`)
   return null
