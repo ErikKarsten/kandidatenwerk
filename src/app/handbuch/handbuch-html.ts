@@ -487,7 +487,7 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
         </tbody>
       </table></div>
       <p>Die KI läuft über kie.ai. Ist Claude dort überlastet, antwortet ein Ausweichmodell. Schlägt ein Hintergrundlauf fehl, bekommen die Admins höchstens alle 12 Stunden eine Warnmail, und der Fehler steht unter <span class="path">Fehlermeldungen</span>.</p>
-      <p>Findet ihr etwas, das nicht stimmt: <span class="ui">Fehler melden</span> unten in der Seitenleiste.</p>
+      <p>Findet ihr etwas, das nicht stimmt: <span class="ui">Fehler melden</span> unten in der Seitenleiste. Ist die Meldung erledigt (Aufgabe abgehakt oder <span class="ui">Als erledigt markieren</span>), bekommt der Melder automatisch eine Mail, auch Kanzleien aus dem Portal.</p>
     </section>
 
     <section class="chap" id="faq">
