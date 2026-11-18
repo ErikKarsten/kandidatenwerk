@@ -479,8 +479,9 @@ footer.end { color: var(--ink-faint); font-size: 14px; padding-top: 6px; }
         <tbody>
           <tr><td>sofort</td><td>Neue Meta-Leads über den Webhook, Eingangsbestätigung, Antworten von Kandidaten.</td></tr>
           <tr><td>alle 5 Minuten</td><td>Automatisierungen, Gespräche aus Close, Werdegänge für geänderte Beschreibungen.</td></tr>
-          <tr><td>alle 30 Minuten</td><td>Abgleich der Meta-Leads als Sicherheitsnetz.</td></tr>
-          <tr><td>stündlich</td><td>Kanzleistelle24, Meta-Kampagnen und Werbegebiete, Beispielkandidaten, Abgleich der Matching-Vorschläge.</td></tr>
+          <tr><td>alle 30 Minuten</td><td>Werbekonto bei Meta prüfen und Werbezahlen holen (eine Anfrage). Spielt Meta nichts mehr aus, erscheint oben eine rote Leiste, und wer es eingeschaltet hat, bekommt eine Benachrichtigung aufs Gerät (<span class="path">Einstellungen → Mein Konto</span>).</td></tr>
+          <tr><td>stündlich</td><td>Kanzleistelle24, Meta-Kampagnen (Werbegebiete alle 6 Stunden), Beispielkandidaten, Abgleich der Matching-Vorschläge.</td></tr>
+          <tr><td>alle 2 Stunden</td><td>Abgleich der Meta-Leads als Sicherheitsnetz.</td></tr>
           <tr><td>morgens</td><td>Erinnerung an fällige Aufgaben.</td></tr>
           <tr><td>Mo + Do, 8 Uhr</td><td>Sammel-Mail mit neuen Matching-Vorschlägen.</td></tr>
         </tbody>

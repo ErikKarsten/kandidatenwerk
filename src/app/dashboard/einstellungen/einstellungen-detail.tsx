@@ -3,6 +3,7 @@
 import { TEAM_OPTIONS, teamLabel } from "@/lib/teams"
 import { useMemo, useState, useTransition } from "react"
 import { MetaCampaignsTab } from "./meta-campaigns-tab"
+import { PushToggle } from "@/components/push-toggle"
 import { setCustomFieldSectionAction, type FieldTemplate, type LeadFormOverview } from "./field-actions"
 import { FieldTemplatesTab } from "./field-templates-tab"
 import { LeadFormsTab } from "./lead-forms-tab"
@@ -106,6 +107,7 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
           {tab === "konto" && (
             <div className="flex flex-col gap-4">
               <KontoTab ownProfile={ownProfile} ownMember={team.find((m) => m.id === ownProfile.id) ?? null} />
+              <PushToggle />
               <AgenturTab agencyName={agencyName} />
               <AgencyLogoCard logoUrl={agencySettings.logoUrl} isAdmin={isAdmin} />
             </div>

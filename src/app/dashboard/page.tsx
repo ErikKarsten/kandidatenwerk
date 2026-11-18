@@ -170,6 +170,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           />
         </div>
         {!ads.ok && <p className="text-xs text-amber-700">{ads.error}</p>}
+        {ads.ok && (
+          <p className="text-xs text-gray-400">
+            {/* Werbezahlen kommen aus dem zentralen Meta-Abruf alle 30 Minuten (Paket 108). */}
+            {ads.updatedAt
+              ? `Werbezahlen von Meta, Stand ${new Date(ads.updatedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} Uhr (alle 30 Minuten aktualisiert).`
+              : "Werbezahlen von Meta: noch kein Abruf."}
+            {ads.dataFrom && range.from < ads.dataFrom ? ` Gespeichert sind Zahlen ab ${ads.dataFrom.split("-").reverse().join(".")}.` : ""}
+          </p>
+        )}
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
           <div className="rounded-xl border bg-white p-5 xl:col-span-2" style={{ borderColor: "#dde3ea" }}>

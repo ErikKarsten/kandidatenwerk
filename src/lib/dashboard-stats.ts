@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { metaGraphFetch } from "@/lib/meta-ads-client"
+import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 
 // Auswertung nach Zeitraum für das Dashboard: eingegangene Bewerbungen (Kandidatenwerk)
@@ -99,66 +99,40 @@ export interface MetaCampaignSpend {
 }
 
 export type MetaAdStats =
-  | { ok: true; spend: number; leads: number; campaigns: MetaCampaignSpend[] }
+  | {
+      ok: true
+      spend: number
+      leads: number
+      campaigns: MetaCampaignSpend[]
+      // Letzter Meta-Abruf (alle 30 Minuten) und ab wann Zahlen gespeichert sind.
+      updatedAt: string | null
+      dataFrom: string | null
+    }
   | { ok: false; error: string }
 
-interface InsightsRow {
-  campaign_id?: string
-  campaign_name?: string
-  spend?: string
-  actions?: { action_type: string; value: string }[]
-}
-
-function leadCount(actions: InsightsRow["actions"]): number {
-  return Number(actions?.find((a) => a.action_type === "lead")?.value ?? 0)
-}
-
-// Ein Aufruf auf Kampagnenebene reicht - die Summe ergibt die Kontowerte.
+// Werbezahlen aus meta_anzeigen_tag (Paket 108): der zentrale Meta-Abruf speichert sie
+// alle 30 Minuten - vorher fragte jeder Dashboard-Aufruf selbst bei Meta an.
 export async function getMetaAdStats(range: DateRange): Promise<MetaAdStats> {
-  const accountId = process.env.META_AD_ACCOUNT_ID
-  if (!accountId || !process.env.META_ACCESS_TOKEN) return { ok: false, error: "Meta-Werbekonto ist nicht eingerichtet." }
+  const db = createSupabaseAdminClient() as unknown as SupabaseClient
+  const [summen, erster, status] = await Promise.all([
+    db.rpc("meta_kampagnen_summen", { von: range.from, bis: range.to }),
+    db.from("meta_anzeigen_tag").select("datum").order("datum", { ascending: true }).limit(1).maybeSingle(),
+    db.from("meta_konto_status").select("geprueft_am").order("geprueft_am", { ascending: false }).limit(1).maybeSingle(),
+  ])
+  if (summen.error) return { ok: false, error: "Werbedaten derzeit nicht abrufbar." }
 
-  try {
-    const rows: InsightsRow[] = []
-    let after: string | undefined
-    for (let page = 0; page < 10; page++) {
-      const resp = await metaGraphFetch<{ data: InsightsRow[]; paging?: { cursors?: { after?: string }; next?: string } }>(
-        `/act_${accountId.replace(/^act_/, "")}/insights`,
-        {
-          fields: "campaign_id,campaign_name,spend,actions",
-          level: "campaign",
-          time_range: JSON.stringify({ since: range.from, until: range.to }),
-          limit: 200,
-          ...(after ? { after } : {}),
-        }
-      )
-      rows.push(...resp.data)
-      after = resp.paging?.next ? resp.paging.cursors?.after : undefined
-      if (!after) break
-    }
-
-    // Nur KS24-Kampagnen (Paket 18, T-81) - andere Kampagnen im Werbekonto zählen nicht.
-    const campaigns = rows
-      .filter((r) => isKs24Campaign(r.campaign_name))
-      .map((r) => ({
-        metaCampaignId: r.campaign_id ?? "",
-        name: r.campaign_name ?? "",
-        spend: Number(r.spend ?? 0),
-        leads: leadCount(r.actions),
-      }))
-      .sort((a, b) => b.spend - a.spend)
-    return {
-      ok: true,
-      spend: campaigns.reduce((sum, c) => sum + c.spend, 0),
-      leads: campaigns.reduce((sum, c) => sum + c.leads, 0),
-      campaigns,
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return {
-      ok: false,
-      error: message.includes('"code":17') ? "Meta hat zu viele Anfragen gemeldet – bitte später neu laden." : "Werbedaten von Meta derzeit nicht abrufbar.",
-    }
+  // Nur KS24-Kampagnen (Paket 18, T-81) - andere Kampagnen im Werbekonto zählen nicht.
+  const campaigns = ((summen.data ?? []) as { kampagne_id: string; kampagne: string | null; ausgaben: number | string; leads: number | string }[])
+    .filter((r) => isKs24Campaign(r.kampagne ?? ""))
+    .map((r) => ({ metaCampaignId: r.kampagne_id, name: r.kampagne ?? "", spend: Number(r.ausgaben) || 0, leads: Number(r.leads) || 0 }))
+    .sort((a, b) => b.spend - a.spend)
+  return {
+    ok: true,
+    spend: campaigns.reduce((sum, c) => sum + c.spend, 0),
+    leads: campaigns.reduce((sum, c) => sum + c.leads, 0),
+    campaigns,
+    updatedAt: (status.data?.geprueft_am as string | undefined) ?? null,
+    dataFrom: (erster.data?.datum as string | undefined) ?? null,
   }
 }
 
