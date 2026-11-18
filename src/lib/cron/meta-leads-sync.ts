@@ -40,7 +40,15 @@ interface CampaignRow {
   agency_id: string | null
   meta_form_id: string | null
   kind: string
+  // Formular, dessen Leads schon einmal vollständig geholt wurden (Paket 109).
+  meta_form_nachgeholt?: string | null
 }
+
+// Neu hinterlegte Formulare: beim ersten Lauf alle Leads holen, nicht nur die letzten Tage
+// (Paket 109, ETL Rubikon: Formular am 09.11. hinterlegt, Leads vom 05./06.11. - der Webhook
+// fand damals keine Kampagne, der Abgleich sah nur 3 Tage zurück, die Leads kamen nie an).
+// Höchstens so viele pro Lauf, wegen Cloudflares Limit von 1000 Unteranfragen.
+const NACHHOLEN_PRO_LAUF = 2
 
 export interface MetaLeadsSyncResult {
   campaignsProcessed: number
@@ -60,9 +68,10 @@ async function loadCampaigns(
   campaignId: string | null,
   includeInactiveLeadCampaigns: boolean
 ): Promise<CampaignRow[]> {
-  let query = supabase
+  // meta_form_nachgeholt ist noch nicht in src/types/database.ts generiert.
+  let query = (supabase as unknown as SupabaseClient)
     .from("campaigns")
-    .select("id, title, status, kind, client_id, agency_id, meta_form_id")
+    .select("id, title, status, kind, client_id, agency_id, meta_form_id, meta_form_nachgeholt")
     .not("meta_form_id", "is", null)
     // Lead-Kampagnen zuerst ("lead" < "kanzlei"), siehe Formular-Dedup in syncMetaLeads.
     .order("kind", { ascending: true })
@@ -75,7 +84,7 @@ async function loadCampaigns(
   // Importierte Meta-Lead-Kampagnen (T-38) regulär nur, solange sie laufen - die
   // Altbestände pausierter/beendeter Kampagnen holt man einmalig per
   // "npx tsx scripts/meta-leads-sync.ts --alle".
-  return (data ?? []).filter(
+  return ((data ?? []) as CampaignRow[]).filter(
     (c) =>
       c.status !== ARCHIVED_STATUS &&
       (c.kind !== "lead" || c.status === "active" || includeInactiveLeadCampaigns || campaignId !== null) &&
@@ -124,6 +133,7 @@ export async function syncMetaLeads(
   // Hängt dasselbe Formular an mehreren Kampagnen (alte Kanzlei-Kampagne + importierte
   // Lead-Kampagne, T-38), nur einmal verarbeiten - über die zuerst geladene (Lead-)Kampagne.
   const processedFormIds = new Set<string>()
+  let nachgeholt = 0
 
   for (const campaign of campaigns) {
     if (processedFormIds.has(campaign.meta_form_id!)) {
@@ -139,9 +149,14 @@ export async function syncMetaLeads(
       result.warnings.push({ campaignId: campaign.id, campaignTitle: campaign.title, message: "Facebook-Seite des Formulars ist dem Meta-Systemnutzer nicht freigegeben." })
       continue
     }
+    const nachholen = campaign.meta_form_nachgeholt !== campaign.meta_form_id && nachgeholt < NACHHOLEN_PRO_LAUF
+    if (nachholen) {
+      nachgeholt++
+      log(`  Formular neu hinterlegt: alle Leads werden einmal vollständig geholt.`)
+    }
     let leads: MetaLead[]
     try {
-      const sinceUnix = sinceDays ? Math.floor(Date.now() / 1000) - sinceDays * 86400 : undefined
+      const sinceUnix = sinceDays && !nachholen ? Math.floor(Date.now() / 1000) - sinceDays * 86400 : undefined
       leads = await fetchMetaLeadsForForm(campaign.meta_form_id!, sinceUnix ? { sinceUnix } : undefined, pageAccessToken)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -173,6 +188,14 @@ export async function syncMetaLeads(
     }
 
     result.campaignsProcessed++
+    // Vollständig geholt und ohne Fehler: ab jetzt reichen die letzten Tage.
+    if (campaign.meta_form_nachgeholt !== campaign.meta_form_id && !result.errors.some((e) => e.campaignId === campaign.id) && (nachholen || !sinceDays)) {
+      const { error: markError } = await (supabase as unknown as SupabaseClient)
+        .from("campaigns")
+        .update({ meta_form_nachgeholt: campaign.meta_form_id })
+        .eq("id", campaign.id)
+      if (markError) log(`  Hinweis: Nachholen nicht vermerkt (${markError.message})`)
+    }
   }
 
   return result
