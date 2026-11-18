@@ -107,8 +107,8 @@ export function EinstellungenDetail({ ownProfile, agencyName, team, agencyId, au
           {tab === "konto" && (
             <div className="flex flex-col gap-4">
               <KontoTab ownProfile={ownProfile} ownMember={team.find((m) => m.id === ownProfile.id) ?? null} />
-              {/* Claude-Zugang per API (Paket 111) - nur Admins. */}
-              {isAdmin && <ClaudeZugang />}
+              {/* Claude-Zugang per API (Paket 111, seit Paket 112 fürs ganze Team). */}
+              <ClaudeZugang />
               <AgenturTab agencyName={agencyName} />
               <AgencyLogoCard logoUrl={agencySettings.logoUrl} isAdmin={isAdmin} />
             </div>

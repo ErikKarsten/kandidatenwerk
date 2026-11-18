@@ -1,7 +1,7 @@
 "use client"
 
 // Claude-Zugang (Paket 111): persönliche API-Schlüssel, mit denen Claude Code Kandidatenwerk
-// steuern kann (MCP-Server /api/mcp). Nur für Admins sichtbar.
+// steuern kann (MCP-Server /api/mcp). Fürs ganze Team (Paket 112).
 import { useEffect, useState, useTransition } from "react"
 import { createApiKeyAction, listApiKeysAction, revokeApiKeyAction, type ApiSchluesselZeile } from "@/lib/claude-api/actions"
 
@@ -60,7 +60,7 @@ export function ClaudeZugang() {
     <div className="rounded-xl border bg-white p-5" style={{ borderColor: BORDER }}>
       <h3 className="text-sm font-semibold text-gray-900">Claude-Zugang (API)</h3>
       <p className="mt-1 text-sm text-gray-500">
-        Mit einem persönlichen Schlüssel kann Claude Code Kandidatenwerk in deinem Namen bedienen: Kandidaten, Kanzleien, Kampagnen und Aufgaben suchen und ansehen,
+        Mit einem persönlichen Schlüssel kann Claude Code Kandidatenwerk in deinem Namen und mit deinen Rechten bedienen: Kandidaten, Kanzleien, Kampagnen und Aufgaben suchen und ansehen,
         Status ändern, Notizen und Aufgaben anlegen, Kandidaten zuordnen. Löschen geht darüber nicht. Jeder Aufruf wird protokolliert.
       </p>
 

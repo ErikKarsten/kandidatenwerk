@@ -1,12 +1,12 @@
 "use server"
 
 // Claude-Zugang in Einstellungen → Mein Konto (Paket 111): eigene API-Schlüssel anlegen,
-// ansehen, widerrufen. Nur Agentur-Admins. api_schluessel hat keine RLS-Policy - Zugriff
+// ansehen, widerrufen. Ganzes Team (Paket 112; vorher nur Agentur-Admins). api_schluessel hat keine RLS-Policy - Zugriff
 // per Service-Rolle, immer auf die eigene Person beschränkt.
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { requireAgencyAdmin } from "@/lib/auth-guards"
+import { getStaffContext } from "@/lib/auth-guards"
 import { neuerSchluessel } from "@/lib/claude-api/schluessel"
 import { APP_BASE_URL } from "@/lib/app-url"
 
@@ -21,7 +21,7 @@ export interface ApiSchluesselZeile {
 const db = () => createSupabaseAdminClient() as unknown as SupabaseClient
 
 export async function listApiKeysAction(): Promise<{ error: string } | { schluessel: ApiSchluesselZeile[] }> {
-  const guard = await requireAgencyAdmin(await createSupabaseServerClient())
+  const guard = await getStaffContext(await createSupabaseServerClient())
   if ("error" in guard) return guard
   const { data, error } = await db()
     .from("api_schluessel")
@@ -34,7 +34,7 @@ export async function listApiKeysAction(): Promise<{ error: string } | { schlues
 }
 
 export async function createApiKeyAction(name: string): Promise<{ error: string } | { schluessel: string; befehl: string }> {
-  const guard = await requireAgencyAdmin(await createSupabaseServerClient())
+  const guard = await getStaffContext(await createSupabaseServerClient())
   if ("error" in guard) return guard
   const bezeichnung = (name ?? "").trim().slice(0, 80)
   if (!bezeichnung) return { error: "Bitte einen Namen angeben, z. B. „MacBook Claude Code“." }
@@ -50,7 +50,7 @@ export async function createApiKeyAction(name: string): Promise<{ error: string 
 }
 
 export async function revokeApiKeyAction(id: string): Promise<{ error: string } | null> {
-  const guard = await requireAgencyAdmin(await createSupabaseServerClient())
+  const guard = await getStaffContext(await createSupabaseServerClient())
   if ("error" in guard) return guard
   const { error } = await db().from("api_schluessel").update({ revoked_at: new Date().toISOString() }).eq("id", id).eq("profile_id", guard.staff.userId)
   return error ? { error: error.message } : null
