@@ -29,10 +29,25 @@ export interface Werkzeug {
   description: string
   inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[]; additionalProperties?: boolean }
   annotations: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint?: boolean; openWorldHint: boolean }
-  run: (db: Db, userId: string, args: Args) => Promise<unknown>
+  run: (db: Db, ctx: Kontext, args: Args) => Promise<unknown>
 }
 
 export class WerkzeugFehler extends Error {}
+
+// Für wen gehandelt wird: Person hinter dem API-Schlüssel und ihre Sichtbarkeit.
+export interface Kontext {
+  userId: string
+  siehtActiveSourcing: boolean
+}
+
+const ACTIVE_SOURCING = "active_sourcing"
+
+// Wie die Datenbank-Policy aus Paket 89: Kandidaten mit Herkunft "Active Sourcing" gibt es
+// für alle anderen schlicht nicht - auch nicht zum Ändern.
+async function kandidatPruefen(db: Db, ctx: Kontext, kandidatId: string): Promise<void> {
+  const { data } = await db.from("candidates").select("source").eq("id", kandidatId).maybeSingle()
+  if (!data || (data.source === ACTIVE_SOURCING && !ctx.siehtActiveSourcing)) throw new WerkzeugFehler("Kandidat nicht gefunden.")
+}
 
 const statusLabel = (v: string | null) => CANDIDATE_STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v
 const phaseLabel = (v: string | null) => PROJECT_PHASES.find((o) => o.value === v)?.label ?? v
@@ -105,7 +120,7 @@ export const WERKZEUGE: Werkzeug[] = [
       additionalProperties: false,
     },
     annotations: lesen,
-    async run(db, _u, args) {
+    async run(db, ctx, args) {
       const limit = anzahl(args, "limit", 20, 50)
       let q = db
         .from("candidates")
@@ -128,6 +143,7 @@ export const WERKZEUGE: Werkzeug[] = [
         if (!isCandidateStatus(status)) throw new WerkzeugFehler(`Unbekannter Status. Erlaubt: ${STATUS_WERTE.join(", ")}`)
         q = q.eq("status", status)
       }
+      if (!ctx.siehtActiveSourcing) q = q.or(`source.is.null,source.neq.${ACTIVE_SOURCING}`)
       const kampagne = id(args, "kampagne_id", false)
       if (kampagne) q = q.eq("campaign_id", kampagne)
       const kunde = id(args, "kunde_id", false)
@@ -165,8 +181,9 @@ export const WERKZEUGE: Werkzeug[] = [
     description: "Alle Angaben zu einem Kandidaten: Stammdaten, Status, Beschreibung, offene Fragen, Werdegang, Zuordnungen zu Kanzleien (mit Zuordnungs-ID und Status), die letzten Verlaufseinträge und offene Aufgaben.",
     inputSchema: { type: "object", properties: { kandidat_id: { type: "string" } }, required: ["kandidat_id"], additionalProperties: false },
     annotations: lesen,
-    async run(db, _u, args) {
+    async run(db, ctx, args) {
       const kid = id(args, "kandidat_id")!
+      await kandidatPruefen(db, ctx, kid)
       const { data: c } = await db
         .from("candidates")
         .select("id, first_name, last_name, email, phone, status, source, berufsbild, plz, description, offene_fragen, cv_werdegang, custom_fields, tags, created_at, campaign_id, campaigns(title)")
@@ -222,7 +239,7 @@ export const WERKZEUGE: Werkzeug[] = [
       additionalProperties: false,
     },
     annotations: lesen,
-    async run(db, _u, args) {
+    async run(db, ctx, args) {
       let q = db
         .from("clients")
         .select("id, name, ort, plz, project_phase, status, contact_name, contact_email, phone, key_account_manager_id, live_since")
@@ -263,7 +280,7 @@ export const WERKZEUGE: Werkzeug[] = [
     description: "Angaben zu einer Kanzlei: Stammdaten, Kampagnen, aktiv zugeordnete Kandidaten (mit Zuordnungs-ID und Status) und offene Aufgaben.",
     inputSchema: { type: "object", properties: { kunde_id: { type: "string" } }, required: ["kunde_id"], additionalProperties: false },
     annotations: lesen,
-    async run(db, _u, args) {
+    async run(db, ctx, args) {
       const kid = id(args, "kunde_id")!
       const { data: c } = await db
         .from("clients")
@@ -273,7 +290,7 @@ export const WERKZEUGE: Werkzeug[] = [
       if (!c) throw new WerkzeugFehler("Kunde nicht gefunden.")
       const [{ data: kampagnen }, { data: zu }, { data: aufgaben }] = await Promise.all([
         db.from("campaigns").select("id, title, status, kind, berufsbild, plz, meta_form_name").eq("client_id", kid).order("created_at", { ascending: false }),
-        db.from("client_assignments").select("id, status, created_at, candidates(id, first_name, last_name, status)").eq("client_id", kid).is("removed_at", null).order("created_at", { ascending: false }).limit(100),
+        db.from("client_assignments").select("id, status, created_at, candidates(id, first_name, last_name, status, source)").eq("client_id", kid).is("removed_at", null).order("created_at", { ascending: false }).limit(100),
         db.from("tasks").select("id, title, due_date, assigned_to, assigned_team").eq("client_id", kid).neq("status", "erledigt"),
       ])
       const namen = await profilNamen(db, [c.key_account_manager_id, ...(aufgaben ?? []).map((a) => a.assigned_to)])
@@ -293,7 +310,9 @@ export const WERKZEUGE: Werkzeug[] = [
         laufzeit_monate: c.contract_term_months,
         tags: c.tags,
         kampagnen: (kampagnen ?? []).map((k) => ({ id: k.id, titel: k.title, status: k.status, art: k.kind, berufsbild: k.berufsbild, plz: k.plz, meta_formular: k.meta_form_name })),
-        zugeordnete_kandidaten: (zu ?? []).map((z) => {
+        zugeordnete_kandidaten: (zu ?? [])
+          .filter((z) => ctx.siehtActiveSourcing || (z.candidates as { source?: string | null } | null)?.source !== ACTIVE_SOURCING)
+          .map((z) => {
           const ca = z.candidates as { id: string; first_name: string | null; last_name: string | null; status: string | null } | null
           return { zuordnung_id: z.id, kandidat_id: ca?.id, name: ca ? name(ca) : null, status_bei_kanzlei: assignmentStatusLabel(z.status).label, kandidat_status: ca ? statusLabel(ca.status) : null, seit: z.created_at }
         }),
@@ -318,7 +337,7 @@ export const WERKZEUGE: Werkzeug[] = [
       additionalProperties: false,
     },
     annotations: lesen,
-    async run(db, _u, args) {
+    async run(db, ctx, args) {
       let q = db
         .from("campaigns")
         .select("id, title, kind, status, berufsbild, plz, meta_form_name, created_at, clients(name)")
@@ -371,7 +390,7 @@ export const WERKZEUGE: Werkzeug[] = [
       additionalProperties: false,
     },
     annotations: lesen,
-    async run(db, userId, args) {
+    async run(db, ctx, args) {
       let q = db
         .from("tasks")
         .select("id, title, description, status, due_date, assigned_to, assigned_team, candidate_id, client_id, created_at, completed_at")
@@ -380,7 +399,7 @@ export const WERKZEUGE: Werkzeug[] = [
       const status = text(args, "status") ?? "offen"
       if (status === "offen") q = q.neq("status", "erledigt")
       else if (status === "erledigt") q = q.eq("status", "erledigt")
-      if (args.nur_meine === true) q = q.eq("assigned_to", userId)
+      if (args.nur_meine === true) q = q.eq("assigned_to", ctx.userId)
       const kandidat = id(args, "kandidat_id", false)
       if (kandidat) q = q.eq("candidate_id", kandidat)
       const kunde = id(args, "kunde_id", false)
@@ -428,17 +447,18 @@ export const WERKZEUGE: Werkzeug[] = [
       additionalProperties: false,
     },
     annotations: schreiben,
-    async run(db, userId, args) {
+    async run(db, ctx, args) {
       const kid = id(args, "kandidat_id")!
       const status = text(args, "status", { pflicht: true })!
       if (!isCandidateStatus(status)) throw new WerkzeugFehler(`Unbekannter Status. Erlaubt: ${STATUS_WERTE.join(", ")}`)
+      await kandidatPruefen(db, ctx, kid)
       const { data: c } = await db.from("candidates").select("id, status").eq("id", kid).maybeSingle()
       if (!c) throw new WerkzeugFehler("Kandidat nicht gefunden.")
-      const r = await setCandidateStatus(db, userId, kid, status)
+      const r = await setCandidateStatus(db, ctx.userId, kid, status)
       if ("error" in r) throw new WerkzeugFehler(r.error)
       const notiz = text(args, "notiz")
       if (notiz) {
-        const n = await addCandidateNote(db, userId, kid, notiz)
+        const n = await addCandidateNote(db, ctx.userId, kid, notiz)
         if (n) throw new WerkzeugFehler(`Status gesetzt, Notiz fehlgeschlagen: ${n.error}`)
       }
       revalidatePath(`/dashboard/candidates/${kid}`)
@@ -453,12 +473,11 @@ export const WERKZEUGE: Werkzeug[] = [
     description: "Schreibt eine Notiz in den Verlauf eines Kandidaten. @Name benachrichtigt Kolleginnen und Kollegen per Mail (wie in der Oberfläche).",
     inputSchema: { type: "object", properties: { kandidat_id: { type: "string" }, text: { type: "string" } }, required: ["kandidat_id", "text"], additionalProperties: false },
     annotations: schreiben,
-    async run(db, userId, args) {
+    async run(db, ctx, args) {
       const kid = id(args, "kandidat_id")!
       const inhalt = text(args, "text", { pflicht: true })!
-      const { data: c } = await db.from("candidates").select("id").eq("id", kid).maybeSingle()
-      if (!c) throw new WerkzeugFehler("Kandidat nicht gefunden.")
-      const r = await addCandidateNote(db, userId, kid, inhalt)
+      await kandidatPruefen(db, ctx, kid)
+      const r = await addCandidateNote(db, ctx.userId, kid, inhalt)
       if (r) throw new WerkzeugFehler(r.error)
       revalidatePath(`/dashboard/candidates/${kid}`)
       return { ok: true, link: link(`/dashboard/candidates/${kid}`) }
@@ -470,10 +489,11 @@ export const WERKZEUGE: Werkzeug[] = [
     description: "Ordnet einen Kandidaten einer Kanzlei zu (ohne Kampagne), wie „Kanzlei zuordnen“ in der Oberfläche. Nur vorqualifizierte Kandidaten und nur Kanzleien in Phase „live“. Achtung: Die Automatisierung „Neuer Kandidat für die Kanzlei“ schickt der Kanzlei dann eine Mail. Vorher mit dem Nutzer abstimmen.",
     inputSchema: { type: "object", properties: { kandidat_id: { type: "string" }, kunde_id: { type: "string" } }, required: ["kandidat_id", "kunde_id"], additionalProperties: false },
     annotations: schreiben,
-    async run(db, userId, args) {
+    async run(db, ctx, args) {
       const kid = id(args, "kandidat_id")!
       const kunde = id(args, "kunde_id")!
-      const r = await assignCandidateToClient(db, userId, kid, kunde)
+      await kandidatPruefen(db, ctx, kid)
+      const r = await assignCandidateToClient(db, ctx.userId, kid, kunde)
       if (r) throw new WerkzeugFehler(r.error)
       revalidatePath(`/dashboard/candidates/${kid}`)
       revalidatePath(`/dashboard/clients/${kunde}`)
@@ -491,10 +511,13 @@ export const WERKZEUGE: Werkzeug[] = [
       additionalProperties: false,
     },
     annotations: schreiben,
-    async run(db, userId, args) {
+    async run(db, ctx, args) {
       const zid = id(args, "zuordnung_id")!
       const status = text(args, "status", { pflicht: true })!
-      const r = await setAssignmentStatus(db, userId, zid, status)
+      const { data: zu } = await db.from("client_assignments").select("candidate_id").eq("id", zid).maybeSingle()
+      if (!zu) throw new WerkzeugFehler("Zuordnung nicht gefunden.")
+      await kandidatPruefen(db, ctx, zu.candidate_id)
+      const r = await setAssignmentStatus(db, ctx.userId, zid, status)
       if (r && "error" in r) throw new WerkzeugFehler(r.error)
       if (r) {
         revalidatePath(`/dashboard/candidates/${r.candidateId}`)
@@ -521,16 +544,17 @@ export const WERKZEUGE: Werkzeug[] = [
       additionalProperties: false,
     },
     annotations: schreiben,
-    async run(db, userId, args) {
+    async run(db, ctx, args) {
       const titel = text(args, "titel", { pflicht: true, max: 300 })!
       const faellig = text(args, "faellig_am", { max: 10 })
       if (faellig && !/^\d{4}-\d{2}-\d{2}$/.test(faellig)) throw new WerkzeugFehler("„faellig_am“ bitte als JJJJ-MM-TT.")
-      const ziel = text(args, "zugewiesen_an", { max: 64 }) ?? userId
+      const ziel = text(args, "zugewiesen_an", { max: 64 }) ?? ctx.userId
       const assignee = parseAssignee(ziel)
       if (!assignee) throw new WerkzeugFehler("Unbekanntes Team oder ungültige Person bei „zugewiesen_an“.")
       const kandidat = id(args, "kandidat_id", false)
+      if (kandidat) await kandidatPruefen(db, ctx, kandidat)
       const kunde = id(args, "kunde_id", false)
-      const r = await createTask(db, userId, { title: titel, description: text(args, "beschreibung") ?? null, assignee, candidate_id: kandidat ?? null, client_id: kunde ?? null, due_date: faellig ?? null })
+      const r = await createTask(db, ctx.userId, { title: titel, description: text(args, "beschreibung") ?? null, assignee, candidate_id: kandidat ?? null, client_id: kunde ?? null, due_date: faellig ?? null })
       if ("error" in r) throw new WerkzeugFehler(r.error)
       revalidatePath("/dashboard/tasks")
       if (kunde) revalidatePath(`/dashboard/clients/${kunde}`)
@@ -548,12 +572,12 @@ export const WERKZEUGE: Werkzeug[] = [
       additionalProperties: false,
     },
     annotations: schreiben,
-    async run(db, userId, args) {
+    async run(db, ctx, args) {
       const aid = id(args, "aufgabe_id")!
       const { data: t } = await db.from("tasks").select("id, title, client_id").eq("id", aid).maybeSingle()
       if (!t) throw new WerkzeugFehler("Aufgabe nicht gefunden.")
       const status = args.wieder_oeffnen === true ? "offen" : "erledigt"
-      const r = await setTaskStatus(db, userId, aid, status)
+      const r = await setTaskStatus(db, ctx.userId, aid, status)
       if (r) throw new WerkzeugFehler(r.error)
       revalidatePath("/dashboard/tasks")
       revalidatePath("/dashboard/fehlermeldungen")

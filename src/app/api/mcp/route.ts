@@ -6,7 +6,7 @@ import { bearbeiteRpc } from "@/lib/claude-api/mcp"
 import { checkApiKeyFailureRateLimit } from "@/lib/ratelimit"
 
 // Claude-Schnittstelle (Paket 111): MCP-Server für Claude Code. Anmeldung mit persönlichem
-// API-Schlüssel eines Agentur-Admins (Einstellungen → Mein Konto → Claude-Zugang).
+// API-Schlüssel einer Person aus dem Team (Einstellungen → Mein Konto → Claude-Zugang).
 const MAX_BYTES = 200_000
 
 function nichtAngemeldet(meldung: string, status = 401) {
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   if (!zugang) {
     const ip = request.headers.get("cf-connecting-ip")
     if (!(await checkApiKeyFailureRateLimit(ip))) return nichtAngemeldet("Zu viele Fehlversuche. Bitte kurz warten.", 429)
-    return nichtAngemeldet("API-Schlüssel fehlt, ist ungültig oder widerrufen (nur für Agentur-Admins).")
+    return nichtAngemeldet("API-Schlüssel fehlt, ist ungültig oder widerrufen.")
   }
 
   const roh = await request.text()

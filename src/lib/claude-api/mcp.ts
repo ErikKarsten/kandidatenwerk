@@ -46,7 +46,7 @@ async function rufeWerkzeug(db: SupabaseClient<Database>, zugang: ApiZugang, par
     return null
   }
   try {
-    const ergebnis = await werkzeug.run(db, zugang.profileId, args)
+    const ergebnis = await werkzeug.run(db, { userId: zugang.profileId, siehtActiveSourcing: zugang.siehtActiveSourcing }, args)
     await protokoll(true, null)
     return { content: [{ type: "text", text: JSON.stringify(ergebnis, null, 2) }], structuredContent: ergebnis, isError: false }
   } catch (err) {
