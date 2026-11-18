@@ -50,18 +50,4 @@ create table if not exists public.push_abos (
 create index if not exists push_abos_profile_idx on public.push_abos (profile_id);
 alter table public.push_abos enable row level security;
 
--- Summen je Kampagne für das Dashboard (statt bei jedem Aufruf Meta zu fragen).
-create or replace function public.meta_kampagnen_summen(von date, bis date)
-returns table (kampagne_id text, kampagne text, ausgaben numeric, leads bigint)
-language sql stable
-set search_path = public
-as $$
-  select t.kampagne_id, max(t.kampagne), sum(t.ausgaben), sum(t.leads)
-  from public.meta_anzeigen_tag t
-  where t.datum between von and bis and t.kampagne_id is not null
-  group by t.kampagne_id
-$$;
-revoke all on function public.meta_kampagnen_summen(date, date) from public, anon, authenticated;
-grant execute on function public.meta_kampagnen_summen(date, date) to service_role;
-
 NOTIFY pgrst, 'reload schema';

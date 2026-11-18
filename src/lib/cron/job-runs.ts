@@ -16,7 +16,7 @@ import type { Database } from "@/types/database"
 const ALERT_COOLDOWN_HOURS = 12
 const RETENTION_DAYS = 30
 
-export type CronJobName = "run-automations" | "meta-leads-sync" | "sync-kanzleistelle" | "task-reminders" | "meta-campaigns-sync" | "close-meetings" | "sample-feed" | "cv-werdegang" | "matching" | "mail-zustellung" | "meta-zentral"
+export type CronJobName = "run-automations" | "meta-leads-sync" | "sync-kanzleistelle" | "task-reminders" | "meta-campaigns-sync" | "close-meetings" | "sample-feed" | "cv-werdegang" | "matching" | "mail-zustellung" | "meta-zentral" | "meta-anzeigen"
 
 export interface CronJobOutcome<T> {
   result: T

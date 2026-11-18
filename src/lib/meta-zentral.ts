@@ -15,7 +15,7 @@ import { sendWebPush } from "@/lib/web-push"
 // Lead-Aktionen wie im Meta-Analyse-Tool: der größte Wert zählt ("lead" fasst die
 // anderen normalerweise schon zusammen).
 const LEAD_TYPEN = ["lead", "onsite_conversion.lead_grouped", "leadgen_grouped", "offsite_conversion.fb_pixel_lead"]
-const INSIGHT_FELDER = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,date_start,spend,impressions,reach,inline_link_clicks,actions"
+const INSIGHT_FELDER = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,date_start,spend,impressions,reach,inline_link_clicks,actions,video_thruplay_watched_actions"
 // Meta korrigiert Zahlen noch einige Tage nach - die letzten Tage werden immer neu geholt.
 export const TAGE_ZURUECK = 3
 
@@ -32,6 +32,7 @@ interface InsightRow {
   reach?: string
   inline_link_clicks?: string
   actions?: { action_type: string; value: string }[]
+  video_thruplay_watched_actions?: { action_type: string; value: string }[]
 }
 
 interface Paged<T> {
@@ -86,6 +87,8 @@ export function toTagesZeile(r: InsightRow, jetzt: string) {
     reichweite: zahl(r.reach),
     link_klicks: zahl(r.inline_link_clicks),
     leads: leadsAus(r.actions),
+    videoaufrufe_3s: zahl(r.actions?.find((a) => a.action_type === "video_view")?.value),
+    thruplays: zahl(r.video_thruplay_watched_actions?.find((a) => a.action_type === "video_view")?.value),
     aktualisiert_am: jetzt,
   }
 }

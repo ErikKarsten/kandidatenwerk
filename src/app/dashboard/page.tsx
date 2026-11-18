@@ -1,35 +1,17 @@
 import Link from "@/components/app-link"
-import { Users, Megaphone, UserSearch, UserX, Inbox, Euro, Target, Coins, BadgeCheck } from "lucide-react"
+import { Users, Megaphone, UserSearch, UserX, Inbox } from "lucide-react"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import {
-  addDays,
-  berlinToday,
-  countQualifiedMetaLeads,
   getApplicationStats,
-  getMetaAdStats,
   parseDateRange,
   SOURCE_LABELS,
-  type DateRange,
+  datePresets,
 } from "@/lib/dashboard-stats"
 
-const eur = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" })
 const shortDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", timeZone: "UTC" })
 const longDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" })
 
-function presets(): { label: string; range: DateRange }[] {
-  const today = berlinToday()
-  const monthStart = `${today.slice(0, 7)}-01`
-  const lastMonthEnd = addDays(monthStart, -1)
-  return [
-    { label: "Heute", range: { from: today, to: today } },
-    { label: "Gestern", range: { from: addDays(today, -1), to: addDays(today, -1) } },
-    { label: "7 Tage", range: { from: addDays(today, -6), to: today } },
-    { label: "30 Tage", range: { from: addDays(today, -29), to: today } },
-    { label: "Dieser Monat", range: { from: monthStart, to: today } },
-    { label: "Letzter Monat", range: { from: `${lastMonthEnd.slice(0, 7)}-01`, to: lastMonthEnd } },
-  ]
-}
 
 // Dashboard (02.10.2026 neu gedacht): oben der aktuelle Bestand, darunter die
 // Auswertung eines frei wählbaren Zeitraums - eingegangene Bewerbungen sowie
@@ -45,8 +27,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     { count: candidateCount },
     assignedCount,
     applications,
-    ads,
-    { data: leadCampaigns },
     { data: onboardingRows },
     { data: teamRows },
   ] = await Promise.all([
@@ -55,8 +35,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     supabase.from("candidates").select("*", { count: "exact", head: true }).eq("is_demo", false).eq("campaign_only", false).not("tags", "cs", "{Musterdatensatz}"),
     countAssignedCandidates(supabase),
     getApplicationStats(supabase, range),
-    getMetaAdStats(range),
-    supabase.from("campaigns").select("id, meta_campaign_id").eq("kind", "lead").not("meta_campaign_id", "is", null),
     // Onboarding offen (Paket 13): Kunden in Phase Onboarding ohne abgeschlossenes Kanzleiprofil.
     supabase
       .from("clients")
@@ -73,15 +51,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     return !profile?.finalized_at
   })
   const kamName = (id: string | null) => (teamRows ?? []).find((t) => t.id === id)?.full_name ?? null
-  const campaignIdByMetaId = new Map((leadCampaigns ?? []).map((c) => [c.meta_campaign_id as string, c.id as string]))
-  const costPerLead = ads.ok && ads.leads > 0 ? ads.spend / ads.leads : null
-  // Kosten pro qualifiziertem Lead (Paket 28, T-116): nur Kandidaten aus den ausgewerteten
-  // Meta-Kampagnen (dieselben wie bei den Werbeausgaben).
-  const evaluatedCampaignIds = ads.ok ? ads.campaigns.map((c) => campaignIdByMetaId.get(c.metaCampaignId)).filter((id): id is string => !!id) : []
-  const qualifiedLeads = ads.ok ? await countQualifiedMetaLeads(supabase, range, evaluatedCampaignIds) : 0
-  const costPerQualifiedLead = ads.ok && qualifiedLeads > 0 ? ads.spend / qualifiedLeads : null
   const maxPerDay = Math.max(1, ...applications.byDay.map((d) => d.count))
-  const activePreset = presets().find((p) => p.range.from === range.from && p.range.to === range.to)?.label
+  const activePreset = datePresets().find((p) => p.range.from === range.from && p.range.to === range.to)?.label
 
   return (
     <div className="flex flex-col gap-8 p-4 sm:p-8" style={{ backgroundColor: "#f0f4f8", minHeight: "100%" }}>
@@ -131,7 +102,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {presets().map((p) => (
+            {datePresets().map((p) => (
               <Link
                 key={p.label}
                 href={`/dashboard?von=${p.range.from}&bis=${p.range.to}`}
@@ -156,29 +127,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard icon={Inbox} label="Eingegangene Bewerbungen" value={applications.total} iconColor="#4ba3c3" />
-          <KpiCard icon={Euro} label="Werbeausgaben (Meta)" value={ads.ok ? eur.format(ads.spend) : "–"} iconColor="#1e56a0" />
-          <KpiCard icon={Target} label="Leads laut Meta" value={ads.ok ? ads.leads : "–"} iconColor="#8b5cf6" />
-          <KpiCard icon={Coins} label="Ø Kosten pro Lead" value={costPerLead !== null ? eur.format(costPerLead) : "–"} iconColor="#1a9a6a" />
-          <KpiCard
-            icon={BadgeCheck}
-            label="Ø Kosten pro qualifiziertem Lead"
-            value={costPerQualifiedLead !== null ? eur.format(costPerQualifiedLead) : "–"}
-            hint={ads.ok ? `${qualifiedLeads} qualifiziert (vorqualifiziert oder zugeordnet)` : undefined}
-            iconColor="#0369a1"
-          />
         </div>
-        {!ads.ok && <p className="text-xs text-amber-700">{ads.error}</p>}
-        {ads.ok && (
-          <p className="text-xs text-gray-400">
-            {/* Werbezahlen kommen aus dem zentralen Meta-Abruf alle 30 Minuten (Paket 108). */}
-            {ads.updatedAt
-              ? `Werbezahlen von Meta, Stand ${new Date(ads.updatedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} Uhr (alle 30 Minuten aktualisiert).`
-              : "Werbezahlen von Meta: noch kein Abruf."}
-            {ads.dataFrom && range.from < ads.dataFrom ? ` Gespeichert sind Zahlen ab ${ads.dataFrom.split("-").reverse().join(".")}.` : ""}
-          </p>
-        )}
+        {/* Werbezahlen von Meta stehen seit Paket 108 im Meta-Analyse-Tool. */}
+        <p className="text-xs text-gray-500">
+          Werbeausgaben, Leads und Kosten pro Lead von Meta:{" "}
+          <Link href={`/dashboard/meta-analyse?von=${range.from}&bis=${range.to}`} className="font-medium hover:underline" style={{ color: "#1e56a0" }}>
+            im Meta-Analyse-Tool
+          </Link>
+        </p>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
           <div className="rounded-xl border bg-white p-5 xl:col-span-2" style={{ borderColor: "#dde3ea" }}>
@@ -213,45 +171,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           </div>
         </div>
 
-        {ads.ok && ads.campaigns.length > 0 && (
-          <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#dde3ea" }}>
-            <h3 className="mb-3 text-sm font-semibold text-gray-700">Meta-Kampagnen im Zeitraum (nach Ausgaben)</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs text-gray-500" style={{ borderColor: "#eef2f6" }}>
-                    <th className="py-2 pr-3 font-medium">Kampagne</th>
-                    <th className="py-2 pr-3 text-right font-medium">Ausgaben</th>
-                    <th className="py-2 pr-3 text-right font-medium">Leads</th>
-                    <th className="py-2 text-right font-medium">Kosten pro Lead</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ads.campaigns.slice(0, 15).map((c) => {
-                    const ownId = campaignIdByMetaId.get(c.metaCampaignId)
-                    return (
-                      <tr key={c.metaCampaignId} className="border-b last:border-0" style={{ borderColor: "#eef2f6" }}>
-                        <td className="py-2 pr-3">
-                          {ownId ? (
-                            <Link href={`/dashboard/campaigns/${ownId}`} className="hover:underline" style={{ color: "#1e56a0" }}>
-                              {c.name}
-                            </Link>
-                          ) : (
-                            c.name
-                          )}
-                        </td>
-                        <td className="py-2 pr-3 text-right text-gray-700">{eur.format(c.spend)}</td>
-                        <td className="py-2 pr-3 text-right text-gray-700">{c.leads}</td>
-                        <td className="py-2 text-right text-gray-700">{c.leads > 0 ? eur.format(c.spend / c.leads) : "–"}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {ads.campaigns.length > 15 && <p className="mt-2 text-xs text-gray-400">+ {ads.campaigns.length - 15} weitere Kampagnen mit kleineren Ausgaben</p>}
-          </div>
-        )}
       </section>
     </div>
   )

@@ -1,6 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { createSupabaseAdminClient } from "@/lib/supabase-admin"
-import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 
 // Auswertung nach Zeitraum für das Dashboard: eingegangene Bewerbungen (Kandidatenwerk)
 // sowie Werbeausgaben und Leads laut Meta-Werbekonto (Insights-API, 1-2 Aufrufe je
@@ -39,6 +37,21 @@ export function parseDateRange(from: string | undefined, to: string | undefined)
   const validTo = to && DATE_RE.test(to) ? to : today
   const validFrom = from && DATE_RE.test(from) ? from : addDays(validTo, -29)
   return validFrom <= validTo ? { from: validFrom, to: validTo } : { from: validTo, to: validFrom }
+}
+
+// Zeitraum-Knöpfe für Dashboard und Meta-Analyse-Tool.
+export function datePresets(): { label: string; range: DateRange }[] {
+  const today = berlinToday()
+  const monthStart = `${today.slice(0, 7)}-01`
+  const lastMonthEnd = addDays(monthStart, -1)
+  return [
+    { label: "Heute", range: { from: today, to: today } },
+    { label: "Gestern", range: { from: addDays(today, -1), to: addDays(today, -1) } },
+    { label: "7 Tage", range: { from: addDays(today, -6), to: today } },
+    { label: "30 Tage", range: { from: addDays(today, -29), to: today } },
+    { label: "Dieser Monat", range: { from: monthStart, to: today } },
+    { label: "Letzter Monat", range: { from: `${lastMonthEnd.slice(0, 7)}-01`, to: lastMonthEnd } },
+  ]
 }
 
 export const SOURCE_LABELS: Record<string, string> = {
@@ -88,51 +101,6 @@ export async function getApplicationStats(supabase: SupabaseClient, range: DateR
     total: rows.length,
     bySource: [...bySource].map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count),
     byDay: days,
-  }
-}
-
-export interface MetaCampaignSpend {
-  metaCampaignId: string
-  name: string
-  spend: number
-  leads: number
-}
-
-export type MetaAdStats =
-  | {
-      ok: true
-      spend: number
-      leads: number
-      campaigns: MetaCampaignSpend[]
-      // Letzter Meta-Abruf (alle 30 Minuten) und ab wann Zahlen gespeichert sind.
-      updatedAt: string | null
-      dataFrom: string | null
-    }
-  | { ok: false; error: string }
-
-// Werbezahlen aus meta_anzeigen_tag (Paket 108): der zentrale Meta-Abruf speichert sie
-// alle 30 Minuten - vorher fragte jeder Dashboard-Aufruf selbst bei Meta an.
-export async function getMetaAdStats(range: DateRange): Promise<MetaAdStats> {
-  const db = createSupabaseAdminClient() as unknown as SupabaseClient
-  const [summen, erster, status] = await Promise.all([
-    db.rpc("meta_kampagnen_summen", { von: range.from, bis: range.to }),
-    db.from("meta_anzeigen_tag").select("datum").order("datum", { ascending: true }).limit(1).maybeSingle(),
-    db.from("meta_konto_status").select("geprueft_am").order("geprueft_am", { ascending: false }).limit(1).maybeSingle(),
-  ])
-  if (summen.error) return { ok: false, error: "Werbedaten derzeit nicht abrufbar." }
-
-  // Nur KS24-Kampagnen (Paket 18, T-81) - andere Kampagnen im Werbekonto zählen nicht.
-  const campaigns = ((summen.data ?? []) as { kampagne_id: string; kampagne: string | null; ausgaben: number | string; leads: number | string }[])
-    .filter((r) => isKs24Campaign(r.kampagne ?? ""))
-    .map((r) => ({ metaCampaignId: r.kampagne_id, name: r.kampagne ?? "", spend: Number(r.ausgaben) || 0, leads: Number(r.leads) || 0 }))
-    .sort((a, b) => b.spend - a.spend)
-  return {
-    ok: true,
-    spend: campaigns.reduce((sum, c) => sum + c.spend, 0),
-    leads: campaigns.reduce((sum, c) => sum + c.leads, 0),
-    campaigns,
-    updatedAt: (status.data?.geprueft_am as string | undefined) ?? null,
-    dataFrom: (erster.data?.datum as string | undefined) ?? null,
   }
 }
 
