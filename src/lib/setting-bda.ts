@@ -8,7 +8,6 @@
 // eigenen Aktivität "Setting BDA" beantworten und legt sie beim Lead in Close veröffentlicht an.
 // Gibt es zu dem Gespräch schon eine von Hand ausgefüllte "Setting BDA", wird keine zweite
 // angelegt.
-import type { SupabaseClient } from "@supabase/supabase-js"
 import { closeConfigured, closeGet, closeList, closePost, openCallRecording, type CloseActivity } from "@/lib/close-api"
 import { transcribeAudio, type AiBinding } from "@/lib/transcribe"
 import { generateText } from "@/lib/llm"
@@ -154,87 +153,68 @@ export async function settingBdaVeroeffentlichen(leadId: string, werte: Record<s
   return created.id
 }
 
-// --- Warteschlange (Tabelle setting_bda_auftraege) ---
-
+// --- Abarbeiten (Cronjob setting-bda, alle 5 Minuten) ---
+// Ohne eigene Tabelle: Der Job fragt Close nach den Statuswechseln der letzten Stunden. Ob
+// schon eine "Setting BDA" zum Gespräch existiert (von Hand oder von hier), steht in Close -
+// das verhindert doppelte Einträge. Ohne Aufnahme oder bei einem Fehler versucht es der
+// nächste Lauf erneut, bis der Wechsel älter als SUCHEN_MS ist.
 
 // Aufnahmen stehen in Close oft erst einige Minuten nach dem Auflegen bereit - der Wechsel
 // auf "SC Terminiert" passiert meist direkt am Ende des Gesprächs.
 const WARTEN_MS = 10 * 60_000
-// So lange wird nach einer Aufnahme gesucht, danach "keine_quelle".
 const SUCHEN_MS = 3 * 3600_000
-const MAX_VERSUCHE = 4
 const PRO_LAUF = 2
 
-export async function settingBdaVormerken(
-  db: SupabaseClient,
-  ev: { statusChangeId: string; leadId: string; alt: string | null; neu: string | null; am: string | null }
-): Promise<boolean> {
-  if (!istSettingBdaWechsel(ev.alt, ev.neu)) return false
-  const { error } = await db.from("setting_bda_auftraege").upsert(
-    { status_change_id: ev.statusChangeId, lead_id: ev.leadId, alt_status: ev.alt, neu_status: ev.neu, wechsel_am: ev.am ?? new Date().toISOString() },
-    { onConflict: "status_change_id", ignoreDuplicates: true }
-  )
-  if (error) throw new Error(`Setting BDA vormerken: ${error.message}`)
-  return true
-}
-
 export interface SettingBdaLaufErgebnis {
-  bearbeitet: number
-  angelegt: number
+  wechsel: number
+  angelegt: string[]
   vorhanden: number
   ohneQuelle: number
   fehler: string[]
 }
 
-export async function settingBdaAbarbeiten(db: SupabaseClient): Promise<SettingBdaLaufErgebnis> {
-  const out: SettingBdaLaufErgebnis = { bearbeitet: 0, angelegt: 0, vorhanden: 0, ohneQuelle: 0, fehler: [] }
+export async function settingBdaAbarbeiten(): Promise<SettingBdaLaufErgebnis> {
+  const out: SettingBdaLaufErgebnis = { wechsel: 0, angelegt: [], vorhanden: 0, ohneQuelle: 0, fehler: [] }
   if (!closeConfigured()) return out
-  const { data: auftraege, error } = await db
-    .from("setting_bda_auftraege")
-    .select("status_change_id, lead_id, wechsel_am, versuche")
-    .eq("status", "offen")
-    .lte("wechsel_am", new Date(Date.now() - WARTEN_MS).toISOString())
-    .order("wechsel_am", { ascending: true })
-    .limit(PRO_LAUF)
-  if (error) throw new Error(error.message)
-  if (!auftraege?.length) return out
+  const seit = new Date(Date.now() - SUCHEN_MS).toISOString()
+  const aenderungen = await closeList<CloseActivity>(`/activity/status_change/lead/?date_created__gte=${encodeURIComponent(seit)}`, 1000)
+  const offen = aenderungen
+    .filter((a) => istSettingBdaWechsel(a.old_status_label, a.new_status_label) && !!a.lead_id && zeit(a) <= Date.now() - WARTEN_MS)
+    .sort((a, b) => zeit(a) - zeit(b))
+  out.wechsel = offen.length
+  if (!offen.length) return out
 
-  const felder = await settingBdaFelder()
-  for (const a of auftraege as { status_change_id: string; lead_id: string; wechsel_am: string; versuche: number }[]) {
-    out.bearbeitet++
-    const setze = (werte: Record<string, unknown>) =>
-      db.from("setting_bda_auftraege").update({ ...werte, updated_at: new Date().toISOString() }).eq("status_change_id", a.status_change_id)
+  let felder: BdaFeld[] | null = null
+  let bearbeitet = 0
+  const gesehen = new Set<string>()
+  for (const a of offen) {
+    if (bearbeitet >= PRO_LAUF) break
+    const leadId = a.lead_id!
+    if (gesehen.has(leadId)) continue
+    gesehen.add(leadId)
     try {
-      const wechsel = new Date(a.wechsel_am)
-      const quelle = await settingBdaQuelle(a.lead_id, wechsel)
+      const wechsel = new Date(zeit(a))
+      const quelle = await settingBdaQuelle(leadId, wechsel)
       if (quelle.vorhandeneBda) {
-        await setze({ status: "vorhanden", close_activity_id: quelle.vorhandeneBda.id })
         out.vorhanden++
         continue
       }
       if (!quelle.telefonat && !quelle.besprechungen.length) {
-        const aufgeben = Date.now() - wechsel.getTime() > SUCHEN_MS
-        await setze(aufgeben ? { status: "keine_quelle" } : { versuche: a.versuche })
-        if (aufgeben) out.ohneQuelle++
+        out.ohneQuelle++
         continue
       }
-      const lead = await closeGet<{ display_name?: string }>(`/lead/${a.lead_id}/?_fields=display_name`)
+      bearbeitet++
+      felder ??= await settingBdaFelder()
+      const lead = await closeGet<{ display_name?: string }>(`/lead/${leadId}/?_fields=display_name`)
       const ergebnis = await settingBdaAusfuellen(quelle, felder, lead?.display_name ?? "")
       // Kurz vor dem Anlegen noch einmal: hat inzwischen jemand von Hand ausgefüllt?
-      const nochmal = await settingBdaQuelle(a.lead_id, wechsel)
-      if (nochmal.vorhandeneBda) {
-        await setze({ status: "vorhanden", close_activity_id: nochmal.vorhandeneBda.id })
+      if ((await settingBdaQuelle(leadId, wechsel)).vorhandeneBda) {
         out.vorhanden++
         continue
       }
-      const id = await settingBdaVeroeffentlichen(a.lead_id, ergebnis.werte)
-      await setze({ status: "erledigt", close_activity_id: id, telefonat_id: ergebnis.telefonatId, fehler: null })
-      out.angelegt++
+      out.angelegt.push(`${leadId}: ${await settingBdaVeroeffentlichen(leadId, ergebnis.werte)}`)
     } catch (err) {
-      const meldung = err instanceof Error ? err.message : String(err)
-      const versuche = a.versuche + 1
-      await setze({ versuche, fehler: meldung.slice(0, 500), status: versuche >= MAX_VERSUCHE ? "fehler" : "offen" })
-      out.fehler.push(`${a.lead_id}: ${meldung.slice(0, 200)}`)
+      out.fehler.push(`${leadId}: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`)
     }
   }
   return out

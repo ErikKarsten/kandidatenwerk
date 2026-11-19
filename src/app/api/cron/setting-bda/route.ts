@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server"
-import type { SupabaseClient } from "@supabase/supabase-js"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { settingBdaAbarbeiten } from "@/lib/setting-bda"
 import { runTrackedCronJob } from "@/lib/cron/job-runs"
@@ -13,7 +12,7 @@ export async function POST(request: NextRequest) {
   }
   const supabase = createSupabaseAdminClient()
   const result = await runTrackedCronJob(supabase, "setting-bda", async () => {
-    const r = await settingBdaAbarbeiten(supabase as unknown as SupabaseClient)
+    const r = await settingBdaAbarbeiten()
     return { result: r, ok: r.fehler.length === 0 }
   })
   return NextResponse.json(result)
