@@ -46,3 +46,20 @@ describe("Setting BDA: Stichpunkte", () => {
     expect(stichpunkte("-")).toEqual([])
   })
 })
+
+describe("Setting BDA: höchstens einmal im Monat", () => {
+  const bda = (iso: string) => ({ _type: "CustomActivity", id: iso, date_created: iso })
+  it("sperrt, wenn die letzte weniger als einen Monat zurückliegt (auch danach angelegte)", async () => {
+    const { letzteBdaImMonat } = await import("./setting-bda")
+    const wechsel = new Date("2026-11-19T14:00:00Z")
+    expect(letzteBdaImMonat([bda("2026-10-25T10:00:00Z")], wechsel)?.id).toBe("2026-10-25T10:00:00Z")
+    expect(letzteBdaImMonat([bda("2026-11-19T13:50:00Z")], wechsel)).not.toBeNull()
+    expect(letzteBdaImMonat([bda("2026-11-19T14:30:00Z")], wechsel)).not.toBeNull()
+  })
+  it("erlaubt eine neue, wenn die letzte über einen Monat alt ist", async () => {
+    const { letzteBdaImMonat } = await import("./setting-bda")
+    const wechsel = new Date("2026-11-19T14:00:00Z")
+    expect(letzteBdaImMonat([bda("2026-10-18T10:00:00Z"), bda("2026-07-23T13:06:00Z")], wechsel)).toBeNull()
+    expect(letzteBdaImMonat([], wechsel)).toBeNull()
+  })
+})

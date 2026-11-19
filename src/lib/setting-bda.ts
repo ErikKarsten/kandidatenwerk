@@ -6,8 +6,8 @@
 // vor dem Wechsel, dazu Mitschriften des Close-Notetakers aus Besprechungen im selben
 // Zeitraum -, transkribiert es (Whisper, src/lib/transcribe.ts), lässt Claude die Fragen der
 // eigenen Aktivität "Setting BDA" beantworten und legt sie beim Lead in Close veröffentlicht an.
-// Gibt es zu dem Gespräch schon eine von Hand ausgefüllte "Setting BDA", wird keine zweite
-// angelegt.
+// Pro Lead höchstens eine "Setting BDA" im Monat (Paket 114): Gibt es schon eine - von Hand
+// oder automatisch - aus dem Monat vor dem Statuswechsel oder danach, wird keine angelegt.
 import { closeConfigured, closeGet, closeList, closePost, openCallRecording, type CloseActivity } from "@/lib/close-api"
 import { transcribeAudio, type AiBinding } from "@/lib/transcribe"
 import { generateText } from "@/lib/llm"
@@ -51,6 +51,14 @@ export interface BdaQuelle {
 
 const zeit = (a: CloseActivity) => Date.parse((a.activity_at ?? a.date_created ?? "") as string) || 0
 
+// Sperre (Wunsch 19.11.): Eine "Setting BDA" darf nur einmal ausgefüllt sein, außer die letzte
+// liegt mehr als einen Monat vor dem Statuswechsel. Liefert die sperrende, sonst null.
+export function letzteBdaImMonat(bdas: CloseActivity[], wechselAm: Date): CloseActivity | null {
+  const grenze = new Date(wechselAm)
+  grenze.setMonth(grenze.getMonth() - 1)
+  return bdas.filter((b) => zeit(b) >= grenze.getTime()).sort((a, b) => zeit(b) - zeit(a))[0] ?? null
+}
+
 // Quali-Gespräch zum Statuswechsel finden: längstes Telefonat mit Aufnahme im Fenster vor
 // dem Wechsel, Notetaker-Mitschriften aus Besprechungen, die im Fenster stattgefunden haben.
 export async function settingBdaQuelle(leadId: string, wechselAm: Date): Promise<BdaQuelle> {
@@ -70,10 +78,7 @@ export async function settingBdaQuelle(leadId: string, wechselAm: Date): Promise
     const start = Date.parse((m.starts_at ?? "") as string)
     return !!m.summary?.text?.trim() && Number.isFinite(start) && start >= von && start <= bis
   })
-  // Schon von Hand ausgefüllt, seit das Gespräch begann (bzw. im Fenster)?
-  const ab = telefonat ? zeit(telefonat) - 10 * 60_000 : von
-  const vorhandeneBda = custom.find((c) => zeit(c) >= ab) ?? null
-  return { telefonat, besprechungen, vorhandeneBda }
+  return { telefonat, besprechungen, vorhandeneBda: letzteBdaImMonat(custom, wechselAm) }
 }
 
 const SYSTEM = `Du füllst für das Vertriebsteam von Endlich Mitarbeiter / Kanzleistelle24 die Gesprächsnotiz „Setting BDA“ in Close aus. Endlich Mitarbeiter findet für Steuerkanzleien Mitarbeiter (Steuerfachangestellte = SFA/Stfa, Steuerfachwirte, Bilanzbuchhalter, Lohnbuchhalter). Im Quali-Gespräch hat ein Mitarbeiter die Kanzlei zu ihrer Stellensituation befragt.
