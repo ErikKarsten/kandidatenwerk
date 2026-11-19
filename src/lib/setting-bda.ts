@@ -81,14 +81,14 @@ const SYSTEM = `Du füllst für das Vertriebsteam von Endlich Mitarbeiter / Kanz
 Regeln:
 - Nur was im Gespräch wirklich gesagt wurde. Nichts erfinden, nichts schönen.
 - Stil wie das Team: kurze Stichpunkte, keine ganzen Sätze nötig, Zahlen genau übernehmen (z. B. „1-2“, „2 Bewerbungsgespräche“, „seit 6 Monaten“).
-- Wurde eine Frage nicht besprochen: "-".
+- Wurde eine Frage nicht besprochen: leere Liste (wird in Close als "-" eingetragen).
 - Die Fragen sind ein Leitfaden; ordne passende Aussagen der richtigen Frage zu, auch wenn sie anders formuliert gestellt wurden oder nur nebenbei fielen.
 - Zuordnung: Was die Kanzlei Bewerbern bietet (Homeoffice, Weiterbildung, Arbeitszeiten, Digitalisierung, Lage, Team, Gehaltsextras) → Differenzierungsmerkmale. Fachliche Anforderungen (Ausbildung, Erfahrung, Schwerpunkte, Software) → „Was muss mitbringen“ bzw. „Qualifiziert“. Wie Stellen derzeit überbrückt werden (Überstunden, Umverteilen, Mandate ablehnen) → „Wie gleichen Sie aus“. Bisherige Suchwege (Anzeigen, Agenturen, Empfehlungen) → „Strategie“.
 - Gibt der Mitarbeiter im Gespräch Kandidaten wieder, die Endlich Mitarbeiter vorstellt, gehört das nicht in die Felder - es geht um die Kanzlei.
 - Die Aufnahme ist maschinell transkribiert und kann Hörfehler enthalten (Namen, Orte, Software). Offensichtliche Fehler stillschweigend korrigieren (z. B. „Datef“ → DATEV), Unsicheres weglassen.
 - "Vorabinformation": 3-8 kurze Zeilen mit den wichtigsten Fakten zur Kanzlei (Größe/Mitarbeiter, Standorte, Schwerpunkte/Mandanten, Software, Besonderheiten, Anlass der Suche).
 
-Antworte NUR mit einem JSON-Objekt: Schlüssel = Feld-ID, Wert = Text. "Vorabinformation" als Liste von Zeilen (Array von Strings), alle anderen als String.`
+Antworte NUR mit einem JSON-Objekt: Schlüssel = Feld-ID, Wert = Liste von Stichpunkten (Array von Strings, je ein Punkt, ohne Aufzählungszeichen). Nicht besprochen: leere Liste [].`
 
 export interface BdaErgebnis {
   werte: Record<string, string>
@@ -123,17 +123,25 @@ export async function settingBdaAusText(quelleText: string, felder: BdaFeld[], k
   const antwort = await generateText({ tier: "smart", system: SYSTEM, prompt, maxTokens: 4000, timeoutMs: 180_000 })
   const json = JSON.parse(antwort.slice(antwort.indexOf("{"), antwort.lastIndexOf("}") + 1)) as Record<string, unknown>
 
+  return settingBdaFormatieren(json, felder)
+}
+
+// Stichpunkte statt Fließtext (Wunsch 19.11.): Vorabinformation als Aufzählung, Fragefelder
+// mit einem "•"-Punkt pro Zeile, wenn es mehrere Punkte sind.
+export function stichpunkte(wert: unknown): string[] {
+  const roh = Array.isArray(wert) ? wert.map(String) : String(wert ?? "").split(/\n+|;\s+/)
+  return roh.map((z) => z.replace(/^\s*[-•*]\s+/, "").trim()).filter((z) => z && z !== "-")
+}
+
+export function settingBdaFormatieren(json: Record<string, unknown>, felder: BdaFeld[]): Record<string, string> {
+  const escape = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   const werte: Record<string, string> = {}
   for (const f of felder) {
-    const v = json[f.id]
+    const punkte = stichpunkte(json[f.id])
     if (f.type === "richtextarea") {
-      const zeilen = (Array.isArray(v) ? v : String(v ?? "").split("\n")).map((z) => String(z).trim()).filter(Boolean)
-      const escape = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      werte[f.id] = `<body>${zeilen.map((z) => `<p>${escape(z)}</p>`).join("")}<p><em>Automatisch aus der Gesprächsaufnahme erstellt (Kandidatenwerk, KI) – bitte bei Bedarf korrigieren.</em></p></body>`
+      werte[f.id] = `<body><ul>${punkte.map((z) => `<li>${escape(z)}</li>`).join("")}</ul><p><em>Automatisch aus der Gesprächsaufnahme erstellt (Kandidatenwerk, KI) – bitte bei Bedarf korrigieren.</em></p></body>`
     } else {
-      // Einzeilige Textfelder in Close: mehrere Punkte mit "; " trennen (wie das Team schreibt).
-      const t = String(v ?? "").trim().replace(/\s*\n+\s*/g, "; ")
-      werte[f.id] = (t || "-").slice(0, 2000)
+      werte[f.id] = (punkte.length === 0 ? "-" : punkte.length === 1 ? punkte[0] : punkte.map((z) => `• ${z}`).join("\n")).slice(0, 2000)
     }
   }
   return werte

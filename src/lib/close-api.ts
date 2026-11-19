@@ -31,6 +31,18 @@ export async function closePost<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T
 }
 
+export async function closePut<T>(path: string, body: unknown): Promise<T> {
+  const auth = authHeader()
+  if (!auth) throw new Error("CLOSE_API_KEY fehlt.")
+  const res = await fetch(`https://api.close.com/api/v1${path}`, {
+    method: "PUT",
+    headers: { Authorization: auth, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`Close-API ${res.status}: ${(await res.text()).slice(0, 300)}`)
+  return (await res.json()) as T
+}
+
 // Alle Seiten einer Liste (Close: _skip/_limit, has_more), höchstens max Einträge.
 export async function closeList<T>(path: string, max = 1000): Promise<T[]> {
   const out: T[] = []

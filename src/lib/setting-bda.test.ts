@@ -24,3 +24,25 @@ describe("Setting BDA: welche Statuswechsel", () => {
     expect(istSettingBdaWechsel(null, "SC Terminiert")).toBe(false)
   })
 })
+
+describe("Setting BDA: Stichpunkte", () => {
+  const felder = [
+    { id: "cf_vorab", name: "Vorabinformation", description: null, type: "richtextarea" },
+    { id: "cf_a", name: "Frage A", description: null, type: "text" },
+    { id: "cf_b", name: "Frage B", description: null, type: "text" },
+    { id: "cf_c", name: "Frage C", description: null, type: "text" },
+  ]
+  it("mehrere Punkte je Zeile mit •, einer ohne, keiner als -", async () => {
+    const { settingBdaFormatieren } = await import("./setting-bda")
+    const w = settingBdaFormatieren({ cf_vorab: ["Nürnberg <Zentrale>", "DATEV"], cf_a: ["1-2", "auch mehr möglich"], cf_b: ["3.500-4.500"], cf_c: [] }, felder)
+    expect(w.cf_a).toBe("• 1-2\n• auch mehr möglich")
+    expect(w.cf_b).toBe("3.500-4.500")
+    expect(w.cf_c).toBe("-")
+    expect(w.cf_vorab).toContain("<ul><li>Nürnberg &lt;Zentrale&gt;</li><li>DATEV</li></ul>")
+  })
+  it("Text mit Zeilen oder Semikolon wird zerlegt", async () => {
+    const { stichpunkte } = await import("./setting-bda")
+    expect(stichpunkte("a\n- b; c")).toEqual(["a", "b", "c"])
+    expect(stichpunkte("-")).toEqual([])
+  })
+})
