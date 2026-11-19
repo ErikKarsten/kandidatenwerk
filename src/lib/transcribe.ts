@@ -8,18 +8,19 @@ const MODEL = "@cf/openai/whisper-large-v3-turbo"
 // Sicherheitsgrenze (ca. 2 Stunden MP3).
 export const MAX_AUDIO_BYTES = 60 * 1024 * 1024
 
-interface AiBinding {
+export interface AiBinding {
   run(model: string, input: Record<string, unknown>): Promise<{ text?: string }>
 }
 
-// audio: Antwort mit der Aufnahme (Datenstrom, z.B. von S3).
-export async function transcribeAudio(audio: Response, context?: string): Promise<string> {
-  const env = getCloudflareContext().env as unknown as { AI?: AiBinding }
-  if (!env.AI) throw new Error("Workers-AI-Binding (AI) fehlt.")
+// audio: Antwort mit der Aufnahme (Datenstrom, z.B. von S3). ai: nur für Skripte außerhalb
+// des Workers (wrangler getPlatformProxy), sonst das Binding des Workers.
+export async function transcribeAudio(audio: Response, context?: string, ai?: AiBinding): Promise<string> {
+  const binding = ai ?? (getCloudflareContext().env as unknown as { AI?: AiBinding }).AI
+  if (!binding) throw new Error("Workers-AI-Binding (AI) fehlt.")
   const size = Number(audio.headers.get("content-length") ?? 0)
   if (size > MAX_AUDIO_BYTES) throw new Error(`Aufnahme zu groß (${Math.round(size / 1e6)} MB).`)
   if (!audio.body) throw new Error("Aufnahme ohne Inhalt.")
-  const result = await env.AI.run(MODEL, {
+  const result = await binding.run(MODEL, {
     audio: { body: audio.body, contentType: audio.headers.get("content-type") ?? "audio/mpeg" },
     language: "de",
     vad_filter: true,

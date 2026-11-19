@@ -29,6 +29,7 @@ const MAX_AGE_MINUTES: Record<string, number> = {
   "meta-leads-sync": 300, // alle 2 Std. (Paket 108, vorher alle 30 Min.)
   "meta-zentral": 90, // alle 30 Min. (Paket 108)
   "meta-anzeigen": 1800, // täglich 06:00 UTC (Paket 108)
+  "setting-bda": 30, // alle 5 Min. (Paket 113)
   "sync-kanzleistelle": 180, // stündlich
   "meta-campaigns-sync": 180, // stündlich
   "sample-feed": 180, // stündlich (Paket 76)
