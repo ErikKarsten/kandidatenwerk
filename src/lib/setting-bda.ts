@@ -6,8 +6,9 @@
 // vor dem Wechsel, dazu Mitschriften des Close-Notetakers aus Besprechungen im selben
 // Zeitraum -, transkribiert es (Whisper, src/lib/transcribe.ts), lässt Claude die Fragen der
 // eigenen Aktivität "Setting BDA" beantworten und legt sie beim Lead in Close veröffentlicht an.
-// Pro Lead höchstens eine "Setting BDA" im Monat (Paket 114): Gibt es schon eine - von Hand
-// oder automatisch - aus dem Monat vor dem Statuswechsel oder danach, wird keine angelegt.
+// Immer anlegen (Paket 115, Wunsch 19.11.): auch wenn schon eine von Hand ausgefüllte "Setting
+// BDA" existiert. Nur eine eigene, automatische zu diesem Statuswechsel verhindert eine zweite
+// (der Job sieht denselben Wechsel 3 Stunden lang alle 5 Minuten).
 import { closeConfigured, closeGet, closeList, closePost, openCallRecording, type CloseActivity } from "@/lib/close-api"
 import { transcribeAudio, type AiBinding } from "@/lib/transcribe"
 import { generateText } from "@/lib/llm"
@@ -51,12 +52,17 @@ export interface BdaQuelle {
 
 const zeit = (a: CloseActivity) => Date.parse((a.activity_at ?? a.date_created ?? "") as string) || 0
 
-// Sperre (Wunsch 19.11.): Eine "Setting BDA" darf nur einmal ausgefüllt sein, außer die letzte
-// liegt mehr als einen Monat vor dem Statuswechsel. Liefert die sperrende, sonst null.
-export function letzteBdaImMonat(bdas: CloseActivity[], wechselAm: Date): CloseActivity | null {
-  const grenze = new Date(wechselAm)
-  grenze.setMonth(grenze.getMonth() - 1)
-  return bdas.filter((b) => zeit(b) >= grenze.getTime()).sort((a, b) => zeit(b) - zeit(a))[0] ?? null
+// Kennzeichen der automatisch erstellten "Setting BDA" (steht in der Vorabinformation).
+export const AUTO_HINWEIS = "Automatisch aus der Gesprächsaufnahme erstellt"
+
+export function istAutomatischeBda(a: CloseActivity): boolean {
+  return Object.entries(a).some(([k, v]) => k.startsWith("custom.") && typeof v === "string" && v.includes(AUTO_HINWEIS))
+}
+
+// Schon eine automatische "Setting BDA" zu diesem Statuswechsel (ab kurz davor angelegt)?
+export function automatischeBdaZumWechsel(bdas: CloseActivity[], wechselAm: Date): CloseActivity | null {
+  const ab = wechselAm.getTime() - 60 * 60_000
+  return bdas.filter((b) => istAutomatischeBda(b) && zeit(b) >= ab).sort((a, b) => zeit(b) - zeit(a))[0] ?? null
 }
 
 // Quali-Gespräch zum Statuswechsel finden: längstes Telefonat mit Aufnahme im Fenster vor
@@ -78,7 +84,7 @@ export async function settingBdaQuelle(leadId: string, wechselAm: Date): Promise
     const start = Date.parse((m.starts_at ?? "") as string)
     return !!m.summary?.text?.trim() && Number.isFinite(start) && start >= von && start <= bis
   })
-  return { telefonat, besprechungen, vorhandeneBda: letzteBdaImMonat(custom, wechselAm) }
+  return { telefonat, besprechungen, vorhandeneBda: automatischeBdaZumWechsel(custom, wechselAm) }
 }
 
 const SYSTEM = `Du füllst für das Vertriebsteam von Endlich Mitarbeiter / Kanzleistelle24 die Gesprächsnotiz „Setting BDA“ in Close aus. Endlich Mitarbeiter findet für Steuerkanzleien Mitarbeiter (Steuerfachangestellte = SFA/Stfa, Steuerfachwirte, Bilanzbuchhalter, Lohnbuchhalter). Im Quali-Gespräch hat ein Mitarbeiter die Kanzlei zu ihrer Stellensituation befragt.
@@ -144,7 +150,7 @@ export function settingBdaFormatieren(json: Record<string, unknown>, felder: Bda
   for (const f of felder) {
     const punkte = stichpunkte(json[f.id])
     if (f.type === "richtextarea") {
-      werte[f.id] = `<body><ul>${punkte.map((z) => `<li>${escape(z)}</li>`).join("")}</ul><p><em>Automatisch aus der Gesprächsaufnahme erstellt (Kandidatenwerk, KI) – bitte bei Bedarf korrigieren.</em></p></body>`
+      werte[f.id] = `<body><ul>${punkte.map((z) => `<li>${escape(z)}</li>`).join("")}</ul><p><em>${AUTO_HINWEIS} (Kandidatenwerk, KI) – bitte bei Bedarf korrigieren.</em></p></body>`
     } else {
       werte[f.id] = (punkte.length === 0 ? "-" : punkte.length === 1 ? punkte[0] : punkte.map((z) => `• ${z}`).join("\n")).slice(0, 2000)
     }
@@ -213,7 +219,7 @@ export async function settingBdaAbarbeiten(): Promise<SettingBdaLaufErgebnis> {
       felder ??= await settingBdaFelder()
       const lead = await closeGet<{ display_name?: string }>(`/lead/${leadId}/?_fields=display_name`)
       const ergebnis = await settingBdaAusfuellen(quelle, felder, lead?.display_name ?? "")
-      // Kurz vor dem Anlegen noch einmal: hat inzwischen jemand von Hand ausgefüllt?
+      // Kurz vor dem Anlegen noch einmal: hat ein paralleler Lauf schon angelegt?
       if ((await settingBdaQuelle(leadId, wechsel)).vorhandeneBda) {
         out.vorhanden++
         continue

@@ -47,19 +47,21 @@ describe("Setting BDA: Stichpunkte", () => {
   })
 })
 
-describe("Setting BDA: höchstens einmal im Monat", () => {
-  const bda = (iso: string) => ({ _type: "CustomActivity", id: iso, date_created: iso })
-  it("sperrt, wenn die letzte weniger als einen Monat zurückliegt (auch danach angelegte)", async () => {
-    const { letzteBdaImMonat } = await import("./setting-bda")
-    const wechsel = new Date("2026-11-19T14:00:00Z")
-    expect(letzteBdaImMonat([bda("2026-10-25T10:00:00Z")], wechsel)?.id).toBe("2026-10-25T10:00:00Z")
-    expect(letzteBdaImMonat([bda("2026-11-19T13:50:00Z")], wechsel)).not.toBeNull()
-    expect(letzteBdaImMonat([bda("2026-11-19T14:30:00Z")], wechsel)).not.toBeNull()
+describe("Setting BDA: immer anlegen, aber nur eine automatische je Wechsel", () => {
+  const bda = (iso: string, auto: boolean) => ({
+    _type: "CustomActivity",
+    id: iso,
+    date_created: iso,
+    "custom.cf_vorab": auto ? "<body><ul><li>x</li></ul><p><em>Automatisch aus der Gesprächsaufnahme erstellt (Kandidatenwerk, KI)</em></p></body>" : "<body><p>von Hand</p></body>",
   })
-  it("erlaubt eine neue, wenn die letzte über einen Monat alt ist", async () => {
-    const { letzteBdaImMonat } = await import("./setting-bda")
+  it("händische sperren nicht, eine automatische zum Wechsel schon", async () => {
+    const { automatischeBdaZumWechsel } = await import("./setting-bda")
     const wechsel = new Date("2026-11-19T14:00:00Z")
-    expect(letzteBdaImMonat([bda("2026-10-18T10:00:00Z"), bda("2026-07-23T13:06:00Z")], wechsel)).toBeNull()
-    expect(letzteBdaImMonat([], wechsel)).toBeNull()
+    expect(automatischeBdaZumWechsel([bda("2026-11-19T13:50:00Z", false), bda("2026-11-19T14:20:00Z", false)], wechsel)).toBeNull()
+    expect(automatischeBdaZumWechsel([bda("2026-11-19T14:20:00Z", true)], wechsel)).not.toBeNull()
+  })
+  it("eine ältere automatische (früherer Wechsel) sperrt nicht", async () => {
+    const { automatischeBdaZumWechsel } = await import("./setting-bda")
+    expect(automatischeBdaZumWechsel([bda("2026-10-01T10:00:00Z", true)], new Date("2026-11-19T14:00:00Z"))).toBeNull()
   })
 })
