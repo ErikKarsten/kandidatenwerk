@@ -24,6 +24,8 @@ async function main() {
   const los = process.argv.includes("--los")
   const { closeList } = await import("../src/lib/close-api")
   const { SETTING_BDA_TYPE, istAutomatischeBda, settingBdaFelder, settingBdaAusfuellen, settingBdaVeroeffentlichen } = await import("../src/lib/setting-bda")
+  // Close-Antworten ungetypt (nur lesen der bekannten Felder).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type Act = Record<string, any>
 
   const leads: Act[] = []
