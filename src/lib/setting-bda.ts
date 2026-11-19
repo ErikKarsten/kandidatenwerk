@@ -2,7 +2,7 @@
 //
 // Wechselt ein Lead in Close von "Quali terminiert …" (alle Varianten, auch "Motion Mail
 // Quality terminiert") auf "SC Terminiert" bzw. "SC Terminiert (Coldmail)", nimmt
-// Kandidatenwerk das Quali-Gespräch - das längste Telefonat mit Aufnahme der letzten 14 Tage
+// Kandidatenwerk das Quali-Gespräch - das längste Telefonat mit Aufnahme (ab 7 Minuten) der letzten 14 Tage
 // vor dem Wechsel, dazu Mitschriften des Close-Notetakers aus Besprechungen im selben
 // Zeitraum -, transkribiert es (Whisper, src/lib/transcribe.ts), lässt Claude die Fragen der
 // eigenen Aktivität "Setting BDA" beantworten und legt sie beim Lead in Close veröffentlicht an.
@@ -14,7 +14,8 @@ import { generateText } from "@/lib/llm"
 
 export const SETTING_BDA_TYPE = "actitype_2yFQbxBwtbcs7xfLiO1TZ5"
 const FENSTER_TAGE = 14
-const MIN_CALL_SECONDS = 60
+// Kürzere Telefonate sind kein Quali-Gespräch (Wunsch 19.11.: mindestens 7 Minuten).
+const MIN_CALL_SECONDS = 7 * 60
 
 export function istQualiStatus(label: string | null | undefined): boolean {
   return /quali(ty)?\s*terminiert/i.test(label ?? "")
