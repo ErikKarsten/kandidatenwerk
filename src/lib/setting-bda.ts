@@ -82,7 +82,9 @@ Regeln:
 - Nur was im Gespräch wirklich gesagt wurde. Nichts erfinden, nichts schönen.
 - Stil wie das Team: kurze Stichpunkte, keine ganzen Sätze nötig, Zahlen genau übernehmen (z. B. „1-2“, „2 Bewerbungsgespräche“, „seit 6 Monaten“).
 - Wurde eine Frage nicht besprochen: "-".
-- Die Fragen sind ein Leitfaden; ordne passende Aussagen der richtigen Frage zu, auch wenn sie anders formuliert gestellt wurden.
+- Die Fragen sind ein Leitfaden; ordne passende Aussagen der richtigen Frage zu, auch wenn sie anders formuliert gestellt wurden oder nur nebenbei fielen.
+- Zuordnung: Was die Kanzlei Bewerbern bietet (Homeoffice, Weiterbildung, Arbeitszeiten, Digitalisierung, Lage, Team, Gehaltsextras) → Differenzierungsmerkmale. Fachliche Anforderungen (Ausbildung, Erfahrung, Schwerpunkte, Software) → „Was muss mitbringen“ bzw. „Qualifiziert“. Wie Stellen derzeit überbrückt werden (Überstunden, Umverteilen, Mandate ablehnen) → „Wie gleichen Sie aus“. Bisherige Suchwege (Anzeigen, Agenturen, Empfehlungen) → „Strategie“.
+- Gibt der Mitarbeiter im Gespräch Kandidaten wieder, die Endlich Mitarbeiter vorstellt, gehört das nicht in die Felder - es geht um die Kanzlei.
 - Die Aufnahme ist maschinell transkribiert und kann Hörfehler enthalten (Namen, Orte, Software). Offensichtliche Fehler stillschweigend korrigieren (z. B. „Datef“ → DATEV), Unsicheres weglassen.
 - "Vorabinformation": 3-8 kurze Zeilen mit den wichtigsten Fakten zur Kanzlei (Größe/Mitarbeiter, Standorte, Schwerpunkte/Mandanten, Software, Besonderheiten, Anlass der Suche).
 
@@ -108,6 +110,11 @@ export async function settingBdaAusfuellen(quelle: BdaQuelle, felder: BdaFeld[],
   for (const m of quelle.besprechungen) teile.push(`BESPRECHUNG „${m.title ?? ""}“ (Mitschrift Close-Notetaker):\n${m.summary?.text?.trim()}`)
   if (!teile.length) throw new Error("Keine Aufnahme und keine Mitschrift gefunden.")
   const quelleText = teile.join("\n\n").slice(0, 120_000)
+  return { werte: await settingBdaAusText(quelleText, felder, kanzlei), quelleText, telefonatId: quelle.telefonat?.id ?? null }
+}
+
+// Felder aus fertigem Gesprächstext füllen (auch für Probeläufe mit gespeichertem Transkript).
+export async function settingBdaAusText(quelleText: string, felder: BdaFeld[], kanzlei: string): Promise<Record<string, string>> {
 
   const fragen = felder
     .map((f) => `- ${f.id}: ${f.name}${f.description ? ` [Hinweis: ${f.description}]` : ""}${f.type === "richtextarea" ? " (Vorabinformation, Zeilenliste)" : ""}`)
@@ -124,11 +131,12 @@ export async function settingBdaAusfuellen(quelle: BdaQuelle, felder: BdaFeld[],
       const escape = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       werte[f.id] = `<body>${zeilen.map((z) => `<p>${escape(z)}</p>`).join("")}<p><em>Automatisch aus der Gesprächsaufnahme erstellt (Kandidatenwerk, KI) – bitte bei Bedarf korrigieren.</em></p></body>`
     } else {
-      const t = String(v ?? "").trim()
+      // Einzeilige Textfelder in Close: mehrere Punkte mit "; " trennen (wie das Team schreibt).
+      const t = String(v ?? "").trim().replace(/\s*\n+\s*/g, "; ")
       werte[f.id] = (t || "-").slice(0, 2000)
     }
   }
-  return { werte, quelleText, telefonatId: quelle.telefonat?.id ?? null }
+  return werte
 }
 
 export async function settingBdaVeroeffentlichen(leadId: string, werte: Record<string, string>): Promise<string> {
