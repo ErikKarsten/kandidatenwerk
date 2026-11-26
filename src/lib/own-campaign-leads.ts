@@ -29,7 +29,21 @@ export async function assignOwnCampaignLead(db: Db, candidateId: string, created
     .is("removed_at", null)
     .limit(1)
     .maybeSingle()
-  if (active) return null
+  if (active) {
+    // Kanzlei mit „alle Leadeingänge im Portal“ (Paket 117): Der Lead ist schon zugeordnet.
+    // Zeitpunkt auf jetzt setzen - die Mail „Kandidat zugeordnet“ (und ihre Verzögerung)
+    // zählt ab der Vorqualifizierung, nicht ab dem Leadeingang.
+    const { data: kunde } = await db.from("clients").select("portal_alle_leads").eq("id", campaign.client_id).maybeSingle()
+    if (!kunde?.portal_alle_leads) return null
+    await db.from("client_assignments").update({ created_at: new Date().toISOString() }).eq("id", active.id)
+    await db.from("candidate_history").insert({
+      candidate_id: candidateId,
+      type: "note",
+      content: `Vorqualifiziert - die Kanzlei sieht den Lead schon im Portal und bekommt jetzt die Meldung zum Kandidaten.`,
+      ...(createdBy ? { created_by: createdBy } : {}),
+    })
+    return { kind: "assigned", campaignId: campaign.id, clientId: campaign.client_id }
+  }
 
   const notLive = await clientNotLiveError(db, campaign.client_id)
   if (notLive) {

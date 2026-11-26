@@ -56,6 +56,16 @@ describe("Automatisierungen: Kandidaten je Kampagne (Paket 94)", () => {
     expect(ids.sort()).toEqual(["kOwn", "pool"])
   })
 
+  it("Kandidat zugeordnet erst mit Vorqualifizierung (alle Leadeingänge im Portal, Paket 117)", () => {
+    const d = data()
+    const neu = cand("autoNeu", "neu")
+    d.candidates.set(neu.id, neu)
+    d.assigned.get("k1")!.set(neu.id, "2026-10-21T10:00:00Z")
+    expect(campaignCandidates(d, kanzlei, "client_assigned", null, new Map()).map((c) => c.id)).not.toContain("autoNeu")
+    neu.status = "vorqualifiziert"
+    expect(campaignCandidates(d, kanzlei, "client_assigned", null, new Map()).map((c) => c.id)).toContain("autoNeu")
+  })
+
   it("überspringt Zugeordnete, die nicht geladen wurden (z. B. Demo-Kandidaten)", () => {
     const d = data()
     d.assigned.get("k1")!.set("demo", "2026-10-22T10:00:00Z")

@@ -11,6 +11,7 @@ import { resolveTemplateFieldKeys } from "@/lib/field-templates"
 import { berufsbildLabel } from "@/lib/berufsbild"
 import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { isPortalVisible } from "@/lib/portal-visibility"
+import { portalSiehtAlleLeads, standBeiUns } from "@/lib/portal-alle-leads"
 
 export default async function PortalCandidateDetailPage({
   params,
@@ -21,7 +22,7 @@ export default async function PortalCandidateDetailPage({
   const supabase = await createSupabaseServerClient()
   const berufsbilderPromise = loadBerufsbilder()
 
-  const [{ data: candidate }, { data: assignment }] = await Promise.all([
+  const [{ data: candidate }, { data: assignment }, alleLeads] = await Promise.all([
     // RLS ("Kunde sieht zugeordnete Kandidaten") liefert hier automatisch nur etwas
     // zurück, wenn der Kandidat diesem Kunden auch wirklich aktiv zugeordnet ist -
     // sonst kommt einfach null zurück, kein Fehler.
@@ -33,9 +34,11 @@ export default async function PortalCandidateDetailPage({
       .is("removed_at", null)
       .limit(1)
       .maybeSingle(),
+    portalSiehtAlleLeads(supabase),
   ])
 
-  if (!candidate || !assignment || !isPortalVisible(candidate)) notFound()
+  if (!candidate || !assignment || !isPortalVisible(candidate, alleLeads)) notFound()
+  const stand = alleLeads && !candidate.is_demo ? standBeiUns(candidate.status) : null
 
   // Zusatzfelder-Definitionen (Umbau vom 25.09.2026, Schritt 2/3) - bewusst per
   // Service-Role-Client statt über die RLS-Session des Portal-Nutzers gelesen:
@@ -146,6 +149,11 @@ export default async function PortalCandidateDetailPage({
           >
             <FileText size={14} /> Lebenslauf
           </a>
+          {stand && (
+            <span className="rounded-full px-2.5 py-1 text-xs" style={{ backgroundColor: stand.bg, color: stand.text }}>
+              {stand.label}
+            </span>
+          )}
           <PortalStatusSelector clientAssignmentId={assignment.id} currentStatus={assignment.status} />
         </div>
       </div>

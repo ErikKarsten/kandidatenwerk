@@ -14,12 +14,15 @@ export function PortalCandidateRow({
   name,
   meta,
   status,
+  stand,
 }: {
   assignmentId: string
   href: string
   name: string
   meta: string
   status: { label: string; bg: string; text: string }
+  // Unser Bearbeitungsstand (nur bei „alle Leadeingänge im Portal“, Paket 117).
+  stand?: { label: string; bg: string; text: string } | null
 }) {
   const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -58,8 +61,15 @@ export function PortalCandidateRow({
             <p className="truncate text-sm font-medium text-gray-900">{name}</p>
             <p className="mt-0.5 truncate text-xs text-gray-500">{meta || "—"}</p>
           </div>
-          <span className="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium" style={{ backgroundColor: status.bg, color: status.text }}>
-            {status.label}
+          <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
+            {stand && (
+              <span className="rounded-full px-2.5 py-1 text-xs" style={{ backgroundColor: stand.bg, color: stand.text }}>
+                {stand.label}
+              </span>
+            )}
+            <span className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ backgroundColor: status.bg, color: status.text }}>
+              {status.label}
+            </span>
           </span>
         </Link>
         <div ref={menuRef} className="relative shrink-0">

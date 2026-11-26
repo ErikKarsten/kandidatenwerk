@@ -86,6 +86,7 @@ interface Client {
   lng: number | null
   ort: string | null
   kanzleistelle_company_id: string | null
+  portal_alle_leads?: boolean
 }
 
 // Aktive Kanzlei-Kampagne des Kunden - für Leerzustand und Links im Reiter Kandidaten.
@@ -1064,7 +1065,7 @@ function StammdatenTab({
       </div>
 
       <div className="rounded-xl border bg-white p-6" style={{ borderColor: "#dde3ea" }}>
-        <PortalAccessSection clientId={client.id} portalUsers={portalUsers} />
+        <PortalAccessSection clientId={client.id} portalUsers={portalUsers} alleLeads={client.portal_alle_leads ?? false} />
       </div>
     </div>
   )

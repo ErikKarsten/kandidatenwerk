@@ -33,7 +33,8 @@ case "$ziel" in
   *) usage ;;
 esac
 [[ -n "$aktion" ]] || usage
-command -v psql >/dev/null || fail "psql fehlt (Postgres.app installieren)"
+# Ohne psql (neuer Mac, Paket 117): gleicher Ablauf über Node und das Paket pg.
+command -v psql >/dev/null || exec node scripts/sql-node.mjs "$@"
 [[ -f .env.db ]] || fail ".env.db fehlt (Vorlage: .env.db.example)"
 [[ -f "$envfile" ]] || fail "$envfile fehlt"
 

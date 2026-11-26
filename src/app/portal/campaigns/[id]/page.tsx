@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { assignmentStatusLabel } from "@/lib/assignment-status"
 import { isPortalVisible } from "@/lib/portal-visibility"
+import { portalSiehtAlleLeads, standBeiUns } from "@/lib/portal-alle-leads"
 
 // Gleiche Label-Konventionen wie an den anderen Portal-Stellen (bewusst eigene Kopien,
 // siehe portal-sidebar.tsx / portal/candidates/page.tsx / portal/campaigns/page.tsx).
@@ -42,17 +43,20 @@ export default async function PortalCampaignDetailPage({
   // diese Kampagne filtern - vermeidet eine cross-table-Filterung auf einer
   // eingebetteten Relation (candidates.campaign_id), die in Supabase-JS einen
   // Inner-Join-Hint bräuchte und nirgends sonst im Code verwendet wird.
-  const { data: assignments } = await supabase
-    .from("client_assignments")
-    .select("id, status, campaign_id, candidates(id, first_name, last_name, berufsbild, plz, campaign_id, status, is_demo)")
-    .is("removed_at", null)
-    .order("created_at", { ascending: false })
+  const [{ data: assignments }, alleLeads] = await Promise.all([
+    supabase
+      .from("client_assignments")
+      .select("id, status, campaign_id, candidates(id, first_name, last_name, berufsbild, plz, campaign_id, status, is_demo)")
+      .is("removed_at", null)
+      .order("created_at", { ascending: false }),
+    portalSiehtAlleLeads(supabase),
+  ])
 
   // Zugeordnet über die Kanzlei-Kampagne (client_assignments.campaign_id) oder beworben
   // über diese Kampagne; nur vorqualifizierte Kandidaten (Paket 19, T-86).
   const rows = (assignments ?? [])
     .map((a) => ({ ...a, candidates: Array.isArray(a.candidates) ? a.candidates[0] : a.candidates }))
-    .filter((a) => (a.campaign_id === id || a.candidates?.campaign_id === id) && isPortalVisible(a.candidates))
+    .filter((a) => (a.campaign_id === id || a.candidates?.campaign_id === id) && isPortalVisible(a.candidates, alleLeads))
 
   const s = CAMPAIGN_STATUS_LABEL[campaign.status] ?? CAMPAIGN_STATUS_LABEL.completed
 
@@ -94,6 +98,7 @@ export default async function PortalCampaignDetailPage({
                 name={`${c.first_name} ${c.last_name}`.trim()}
                 meta={[berufsbildLabel(c.berufsbild, berufsbilder), c.plz].filter(Boolean).join(" · ")}
                 status={assignmentStatusLabel(a.status)}
+                stand={alleLeads && !c.is_demo ? standBeiUns(c.status) : null}
               />
             )
           })}
