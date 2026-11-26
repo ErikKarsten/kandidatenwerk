@@ -3,12 +3,46 @@ import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
+import { CANDIDATE_STATUS_OPTIONS } from "@/lib/candidate-status"
 import { PROJECT_PHASES } from "@/lib/client-project"
 import { type PipelineSegment } from "@/components/dashboard/client-card"
 import type { PageSize } from "@/components/ui/pagination-bar"
 import { ClientsList, type ClientListItem, type ClientsSortOption, type ClientsStatusFilter } from "./clients-list"
 
 const ARCHIVED_STATUS = "Archiviert"
+
+type ServerDb = Awaited<ReturnType<typeof createSupabaseServerClient>>
+
+// Je Kunde: Kandidaten gesamt (Leads der eigenen Kampagnen + zugeordnete, ohne doppelte) und
+// der Status der noch nicht zugeordneten Leads, über alle Kampagnen des Kunden.
+async function kampagnenLeads(supabase: ServerDb, clientIds: string[]) {
+  const ergebnis = new Map<string, { kandidaten: number; leadPipeline: { status: string; count: number }[] }>()
+  if (!clientIds.length) return ergebnis
+  const [{ data: kampagnen }, { data: zuordnungen }] = await Promise.all([
+    supabase.from("campaigns").select("id, client_id").in("client_id", clientIds).eq("is_demo", false),
+    supabase.from("client_assignments").select("client_id, candidate_id").in("client_id", clientIds).is("removed_at", null),
+  ])
+  const kundeJeKampagne = new Map((kampagnen ?? []).map((k) => [k.id, k.client_id as string]))
+  const leads: { status: string; campaign_id: string | null; id: string }[] = []
+  const kampagnenIds = [...kundeJeKampagne.keys()]
+  for (let von = 0; kampagnenIds.length; von += 1000) {
+    const { data: seite } = await supabase.from("candidates").select("id, status, campaign_id").in("campaign_id", kampagnenIds).eq("is_demo", false).order("id").range(von, von + 999)
+    leads.push(...(seite ?? []))
+    if (!seite || seite.length < 1000) break
+  }
+  for (const id of clientIds) {
+    const zugeordnet = new Set((zuordnungen ?? []).filter((z) => z.client_id === id).map((z) => z.candidate_id))
+    const eigene = leads.filter((l) => l.campaign_id && kundeJeKampagne.get(l.campaign_id) === id)
+    const offen = eigene.filter((l) => !zugeordnet.has(l.id))
+    const jeStatus = new Map<string, number>()
+    for (const l of offen) jeStatus.set(l.status, (jeStatus.get(l.status) ?? 0) + 1)
+    ergebnis.set(id, {
+      kandidaten: zugeordnet.size + offen.length,
+      leadPipeline: CANDIDATE_STATUS_OPTIONS.filter((o) => jeStatus.has(o.value)).map((o) => ({ status: o.value, count: jeStatus.get(o.value)! })),
+    })
+  }
+  return ergebnis
+}
 // Pipeline nach Status beim Kunden (Paket 31).
 const VALID_STATUSES: Set<string> = new Set(ASSIGNMENT_STATUS_OPTIONS.map((o) => o.value))
 const PAGE_SIZES: readonly PageSize[] = [10, 20, 50]
@@ -80,6 +114,11 @@ export default async function ClientsPage({
 
   const { data, count } = await query
 
+  // Leads aus den Kampagnen der Kanzlei (Paket 116): Die View zählt nur Kandidaten, die der
+  // Kanzlei zugeordnet sind - Leads der eigenen Kampagnen (erst nach Vorqualifizierung
+  // zugeordnet) fehlten, PMPG stand mit 31 Leads bei 0.
+  const leadStats = await kampagnenLeads(supabase, (data ?? []).map((c) => c.id ?? "").filter(Boolean))
+
   // Gleiche VALID_STATUSES-Filterung wie vorher (Archiviert/unbekannte Legacy-Status
   // fliegen aus der Pipeline-Anzeige raus) - nur jetzt auf dem Ergebnis der View statt
   // auf in-memory aggregierten Daten.
@@ -103,11 +142,12 @@ export default async function ClientsPage({
       created_at: client.created_at ?? "",
       tags: [],
       stats: {
-        kandidaten: client.candidate_count ?? 0,
+        kandidaten: leadStats.get(client.id ?? "")?.kandidaten ?? client.candidate_count ?? 0,
         kampagnen: client.campaign_count ?? 0,
         eingestellt: client.placement_count ?? 0,
       },
       pipeline,
+      leadPipeline: leadStats.get(client.id ?? "")?.leadPipeline ?? [],
       project: (() => {
         const phase = PROJECT_PHASES.find((p) => p.value === client.project_phase) ?? PROJECT_PHASES[0]
         return {

@@ -101,12 +101,16 @@ export async function processMetaLead(
   // 2. Per E-Mail bekannt (z.B. schon von Leadtable importiert) -> keinen zweiten
   // Kandidaten anlegen, sondern nur die meta_lead_id nachtragen, damit künftige Läufe
   // diesen Lead direkt per ID erkennen statt jedes Mal erneut per E-Mail zu suchen.
-  const { data: existingByEmail, error: emailLookupError } = await supabase
+  // Dieselbe E-Mail kann mehrfach vorkommen (Dubletten) - dann der älteste Eintrag, statt
+  // mit "multiple rows" abzubrechen; der Lead käme sonst nie an (Paket 116).
+  const { data: byEmailRows, error: emailLookupError } = await supabase
     .from("candidates")
     .select("id, meta_lead_id, campaign_id")
     .eq("email", email)
-    .maybeSingle()
+    .order("created_at", { ascending: true })
+    .limit(1)
   if (emailLookupError) throw new Error(emailLookupError.message)
+  const existingByEmail = byEmailRows?.[0] ?? null
 
   if (existingByEmail) {
     if (!existingByEmail.meta_lead_id) {
@@ -258,6 +262,17 @@ export async function processMetaLead(
       await notifyLeadRecipients(inserted.id, `${firstName} ${lastName}`.trim())
     } catch (notifyError) {
       console.error(`Lead-Benachrichtigung fehlgeschlagen für Kandidat ${inserted.id}:`, notifyError)
+    }
+  } else if (Number.isFinite(leadAgeMs)) {
+    // Nachgeholte Leads (älter als 2 Tage) bekommen auch keine Eingangsbestätigung mehr -
+    // als erledigt vermerken, bevor der 5-Minuten-Job sie verschickt (Paket 116).
+    const { error: skipError } = await supabase.from("candidate_mail_runs").insert({ kind: "eingangsbestaetigung", candidate_id: inserted.id })
+    if (!skipError) {
+      await supabase.from("candidate_history").insert({
+        candidate_id: inserted.id,
+        type: "automation",
+        content: "Keine Eingangsbestätigung: Lead ist älter als 2 Tage (nachträglich importiert).",
+      })
     }
   }
 

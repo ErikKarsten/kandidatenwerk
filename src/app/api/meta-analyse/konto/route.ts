@@ -9,7 +9,7 @@ import { fehlerAntwort, metaAnalyseZugang } from "@/lib/meta-analyse-guard"
 const ZWISCHENSPEICHER_MS = 45_000
 
 async function letzterStand(db: Parameters<typeof runMetaZentral>[0]) {
-  const { data } = await db.from("meta_konto_status").select("stand, geprueft_am").order("geprueft_am", { ascending: false }).limit(1).maybeSingle()
+  const { data } = await db.from("meta_konto_status").select("stand, geprueft_am").like("konto_id", "act_%").order("geprueft_am", { ascending: false }).limit(1).maybeSingle()
   return (data?.stand as { geprueft_am?: string } | undefined) ?? null
 }
 

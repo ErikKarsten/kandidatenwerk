@@ -26,13 +26,11 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
-import { fetchMetaPages, fetchMetaLead, isMetaTestLead } from "@/lib/meta-ads-client"
-import { processMetaLead, type MetaSyncCampaign } from "@/lib/meta-leads-sync-shared"
-import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
+import { fetchMetaPages, fetchMetaLead, fetchMetaLeadForms, isMetaTestLead } from "@/lib/meta-ads-client"
+import { processMetaLead } from "@/lib/meta-leads-sync-shared"
+import { kampagneFuerLead, offeneFormulareMelden } from "@/lib/lead-zuordnung"
 import { runAutomations } from "@/lib/cron/run-automations"
 import { sendLeadConfirmations } from "@/lib/lead-confirmation"
-
-const ARCHIVED_STATUS = "Archiviert"
 
 // Meta ruft diesen GET-Endpunkt EINMALIG beim Einrichten des Webhooks im App-Dashboard
 // auf, um zu prüfen, dass wir wirklich die Adresse kontrollieren - Antwort muss exakt der
@@ -79,12 +77,12 @@ interface WebhookPayload {
   }[]
 }
 
-// Verarbeitet einen einzelnen eingehenden Leadgen-Event: passende Kampagne per
-// Formular-ID suchen, Page-Access-Token der Seite nachschlagen, vollen Lead nachladen,
-// dann dieselbe Anlage-Logik wie der Batch-Sync (processMetaLead) durchlaufen. Fehler
-// werden geloggt statt geworfen - ein einzelner fehlgeschlagener Lead soll nicht die
-// Verarbeitung der übrigen Events in dieser Zustellung blockieren (Meta kann mehrere
-// changes pro Aufruf bündeln).
+// Verarbeitet einen einzelnen eingehenden Leadgen-Event: Page-Access-Token der Seite
+// nachschlagen, vollen Lead nachladen, Kampagne bestimmen (Paket 116: verknüpftes Formular,
+// sonst Meta-Kampagne des Leads, sonst Kanzlei der Seite - lead-zuordnung.ts), dann dieselbe
+// Anlage-Logik wie der Batch-Sync (processMetaLead). Fehler werden geloggt statt geworfen -
+// ein einzelner fehlgeschlagener Lead soll nicht die übrigen Events dieser Zustellung
+// blockieren (Meta kann mehrere changes pro Aufruf bündeln).
 async function handleLeadgenEvent(value: LeadgenChangeValue) {
   const supabase = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -92,25 +90,6 @@ async function handleLeadgenEvent(value: LeadgenChangeValue) {
   )
 
   try {
-    const { data: campaign, error: campaignError } = await supabase
-      .from("campaigns")
-      .select("id, title, status, client_id, agency_id, kind")
-      .eq("meta_form_id", value.form_id)
-      // Dasselbe Formular kann an einer alten Kanzlei-Kampagne UND einer importierten
-      // Lead-Kampagne hängen (T-38) - dann gewinnt die Lead-Kampagne ("lead" < "kanzlei").
-      .order("kind", { ascending: true })
-      .limit(1)
-      .maybeSingle()
-    if (campaignError) throw new Error(campaignError.message)
-    if (campaign && campaign.kind === "lead" && !isKs24Campaign(campaign.title)) {
-      console.log(`[meta-webhook] Kampagne "${campaign.title}" ist keine KS24-Kampagne, Lead ${value.leadgen_id} wird nicht importiert.`)
-      return
-    }
-    if (!campaign || campaign.status === ARCHIVED_STATUS) {
-      console.warn(`[meta-webhook] Keine aktive Kampagne für Formular ${value.form_id} gefunden, ignoriere Lead ${value.leadgen_id}.`)
-      return
-    }
-
     const pages = await fetchMetaPages()
     const page = pages.find((p) => p.id === value.page_id)
     if (!page?.access_token) {
@@ -120,6 +99,23 @@ async function handleLeadgenEvent(value: LeadgenChangeValue) {
 
     const lead = await fetchMetaLead(value.leadgen_id, page.access_token)
 
+    // Formularname und übrige Formulare der Seite braucht nur Schritt 3 der Zuordnung -
+    // erst laden, wenn das Formular an keiner Kampagne hängt.
+    let seite: { name: string; formIds: string[] } | null = null
+    let formName: string | null = null
+    const { count: verknuepft } = await supabase.from("campaigns").select("id", { count: "exact", head: true }).eq("meta_form_id", value.form_id)
+    if (!verknuepft) {
+      const forms = await fetchMetaLeadForms(value.page_id, page.access_token)
+      formName = forms.find((f) => f.id === value.form_id)?.name ?? null
+      seite = { name: page.name, formIds: forms.map((f) => f.id) }
+    }
+
+    const treffer = await kampagneFuerLead(supabase, { formId: value.form_id, formName, metaCampaignId: lead.campaign_id ?? null, seite })
+    if (treffer === "ignoriert") {
+      console.log(`[meta-webhook] Formular ${value.form_id} hängt an einer archivierten bzw. Nicht-KS24-Kampagne, Lead ${value.leadgen_id} wird nicht importiert.`)
+      return
+    }
+
     // Meta-Testleads (per "Testlead anfordern"-Button, ueber die Test-Leads-API
     // erzeugt) sollen NICHT als echter Kandidat landen - alle Test-Leads teilen sich
     // dieselbe Dummy-E-Mail, wuerden also unabhaengig von der Kampagne immer mit dem
@@ -127,25 +123,28 @@ async function handleLeadgenEvent(value: LeadgenChangeValue) {
     // Stattdessen bestaetigen wir hier nur, dass die Webhook-Zustellung fuer GENAU
     // diese Kampagne/dieses Formular funktioniert.
     if (isMetaTestLead(lead)) {
-      const { error: testUpdateError } = await supabase
-        .from("campaigns")
-        .update({ meta_webhook_last_test_at: new Date().toISOString() })
-        .eq("id", campaign.id)
-      if (testUpdateError) throw new Error(testUpdateError.message)
-      console.log(`[meta-webhook] Test-Lead ${value.leadgen_id} (Kampagne "${campaign.title}"): Verbindung bestaetigt, kein Kandidat angelegt.`)
+      if (treffer?.weg === "formular") {
+        const { error: testUpdateError } = await supabase
+          .from("campaigns")
+          .update({ meta_webhook_last_test_at: new Date().toISOString() })
+          .eq("id", treffer.kampagne.id)
+        if (testUpdateError) throw new Error(testUpdateError.message)
+      }
+      console.log(`[meta-webhook] Test-Lead ${value.leadgen_id} (Formular ${value.form_id}): kein Kandidat angelegt.`)
       return
     }
 
-    const campaignForProcessing: MetaSyncCampaign = {
-      id: campaign.id,
-      title: campaign.title,
-      client_id: campaign.client_id,
-      agency_id: campaign.agency_id,
-      meta_form_id: value.form_id,
-      kind: campaign.kind,
+    if (!treffer) {
+      console.warn(`[meta-webhook] Keine Kampagne für Formular ${value.form_id} („${formName ?? "?"}“, Seite ${page.name}), Lead ${value.leadgen_id} bleibt offen.`)
+      await offeneFormulareMelden(supabase, [
+        { formId: value.form_id, formName: formName ?? value.form_id, pageName: page.name, leads: 1, letzterLead: lead.created_time },
+      ])
+      return
     }
-    const outcome = await processMetaLead(supabase, campaignForProcessing, lead)
-    console.log(`[meta-webhook] Lead ${value.leadgen_id} (Kampagne "${campaign.title}"): ${outcome.status}`)
+
+    const campaign = treffer.kampagne
+    const outcome = await processMetaLead(supabase, campaign, lead)
+    console.log(`[meta-webhook] Lead ${value.leadgen_id} (Kampagne "${campaign.title}", über ${treffer.weg}): ${outcome.status}`)
     // Eingangsbestätigung & Co. sofort statt im nächsten 5-Minuten-Lauf (Paket 22).
     if (outcome.status === "created") {
       try {
