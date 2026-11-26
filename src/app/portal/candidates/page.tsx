@@ -4,6 +4,7 @@ import { loadBerufsbilder } from "@/lib/berufsbilder-server"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { assignmentStatusLabel } from "@/lib/assignment-status"
 import { isPortalVisible } from "@/lib/portal-visibility"
+import { portalSiehtAlleLeads, standBeiUns } from "@/lib/portal-alle-leads"
 
 
 export default async function PortalCandidatesPage() {
@@ -15,12 +16,15 @@ export default async function PortalCandidatesPage() {
   // 20260907000001_client_portal_rls_foundation.sql) - kein zusätzliches .eq() auf
   // client_id nötig oder möglich (der Client kennt seine eigene client_id serverseitig
   // ja nicht direkt in dieser Query, das übernimmt die Policy).
-  const { data: assignments } = await supabase
-    .from("client_assignments")
-    .select("id, status, candidates(id, first_name, last_name, berufsbild, plz, status, is_demo)")
-    .order("created_at", { ascending: false })
+  const [{ data: assignments }, alleLeads] = await Promise.all([
+    supabase
+      .from("client_assignments")
+      .select("id, status, candidates(id, first_name, last_name, berufsbild, plz, status, is_demo)")
+      .order("created_at", { ascending: false }),
+    portalSiehtAlleLeads(supabase),
+  ])
 
-  const rows = (assignments ?? []).filter((a) => a.candidates && isPortalVisible(a.candidates))
+  const rows = (assignments ?? []).filter((a) => a.candidates && isPortalVisible(a.candidates, alleLeads))
 
   const berufsbilder = await berufsbilderPromise
   return (
@@ -45,6 +49,7 @@ export default async function PortalCandidatesPage() {
               name={`${c.first_name} ${c.last_name}`.trim()}
               meta={[berufsbildLabel(c.berufsbild, berufsbilder), c.plz].filter(Boolean).join(" · ")}
               status={assignmentStatusLabel(a.status)}
+              stand={alleLeads && !c.is_demo ? standBeiUns(c.status) : null}
             />
           )
         })}

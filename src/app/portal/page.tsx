@@ -6,6 +6,7 @@ import { signedAvatarUrl } from "@/lib/team-avatar"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { ASSIGNMENT_STATUS_OPTIONS } from "@/lib/assignment-status"
 import { isPortalVisible } from "@/lib/portal-visibility"
+import { portalSiehtAlleLeads } from "@/lib/portal-alle-leads"
 
 // Kandidaten nach Status = Status der Zuordnung beim Kunden (Paket 15, T-71) - dieselben
 // Namen wie im Backend und in der Kandidatenliste (src/lib/assignment-status.ts).
@@ -19,7 +20,7 @@ export default async function PortalDashboardPage() {
   // -> "Kunde sieht Kampagnen des eigenen Kunden", siehe
   // 20260907000001_client_portal_rls_foundation.sql bzw.
   // 20260908000003_client_portal_campaigns_read.sql).
-  const [{ data: assignments }, { data: campaigns }] = await Promise.all([
+  const [{ data: assignments }, { data: campaigns }, alleLeads] = await Promise.all([
     supabase
       .from("client_assignments")
       .select("status, candidates(status, is_demo)")
@@ -28,10 +29,11 @@ export default async function PortalDashboardPage() {
       .from("campaigns")
       .select("id, status")
       .neq("status", "Archiviert"),
+    portalSiehtAlleLeads(supabase),
   ])
 
   const statuses = (assignments ?? [])
-    .filter((a) => isPortalVisible(Array.isArray(a.candidates) ? a.candidates[0] : a.candidates))
+    .filter((a) => isPortalVisible(Array.isArray(a.candidates) ? a.candidates[0] : a.candidates, alleLeads))
     .map((a) => a.status)
   const contact = await loadAccountManager(supabase)
 

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Trash2 } from "lucide-react"
-import { inviteClientPortalUserAction, portalPasswordResetAction, removeClientPortalUserAction } from "./actions"
+import { inviteClientPortalUserAction, portalPasswordResetAction, removeClientPortalUserAction, setPortalAlleLeadsAction } from "./actions"
 
 export interface PortalUser {
   id: string
@@ -32,9 +32,11 @@ const inputStyle = { borderColor: "#dde3ea" }
 export function PortalAccessSection({
   clientId,
   portalUsers,
+  alleLeads,
 }: {
   clientId: string
   portalUsers: PortalUser[]
+  alleLeads: boolean
 }) {
   const router = useRouter()
 
@@ -185,6 +187,58 @@ export function PortalAccessSection({
           </div>
         </div>
       ))}
+
+      <AlleLeadsSchalter clientId={clientId} an={alleLeads} />
+    </div>
+  )
+}
+
+// „Alle Leadeingänge im Portal“ (Paket 117): für Kanzleien mit dem alten Produkt, die jeden
+// Lead ihrer Kampagnen sehen wollen - nicht nur die vorqualifizierten. Nur Admins.
+function AlleLeadsSchalter({ clientId, an }: { clientId: string; an: boolean }) {
+  const [pending, startTransition] = useTransition()
+  const [fragen, setFragen] = useState(false)
+  const [meldung, setMeldung] = useState<{ ok: boolean; text: string } | null>(null)
+
+  function umschalten() {
+    setFragen(false)
+    setMeldung(null)
+    startTransition(async () => {
+      const res = await setPortalAlleLeadsAction(clientId, !an)
+      if ("error" in res) return setMeldung({ ok: false, text: res.error })
+      setMeldung({
+        ok: true,
+        text: "zugeordnet" in res ? `Eingeschaltet - ${res.zugeordnet} Leads sind jetzt im Portal sichtbar.` : `Ausgeschaltet - ${res.entfernt} nicht vorqualifizierte Leads aus dem Portal genommen.`,
+      })
+    })
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border p-3" style={{ borderColor: "#dde3ea" }}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-gray-900">Alle Leadeingänge im Portal {an ? "· an" : "· aus"}</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Die Kanzlei sieht jeden Lead ihrer Kampagnen in „Meine Kandidaten“, auch nicht vorqualifizierte und von uns abgelehnte - mit unserem Stand dazu. Keine Mail je Lead; die Meldung zum Kandidaten kommt wie bisher mit der Vorqualifizierung.
+          </p>
+        </div>
+        {fragen ? (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-500">{an ? "Ausschalten?" : "Einschalten?"}</span>
+            <button onClick={umschalten} disabled={pending} className="rounded px-2 py-0.5 text-xs font-medium text-white disabled:opacity-50" style={{ backgroundColor: "#1e56a0" }}>
+              Ja
+            </button>
+            <button onClick={() => setFragen(false)} disabled={pending} className="rounded border px-2 py-0.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "#dde3ea" }}>
+              Nein
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setFragen(true)} disabled={pending} className="rounded border px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50" style={{ borderColor: "#dde3ea" }}>
+            {pending ? "…" : an ? "Ausschalten" : "Freischalten"}
+          </button>
+        )}
+      </div>
+      {meldung && <p className="mt-1 text-xs" style={{ color: meldung.ok ? "#1a9a6a" : "#dc2626" }}>{meldung.text}</p>}
     </div>
   )
 }

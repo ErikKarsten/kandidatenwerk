@@ -9,6 +9,7 @@ import type { Database } from "@/types/database"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { resolveTemplateFieldKeys } from "@/lib/field-templates"
 import { isPortalVisible } from "@/lib/portal-visibility"
+import { portalSiehtAlleLeads } from "@/lib/portal-alle-leads"
 
 export interface PortalCvContext {
   allowedKeys: Set<string>
@@ -19,11 +20,12 @@ export interface PortalCvContext {
 }
 
 export async function loadPortalCvContext(supabase: SupabaseClient<Database>, candidateId: string): Promise<PortalCvContext | null> {
-  const [{ data: assignment }, { data: candidate }] = await Promise.all([
+  const [{ data: assignment }, { data: candidate }, alleLeads] = await Promise.all([
     supabase.from("client_assignments").select("client_id, campaign_id").eq("candidate_id", candidateId).is("removed_at", null).limit(1).maybeSingle(),
     supabase.from("candidates").select("status, is_demo").eq("id", candidateId).maybeSingle(),
+    portalSiehtAlleLeads(supabase),
   ])
-  if (!assignment || !isPortalVisible(candidate)) return null
+  if (!assignment || !isPortalVisible(candidate, alleLeads)) return null
 
   const admin = createSupabaseAdminClient()
   const { data: client } = await admin.from("clients").select("agency_id, key_account_manager_id").eq("id", assignment.client_id).maybeSingle()

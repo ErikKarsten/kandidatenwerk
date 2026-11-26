@@ -232,7 +232,11 @@ export function campaignCandidates(
   triggerStatus: string | null,
   joinedAt: Map<string, string>
 ): CandidateRow[] {
-  const matches = (c: CandidateRow) => trigger !== "status_change" || c.status === triggerStatus
+  // "Kandidat zugeordnet" (Mail an die Kanzlei) nur für vorqualifizierte: Kanzleien mit
+  // „alle Leadeingänge im Portal“ (Paket 117) haben auch nicht vorqualifizierte Leads
+  // zugeordnet - die Mail kommt erst mit der Vorqualifizierung.
+  const matches = (c: CandidateRow) =>
+    trigger === "status_change" ? c.status === triggerStatus : trigger !== "client_assigned" || c.status === "vorqualifiziert"
   const byId = new Map<string, CandidateRow>()
   if (trigger !== "client_assigned") for (const c of data.own.get(campaign.id) ?? []) if (matches(c)) byId.set(c.id, c)
   if (campaign.kind === "kanzlei") {

@@ -1,6 +1,7 @@
 import Link from "@/components/app-link"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 import { isPortalVisible } from "@/lib/portal-visibility"
+import { portalSiehtAlleLeads } from "@/lib/portal-alle-leads"
 
 // Gleiche Label-Konvention wie portal/candidates/page.tsx (STATUS_LABELS) und
 // clients/[id]/client-detail.tsx (CAMPAIGN_STATUS) - bewusst eigene Kopie, siehe
@@ -18,17 +19,18 @@ export default async function PortalCampaignsPage() {
   // RLS ("Kunde sieht Kampagnen des eigenen Kunden", siehe
   // 20260908000003_client_portal_campaigns_read.sql) filtert automatisch auf die
   // eigene client_id - kein zusätzliches .eq() nötig oder möglich.
-  const [{ data: campaigns }, { data: assignments }] = await Promise.all([
+  const [{ data: campaigns }, { data: assignments }, alleLeads] = await Promise.all([
     supabase.from("campaigns").select("id, title, status").neq("status", "Archiviert").order("created_at", { ascending: false }),
     // Gezählt werden die zugeordneten, im Portal sichtbaren Kandidaten (Paket 36) - gleiche
     // Regel wie auf der Kampagnenseite: Zuordnung über die Kampagne oder beworben über sie.
     supabase.from("client_assignments").select("campaign_id, candidates(campaign_id, status, is_demo)").is("removed_at", null),
+    portalSiehtAlleLeads(supabase),
   ])
 
   const countByCampaign = new Map<string, number>()
   for (const a of assignments ?? []) {
     const c = Array.isArray(a.candidates) ? a.candidates[0] : a.candidates
-    if (!c || !isPortalVisible(c)) continue
+    if (!c || !isPortalVisible(c, alleLeads)) continue
     for (const id of new Set([a.campaign_id, c.campaign_id].filter((x): x is string => !!x))) {
       countByCampaign.set(id, (countByCampaign.get(id) ?? 0) + 1)
     }

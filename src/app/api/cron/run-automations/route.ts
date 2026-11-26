@@ -4,6 +4,7 @@ import { runAutomations } from "@/lib/cron/run-automations"
 import { runTrackedCronJob } from "@/lib/cron/job-runs"
 import { sendLeadConfirmations } from "@/lib/lead-confirmation"
 import { isCronAuthorized } from "@/lib/cron-auth"
+import { alleLeadsZuordnen } from "@/lib/portal-alle-leads"
 
 // Aufgerufen vom Cloudflare Cron Trigger (custom-worker.ts, alle 5 Minuten).
 // ?dryRun=1: zeigt nur, was verschickt würde (kein Versand, kein DB-Schreiben) - zum
@@ -21,10 +22,12 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await runTrackedCronJob(supabase, "run-automations", async () => {
+    // Kanzleien mit „alle Leadeingänge im Portal“ (Paket 117): neue Leads still zuordnen.
+    const alleLeads = await alleLeadsZuordnen(supabase)
     const r = await runAutomations(supabase)
     // Zentrale Eingangsbestätigung (Paket 23) - Absicherung für Leads aus dem Sammelabgleich.
     const confirmations = await sendLeadConfirmations(supabase)
-    return { result: { ...r, confirmations }, ok: r.errors === 0 && confirmations.failed === 0 }
+    return { result: { ...r, confirmations, alleLeads }, ok: r.errors === 0 && confirmations.failed === 0 }
   })
 
   return NextResponse.json(result)

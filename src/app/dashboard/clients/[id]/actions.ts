@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
-import { requireStaffUser } from "@/lib/auth-guards"
+import { requireAgencyAdmin, requireStaffUser } from "@/lib/auth-guards"
 import { publishClientProfileToKanzleistelle } from "@/lib/kanzleistelle-profile-sync"
 import { scheduleKanzleistelleSync } from "@/lib/kanzleistelle-auto-sync"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import { createPasswordLink } from "@/lib/password-link"
 import { ensurePortalAccess, sendPortalInvite } from "@/lib/portal-access"
+import { alleLeadsZuordnen, alleLeadsZuruecknehmen } from "@/lib/portal-alle-leads"
 
 // Server Actions verlassen sich nach dem Security-Review vom 09.09.2026 nicht mehr
 // ausschliesslich auf RLS als einzige Schutzschicht - requireStaffUser() (src/lib/auth-guards.ts)
@@ -453,6 +454,30 @@ export async function inviteContactAction(clientId: string, contactId: string): 
     const sent = await sendPortalInvite(access.profileId, email)
     revalidatePath(`/dashboard/clients/${clientId}`)
     return { sent, email }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+// „Alle Leadeingänge im Portal“ ein-/ausschalten (Paket 117). Nur Admins: Die Kanzlei sieht
+// danach auch nicht vorqualifizierte und von uns abgelehnte Leads.
+export async function setPortalAlleLeadsAction(
+  clientId: string,
+  an: boolean
+): Promise<{ error: string } | { zugeordnet: number } | { entfernt: number }> {
+  const supabase = await createSupabaseServerClient()
+  const guard = await requireAgencyAdmin(supabase)
+  if ("error" in guard) return { error: guard.error }
+  const { data: client } = await supabase.from("clients").select("id").eq("id", clientId).maybeSingle()
+  if (!client) return { error: "Kunde nicht gefunden." }
+
+  const admin = createSupabaseAdminClient()
+  const { error } = await admin.from("clients").update({ portal_alle_leads: an }).eq("id", clientId)
+  if (error) return { error: error.message }
+  try {
+    const ergebnis = an ? await alleLeadsZuordnen(admin, clientId) : await alleLeadsZuruecknehmen(admin, clientId)
+    revalidatePath(`/dashboard/clients/${clientId}`)
+    return ergebnis
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }

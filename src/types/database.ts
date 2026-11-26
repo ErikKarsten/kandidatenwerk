@@ -556,6 +556,7 @@ export type Database = {
           kanzleistelle_synced_at: string | null
           kanzleistelle_sync_error: string | null
           live_since: string | null
+          portal_alle_leads: boolean
         }
         Insert: {
           id?: string
@@ -588,6 +589,7 @@ export type Database = {
           kanzleistelle_synced_at?: string | null
           kanzleistelle_sync_error?: string | null
           live_since?: string | null
+          portal_alle_leads?: boolean
         }
         Update: {
           id?: string
@@ -620,6 +622,7 @@ export type Database = {
           kanzleistelle_synced_at?: string | null
           kanzleistelle_sync_error?: string | null
           live_since?: string | null
+          portal_alle_leads?: boolean
         }
         Relationships: [
           {
