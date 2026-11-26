@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge"
 import { ASSIGNMENT_STATUS_OPTIONS, type AssignmentStatusValue } from "@/lib/assignment-status"
 import { LIVE_PHASE } from "@/lib/client-project"
+import { CANDIDATE_STATUS_OPTIONS, CANDIDATE_STATUS_FALLBACK_COLORS } from "@/lib/candidate-status"
 
 // Pipeline nach dem Status beim Kunden (Paket 31) - zugeordnete Kandidaten sind intern
 // immer "vorqualifiziert", entscheidend ist, was der Kunde gesetzt hat.
@@ -24,12 +25,20 @@ export interface ClientCardProps {
     eingestellt: number
   }
   pipeline: PipelineSegment[]
+  // Status der Leads aus den eigenen Kampagnen, die der Kanzlei noch nicht zugeordnet sind
+  // (Paket 116) - Kandidaten-Status statt Status beim Kunden.
+  leadPipeline?: { status: string; count: number }[]
   // Projekt-Infos (Paket 13): Phase, Key Account Manager, Kanzleiprofil final?
   project?: { phase: string; phaseLabel: string; phaseColor: string; kamName: string | null; profileFinalized: boolean }
 }
 
-export function ClientCard({ name, active, tags, stats, pipeline, project }: ClientCardProps) {
+export function ClientCard({ name, active, tags, stats, pipeline, leadPipeline = [], project }: ClientCardProps) {
   const total = pipeline.reduce((s, p) => s + p.count, 0)
+  const leadSegmente = leadPipeline.map((seg) => {
+    const opt = CANDIDATE_STATUS_OPTIONS.find((o) => o.value === seg.status)
+    return { key: seg.status, label: opt?.label ?? seg.status, color: opt?.dot ?? CANDIDATE_STATUS_FALLBACK_COLORS.dot, count: seg.count }
+  })
+  const kundeSegmente = pipeline.map((seg) => ({ key: seg.status, label: STATUS_COLORS[seg.status].label, color: STATUS_COLORS[seg.status].bar, count: seg.count }))
   // Oben rechts nur "Live", wenn die Projektphase live ist (Paket 78) - "Aktiv" war
   // irreführend, solange eine Kanzlei noch im Onboarding steckt. Andere Phasen stehen
   // in der Zeile darunter. Ohne Projekt-Infos wie bisher Aktiv/Inaktiv.
@@ -96,34 +105,31 @@ export function ClientCard({ name, active, tags, stats, pipeline, project }: Cli
         </div>
       </div>
 
-      {total > 0 && (
-        <div>
-          <div className="flex h-1.5 w-full overflow-hidden">
-            {pipeline.map((seg) => {
-              const { bar } = STATUS_COLORS[seg.status]
-              const pct = (seg.count / total) * 100
-              return (
-                <div
-                  key={seg.status}
-                  title={`${STATUS_COLORS[seg.status].label}: ${seg.count}`}
-                  style={{ width: `${pct}%`, backgroundColor: bar }}
-                />
-              )
-            })}
-          </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 px-5 py-2.5">
-            {pipeline.map((seg) => {
-              const { bar, label } = STATUS_COLORS[seg.status]
-              return (
-                <span key={seg.status} className="flex items-center gap-1 text-xs text-gray-500">
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: bar }} />
-                  {label} ({seg.count})
-                </span>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {leadSegmente.length > 0 && <Pipeline titel="Leads" segmente={leadSegmente} />}
+      {total > 0 && <Pipeline titel="Bei der Kanzlei" segmente={kundeSegmente} />}
+    </div>
+  )
+}
+
+// Farbbalken + Legende (Paket 31; seit Paket 116 zweimal: Leads und Status beim Kunden).
+function Pipeline({ titel, segmente }: { titel: string; segmente: { key: string; label: string; color: string; count: number }[] }) {
+  const summe = segmente.reduce((s, p) => s + p.count, 0)
+  return (
+    <div>
+      <div className="flex h-1.5 w-full overflow-hidden">
+        {segmente.map((seg) => (
+          <div key={seg.key} title={`${seg.label}: ${seg.count}`} style={{ width: `${(seg.count / summe) * 100}%`, backgroundColor: seg.color }} />
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5">
+        <span className="text-xs font-medium text-gray-700">{titel}:</span>
+        {segmente.map((seg) => (
+          <span key={seg.key} className="flex items-center gap-1 text-xs text-gray-500">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: seg.color }} />
+            {seg.label} ({seg.count})
+          </span>
+        ))}
+      </div>
     </div>
   )
 }

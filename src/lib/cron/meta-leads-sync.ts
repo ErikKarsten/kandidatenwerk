@@ -19,8 +19,9 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/database"
-import { fetchMetaLeadsForForm, buildFormToPageAccessTokenMap, type MetaLead } from "@/lib/meta-ads-client"
+import { extractMetaContactFields, fetchMetaLeadsForForm, fetchFormDirectory, type MetaFormInfo, type MetaLead } from "@/lib/meta-ads-client"
 import { processMetaLead } from "@/lib/meta-leads-sync-shared"
+import { kampagneFuerLead, offeneFormulareMelden, type OffenesFormular } from "@/lib/lead-zuordnung"
 import { isKs24Campaign } from "@/lib/meta-campaigns-parse"
 
 type Supabase = SupabaseClient<Database>
@@ -61,6 +62,9 @@ export interface MetaLeadsSyncResult {
   // Einrichtungsfrage im Business Manager, kein Fehler, der jede halbe Stunde eine
   // Warn-Mail auslösen soll.
   warnings: { campaignId: string; campaignTitle: string; message: string }[]
+  // Formulare ohne verknüpfte Kampagne (Paket 116): geprüft, Leads darüber zugeordnet,
+  // Formulare mit Leads, die sich keiner Kampagne zuordnen ließen.
+  ohneKampagne: { formulareGeprueft: number; zugeordnet: number; offeneFormulare: number }
 }
 
 async function loadCampaigns(
@@ -103,12 +107,16 @@ export async function syncMetaLeads(
     campaignId = null,
     includeInactiveLeadCampaigns = false,
     sinceDays = null,
+    ohneKampagne = null,
     log = console.log,
   }: {
     limit?: number | null
     campaignId?: string | null
     includeInactiveLeadCampaigns?: boolean
     sinceDays?: number | null
+    // Formulare ohne Kampagne mitprüfen (Paket 116): nur die `scheibe`-te von `scheiben`
+    // Teilmengen je Lauf, wegen Metas Anfrage-Grenzen und Cloudflares 1000 Unteranfragen.
+    ohneKampagne?: { scheiben: number; scheibe: number } | null
     log?: (message: string) => void
   } = {}
 ): Promise<MetaLeadsSyncResult> {
@@ -119,6 +127,7 @@ export async function syncMetaLeads(
     skippedNoEmail: 0,
     errors: [],
     warnings: [],
+    ohneKampagne: { formulareGeprueft: 0, zugeordnet: 0, offeneFormulare: 0 },
   }
 
   const campaigns = await loadCampaigns(supabase, campaignId, includeInactiveLeadCampaigns)
@@ -128,7 +137,8 @@ export async function syncMetaLeads(
   // Seite statt des System-User-Tokens (siehe metaGraphFetch-Kommentar) - daher einmal
   // pro Lauf die Formular-ID -> Seiten-Token-Zuordnung aufbauen, statt pro Kampagne
   // erneut alle Seiten abzufragen.
-  const formToPageToken = await buildFormToPageAccessTokenMap()
+  const verzeichnis = await fetchFormDirectory()
+  const formToPageToken = new Map([...verzeichnis].map(([id, f]) => [id, f.accessToken]))
 
   // Hängt dasselbe Formular an mehreren Kampagnen (alte Kanzlei-Kampagne + importierte
   // Lead-Kampagne, T-38), nur einmal verarbeiten - über die zuerst geladene (Lead-)Kampagne.
@@ -198,5 +208,84 @@ export async function syncMetaLeads(
     }
   }
 
+  if (ohneKampagne && !campaignId) await formulareOhneKampagne(supabase, verzeichnis, ohneKampagne, sinceDays ?? 3, result, log)
+
   return result
 }
+
+// Formulare, die an keiner Kampagne hängen: Leads der letzten Tage über Meta-Kampagne bzw.
+// Kanzlei der Seite zuordnen (lead-zuordnung.ts), den Rest für die rote Leiste melden.
+async function formulareOhneKampagne(
+  supabase: Supabase,
+  verzeichnis: Map<string, MetaFormInfo>,
+  { scheiben, scheibe }: { scheiben: number; scheibe: number },
+  tage: number,
+  result: MetaLeadsSyncResult,
+  log: (message: string) => void
+) {
+  const { data: verknuepft } = await supabase.from("campaigns").select("meta_form_id").not("meta_form_id", "is", null)
+  const verknuepftIds = new Set((verknuepft ?? []).map((r) => r.meta_form_id as string))
+  const formIdsJeSeite = new Map<string, string[]>()
+  for (const [id, f] of verzeichnis) formIdsJeSeite.set(f.pageId, [...(formIdsJeSeite.get(f.pageId) ?? []), id])
+
+  const kandidaten = [...verzeichnis]
+    .filter(([id, f]) => !verknuepftIds.has(id) && (f.status ?? "ACTIVE") === "ACTIVE")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .filter((_, i) => i % scheiben === scheibe % scheiben)
+  log(`\n→ Formulare ohne Kampagne: ${kandidaten.length} in diesem Lauf (Teil ${(scheibe % scheiben) + 1}/${scheiben}).`)
+
+  const sinceUnix = Math.floor(Date.now() / 1000) - tage * 86400
+  const offen: OffenesFormular[] = []
+  const ohneOffene: string[] = []
+  for (const [formId, form] of kandidaten) {
+    result.ohneKampagne.formulareGeprueft++
+    let leads: MetaLead[]
+    try {
+      leads = await fetchMetaLeadsForForm(formId, { sinceUnix }, form.accessToken)
+    } catch (err) {
+      log(`  Formular ${formId}: Leads nicht lesbar (${err instanceof Error ? err.message.slice(0, 120) : err})`)
+      continue
+    }
+    if (leads.length) {
+      const { data: bekannt } = await supabase.from("candidates").select("meta_lead_id").in("meta_lead_id", leads.map((l) => l.id))
+      const bekannteIds = new Set((bekannt ?? []).map((r) => r.meta_lead_id))
+      leads = leads.filter((l) => !bekannteIds.has(l.id))
+    }
+    let offeneLeads: MetaLead[] = []
+    const seite = { name: form.pageName, formIds: formIdsJeSeite.get(form.pageId) ?? [] }
+    for (const lead of leads) {
+      try {
+        const treffer = await kampagneFuerLead(supabase, { formId, formName: form.name, metaCampaignId: lead.campaign_id ?? null, seite })
+        if (treffer === "ignoriert") continue
+        if (!treffer) {
+          offeneLeads.push(lead)
+          continue
+        }
+        const outcome = await processMetaLead(supabase, treffer.kampagne, lead)
+        if (outcome.status === "created") result.created++
+        else if (outcome.status === "linked_existing") result.linkedExisting++
+        else if (outcome.status === "skipped_no_email") result.skippedNoEmail++
+        result.ohneKampagne.zugeordnet++
+        log(`  Lead ${lead.id} („${form.name}“) → „${treffer.kampagne.title}“ (über ${treffer.weg}): ${outcome.status}`)
+        await sleep(DELAY_MS)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        result.errors.push({ campaignId: "-", leadId: lead.id, message: `Formular ohne Kampagne ${formId}: ${message}` })
+      }
+    }
+    offeneLeads = offeneLeads.filter((l) => !/dummy data for/i.test(JSON.stringify(l.field_data)))
+    // Person schon in Kandidatenwerk (z. B. über eine andere Anzeige): kein Alarm.
+    if (offeneLeads.length) {
+      const mails = offeneLeads.map((l) => extractMetaContactFields(l.field_data).email?.trim().toLowerCase()).filter((m): m is string => !!m)
+      const { data: vorhanden } = mails.length ? await supabase.from("candidates").select("email").in("email", mails) : { data: [] }
+      const da = new Set((vorhanden ?? []).map((r) => r.email?.toLowerCase()))
+      offeneLeads = offeneLeads.filter((l) => !da.has(extractMetaContactFields(l.field_data).email?.trim().toLowerCase() ?? ""))
+    }
+    if (offeneLeads.length) {
+      offen.push({ formId, formName: form.name, pageName: form.pageName, leads: offeneLeads.length, letzterLead: offeneLeads.map((l) => l.created_time).sort().pop()! })
+    } else ohneOffene.push(formId)
+  }
+  result.ohneKampagne.offeneFormulare = offen.length
+  await offeneFormulareMelden(supabase as never, offen, ohneOffene)
+}
+

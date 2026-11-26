@@ -92,7 +92,12 @@ export interface MetaLead {
   id: string
   created_time: string
   field_data: MetaLeadFieldData[]
+  // Meta-Kampagne, über deren Anzeige der Lead kam (fehlt bei organischen/Test-Leads).
+  // Paket 116: ordnet Leads auch dann zu, wenn das Formular an keiner Kampagne hängt.
+  campaign_id?: string
 }
+
+const LEAD_FIELDS = "id,created_time,field_data,campaign_id"
 
 // Meta befuellt Test-Leads (egal ob per POST .../test_leads erzeugt oder ueber den
 // "Testen"-Button im App-Dashboard) mit erkennbaren Platzhalterwerten wie
@@ -163,7 +168,7 @@ export async function fetchMetaLeadsForForm(
 
   do {
     const params: Record<string, string | number> = {
-      fields: "id,created_time,field_data",
+      fields: LEAD_FIELDS,
       limit: 100,
     }
     // `since` ignoriert der leads-Endpunkt (geprüft 02.10.2026) - nur `filtering` wirkt.
@@ -327,7 +332,7 @@ export async function createMetaTestLead(formId: string, pageAccessToken: string
 // nachladen muss. fetchMetaLeadsForForm (Liste + Pagination) wäre hier überdimensioniert
 // für einen einzelnen bekannten Lead.
 export async function fetchMetaLead(leadgenId: string, pageAccessToken: string): Promise<MetaLead> {
-  return metaGraphFetch<MetaLead>(`/${leadgenId}`, { fields: "id,created_time,field_data" }, pageAccessToken)
+  return metaGraphFetch<MetaLead>(`/${leadgenId}`, { fields: LEAD_FIELDS }, pageAccessToken)
 }
 
 // Abonniert eine Seite für Leadgen-Webhooks (damit Meta uns aktiv benachrichtigt, sobald

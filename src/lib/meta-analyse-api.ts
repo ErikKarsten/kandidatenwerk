@@ -49,7 +49,7 @@ export async function metaAnalyseDaten(db: SupabaseClient, tage: number) {
   const [{ data: letzte }, { data: erste }, { data: konto }] = await Promise.all([
     db.from("meta_anzeigen_tag").select("datum").order("datum", { ascending: false }).limit(1).maybeSingle(),
     db.from("meta_anzeigen_tag").select("datum").order("datum", { ascending: true }).limit(1).maybeSingle(),
-    db.from("meta_konto_status").select("geprueft_am").order("geprueft_am", { ascending: false }).limit(1).maybeSingle(),
+    db.from("meta_konto_status").select("geprueft_am").like("konto_id", "act_%").order("geprueft_am", { ascending: false }).limit(1).maybeSingle(),
   ])
   if (!letzte) return { leer: true }
   const bis = String(letzte.datum).slice(0, 10)
